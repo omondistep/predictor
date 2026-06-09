@@ -1,0 +1,17 @@
+[Skipped 9 preview/other URLs — only match pages used]
+Processing 645 Forebet match links...
+
+[1/645]   Scraping: psg-arsenal-2464477... PSG vs Arsenal
+[2/645]   Scraping: santiago-wanderers-uni%C3%B3n-espa%C3%B1ola-242778... Santiago Wanderers vs Unión Española
+[3/645]   Scraping: deportes-recoleta-san-luis-quillota-2427784... Deportes Recoleta vs San Luis Quillota
+[4/645]   Scraping: neudorf--parndorf-oberpullendorf-2458401... Neudorf / Parndorf vs Oberpullendorf
+[5/645]   Scraping: ss-reyes-ud-logrones-2464319... S.S. Reyes vs UD Logrones
+[6/645]   Scraping: sion-w-thun-w-2458545... Sion W vs Thun W
+[7/645]   Scraping: luzern-w-yverdon-w-2458546... Luzern W vs Yverdon W
+[8/645]   Scraping: comunicaciones-ba-deportivo-armenio-2464717... Comunicaciones BA vs Deportivo Armenio
+[9/645]   Scraping: sportivo-dock-sud-brown-de-adrogu%C3%A9-2464718... Sportivo Dock Sud vs Brown de Adrogué
+[10/645]   Scraping: ca-lugano-deportivo-paraguayo-2465114... CA Lugano vs Deportivo Paraguayo
+[11/645]   Scraping: claypole-central-c%C3%B3rdoba-2465115... Claypole vs Central Córdoba
+[12/645]   Scraping: el-porvenir-deportivo-mu%C3%B1iz-2465116... El Porvenir vs Deportivo Muñiz
+[13/645]   Scraping: colegiales-agropecuario-2461353... Colegiales vs Agropecuario
+[14/645]   Scraping: estudiantes-bsas-godoy-cruz-2461360... 

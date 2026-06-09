@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+scraped_results.json
+history.db
+raw_sample.txt
+learn_output.log
+predict_output.log

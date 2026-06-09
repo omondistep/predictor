@@ -1,0 +1,704 @@
+#!/usr/bin/env python3
+"""
+Football Match Predictor — rule-based terminal app.
+
+Analyzes match data (teams + odds) using the same strategy as the manual
+analysis workflow: league trends, odds structure, home/away splits, and
+market value. Optionally scrapes live form data for refinement.
+
+Usage:
+    python predict.py <file>          # Predict from a file of matches
+    python predict.py --paste         # Paste matches interactively
+    python predict.py --scrape        # Try scraping form data (slower)
+"""
+
+import argparse
+import csv
+import io
+import re
+import sys
+import json
+import os
+from dataclasses import dataclass, field
+from typing import Optional
+from datetime import datetime
+
+# ─────────────────────────────────────────────
+# Data Models
+# ─────────────────────────────────────────────
+
+@dataclass
+class MatchOdds:
+    """Parsed odds for a single match."""
+    home_win: float
+    draw: float
+    away_win: float
+    dc_home_or_draw: float
+    dc_home_or_away: float
+    dc_draw_or_away: float
+    over_25: float
+    under_25: float
+    btts_yes: float
+    btts_no: float
+
+    @classmethod
+    def from_list(cls, vals: list[float]) -> "MatchOdds":
+        if len(vals) < 10:
+            vals += [0.0] * (10 - len(vals))
+        return cls(*vals[:10])
+
+
+@dataclass
+class Match:
+    """A single match with metadata and odds."""
+    home_team: str
+    away_team: str
+    league: str = ""
+    competition: str = ""
+    kickoff: str = ""
+    match_id: str = ""
+    odds: Optional[MatchOdds] = None
+    raw_lines: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Prediction:
+    """A single prediction output."""
+    match: Match
+    primary_pick: str          # e.g. "Home win", "Under 2.5", "BTTS Yes"
+    correct_score: str = ""    # e.g. "2-1"
+    confidence: str = "Medium" # Low / Medium / High / Near Certain
+    reasoning: list[str] = field(default_factory=list)
+    supporting_markets: list[str] = field(default_factory=list)
+
+
+# ─────────────────────────────────────────────
+# League Profiles
+# ─────────────────────────────────────────────
+
+@dataclass
+class LeagueProfile:
+    """Known statistical profile for a league."""
+    name: str
+    avg_goals: float = 2.5
+    under_25_rate: float = 0.50   # 0-1
+    btts_no_rate: float = 0.50
+    draw_rate: float = 0.25
+    home_win_rate: float = 0.45
+    goals_home_avg: float = 1.4
+    goals_away_avg: float = 1.1
+
+LEAGUE_PROFILES: dict[str, LeagueProfile] = {
+    # Brazil
+    "brazil-serie-a": LeagueProfile("Brazil Serie A", 2.5, 0.48, 0.46, 0.26, 0.48),
+    "brazil-serie-b": LeagueProfile("Brazil Serie B", 2.1, 0.58, 0.55, 0.30, 0.44),
+    "brazil-serie-c": LeagueProfile("Brazil Serie C", 1.9, 0.65, 0.60, 0.32, 0.42),
+    "brazil-serie-d": LeagueProfile("Brazil Serie D", 1.8, 0.72, 0.68, 0.33, 0.40),
+    # Argentina
+    "argentina-primera-b-nacional": LeagueProfile("Argentina B Nacional", 1.7, 0.75, 0.70, 0.36, 0.38),
+    "argentina-primera-b": LeagueProfile("Argentina Primera B", 1.6, 0.78, 0.72, 0.37, 0.38),
+    "argentina-primera-c": LeagueProfile("Argentina Primera C", 1.5, 0.80, 0.75, 0.38, 0.37),
+    "argentina-federal-a": LeagueProfile("Argentina Federal A", 1.6, 0.78, 0.72, 0.37, 0.38),
+    # Chile
+    "chile-primera": LeagueProfile("Chile Primera", 2.3, 0.52, 0.50, 0.27, 0.46),
+    "chile-primera-b": LeagueProfile("Chile Primera B", 2.0, 0.60, 0.58, 0.30, 0.43),
+    # USA
+    "usl-championship": LeagueProfile("USL Championship", 2.6, 0.45, 0.44, 0.24, 0.50),
+    "usl-league-one": LeagueProfile("USL League One", 2.5, 0.48, 0.46, 0.25, 0.48),
+    "usl-league-two": LeagueProfile("USL League Two", 2.6, 0.45, 0.44, 0.24, 0.48),
+    "mls-next-pro": LeagueProfile("MLS Next Pro", 2.8, 0.42, 0.42, 0.22, 0.50),
+    "nwsl": LeagueProfile("NWSL", 2.4, 0.50, 0.48, 0.25, 0.46),
+    # Uruguay
+    "uruguay-primera": LeagueProfile("Uruguay Primera", 2.2, 0.55, 0.52, 0.28, 0.45),
+    "uruguay-segunda": LeagueProfile("Uruguay Segunda", 1.8, 0.70, 0.65, 0.34, 0.40),
+    # Ecuador
+    "ecuador-serie-a": LeagueProfile("Ecuador Serie A", 2.2, 0.55, 0.52, 0.28, 0.44),
+    "ecuador-serie-b": LeagueProfile("Ecuador Serie B", 1.9, 0.62, 0.58, 0.32, 0.42),
+    # Peru
+    "peru-primera": LeagueProfile("Peru Primera", 2.1, 0.58, 0.55, 0.30, 0.43),
+    # Paraguay
+    "paraguay-primera": LeagueProfile("Paraguay Primera", 2.2, 0.55, 0.52, 0.28, 0.44),
+    "paraguay-segunda": LeagueProfile("Paraguay Segunda", 1.9, 0.62, 0.58, 0.32, 0.42),
+    # CONCACAF
+    "concacaf-champions": LeagueProfile("CONCACAF Champions", 2.5, 0.48, 0.46, 0.25, 0.48),
+    # Morocco
+    "morocco-botola": LeagueProfile("Morocco Botola", 1.9, 0.62, 0.60, 0.32, 0.42),
+    # Canada
+    "canada-premier": LeagueProfile("Canadian Premier", 2.3, 0.52, 0.50, 0.27, 0.45),
+    # Spain
+    "spain-segunda": LeagueProfile("Spain Segunda", 2.2, 0.55, 0.52, 0.30, 0.44),
+    "spain-tercera": LeagueProfile("Spain Tercera", 1.8, 0.68, 0.64, 0.34, 0.40),
+    # Portugal
+    "portugal-liga-2": LeagueProfile("Portugal Liga 2", 2.2, 0.55, 0.52, 0.30, 0.44),
+    # Kuwait
+    "kuwait-league": LeagueProfile("Kuwait League", 2.4, 0.50, 0.48, 0.25, 0.46),
+    # Faroe Islands
+    "faroe-premier": LeagueProfile("Faroe Premier", 2.8, 0.42, 0.40, 0.22, 0.48),
+    # default
+    "default": LeagueProfile("Default", 2.5, 0.50, 0.50, 0.25, 0.45),
+}
+
+
+def detect_league(text: str) -> str:
+    """Detect league key from competition text.
+
+    Matches based on full competition string like 'Brazil - Serie A' or
+    'USA - USL, Championship'. Uses substring matching with country context.
+    """
+    t = text.lower()
+    # Ordered from most to least specific
+    rules = [
+        ("brazil-serie-d",        lambda t: ("serie d" in t or "série d" in t) and "brazil" in t),
+        ("brazil-serie-c",        lambda t: ("serie c" in t or "série c" in t) and "brazil" in t),
+        ("brazil-serie-b",        lambda t: "serie b" in t and "brazil" in t),
+        ("brazil-serie-a",        lambda t: ("serie a" in t or ("brasileir" in t and "serie d" not in t and "serie c" not in t and "serie b" not in t)) and "brazil" in t),
+        ("argentina-primera-b-nacional", lambda t: "b nacional" in t or "primera nacional" in t),
+        ("chile-primera-b",       lambda t: ("primera b" in t and "chile" in t) or "torneo transicion" in t),
+        ("chile-primera",         lambda t: "primera division" in t and "chile" in t and "b" not in t.split("primera")[-1][:5]),
+        ("argentina-primera-b",   lambda t: "primera b" in t and "nacional" not in t and "chile" not in t),
+        ("argentina-primera-c",   lambda t: "primera c" in t),
+        ("argentina-federal-a",   lambda t: "federal a" in t),
+        ("argentina-copa-argentina", lambda t: "copa argentina" in t),
+        ("usl-championship",      lambda t: "usl" in t and "championship" in t),
+        ("usl-league-one",        lambda t: "usl" in t and "league one" in t),
+        ("usl-league-two",        lambda t: "usl" in t and "league two" in t),
+        ("usl-w-league",          lambda t: "usl w league" in t or "usl w league" in t),
+        ("mls-next-pro",          lambda t: "mls next pro" in t),
+        ("nwsl",                  lambda t: "national women" in t or "nwsl" in t),
+        ("npsl",                  lambda t: "national premier soccer" in t or "npsl" in t),
+        ("uruguay-primera",       lambda t: "primera division" in t and "uruguay" in t),
+        ("uruguay-segunda",       lambda t: "segunda division" in t and "uruguay" in t),
+        ("ecuador-serie-a",       lambda t: "serie a" in t and "ecuador" in t),
+        ("ecuador-serie-b",       lambda t: "serie b" in t and "ecuador" in t),
+        ("peru-primera",          lambda t: "primera division" in t and "peru" in t),
+        ("paraguay-primera",      lambda t: ("primera division" in t or "campeonato" in t) and "paraguay" in t and "femenino" not in t and "women" not in t),
+        ("paraguay-segunda",      lambda t: "segunda division" in t and "paraguay" in t),
+        ("concacaf-champions",    lambda t: "concacaf champions" in t),
+        ("morocco-botola",        lambda t: "botola" in t),
+        ("canada-premier",        lambda t: "canadian premier" in t),
+        ("spain-segunda",         lambda t: "segunda division" in t and "spain" in t),
+        ("spain-tercera",         lambda t: "tercera division" in t),
+        ("portugal-liga-2",       lambda t: "portugal" in t and ("liga" in t or "segunda" in t or "final" in t)),
+        ("kuwait-league",         lambda t: "kuwait" in t),
+        ("faroe-premier",         lambda t: "faroe islands" in t or "faroe" in t),
+        ("cameroon-elite",        lambda t: "cameroon" in t or "elite one" in t),
+        ("bahrain-premier",       lambda t: "bahrain" in t),
+        ("paraguay-femenino",     lambda t: "femenino" in t and "paraguay" in t),
+        ("chile-femenino",        lambda t: "women" in t and "chile" in t),
+        ("iceland-women",         lambda t: "iceland" in t and "women" in t),
+        ("russia-women",          lambda t: "russia" in t and ("women" in t or "w" in t.split()[-1])),
+        ("brazil-women",          lambda t: "women" in t and "brazil" in t),
+        ("brazil-minerio-u20",    lambda t: "u20" in t and "brazil" in t),
+        ("brazil-carioca-a2",     lambda t: "carioca" in t),
+        ("brazil-catarinense",    lambda t: "catarinense" in t),
+        ("venezuela-segunda",     lambda t: "segunda division" in t and "venezuela" in t),
+        ("international-friendly", lambda t: "international friendly" in t),
+    ]
+    for key, matcher in rules:
+        if matcher(t):
+            return key
+    return "default"
+
+
+def get_league_profile(league_key: str) -> LeagueProfile:
+    return LEAGUE_PROFILES.get(league_key, LEAGUE_PROFILES["default"])
+
+
+# ─────────────────────────────────────────────
+# Input Parser
+# ─────────────────────────────────────────────
+
+def parse_matches_from_text(text: str) -> list[Match]:
+    """Parse the odds format from the user's data dump into Match objects."""
+    lines = [l.strip() for l in text.strip().split("\n") if l.strip()]
+    matches = []
+    i = 0
+
+    competition = ""
+    while i < len(lines):
+        league = ""
+        kickoff = ""
+        match_id = ""
+
+        line = lines[i]
+
+        # Try to match league header
+        # e.g. "USA - USL, Championship (1)" or "Brazil - Serie B (1)"
+        league_match = re.match(r"^(.+?)\s+\((\d+)\)\s*$", line)
+        if league_match:
+            competition = league_match.group(1).strip()
+            i += 1
+            continue
+
+        # Detect match header: "31/05/26 - 03:00 | ID: 2662"
+        time_match = re.match(r"(\d{2}/\d{2}/\d{2})\s*-\s*(\d{2}:\d{2})\s*(?:\|.*ID:\s*(\d+))?", line)
+        if time_match:
+            kickoff = f"{time_match.group(1)} {time_match.group(2)}"
+            match_id = time_match.group(3) or ""
+
+            # Next line: home team
+            if i + 2 >= len(lines):
+                i += 1
+                continue
+            home_team = lines[i + 1]
+            away_team = lines[i + 2]
+
+            # Next lines: odds (up to 10 numbers)
+            odds_vals = []
+            j = i + 3
+            while j < len(lines) and j < i + 3 + 10:
+                try:
+                    val = float(lines[j])
+                    odds_vals.append(val)
+                except ValueError:
+                    break
+                j += 1
+
+            if len(odds_vals) >= 3:
+                match = Match(
+                    home_team=home_team,
+                    away_team=away_team,
+                    league=detect_league(competition) if competition else "default",
+                    competition=competition,
+                    kickoff=kickoff,
+                    match_id=match_id,
+                    odds=MatchOdds.from_list(odds_vals),
+                    raw_lines=lines[max(0, i - 2):j],
+                )
+                matches.append(match)
+
+                # Skip consumed lines
+                consumed = j - i
+                # But don't skip past the league header if it was before
+                i = j
+                continue
+
+        i += 1
+
+    return matches
+
+
+def parse_file(path: str) -> list[Match]:
+    with open(path, "r") as f:
+        return parse_matches_from_text(f.read())
+
+
+# ─────────────────────────────────────────────
+# Scraper Module (optional)
+# ─────────────────────────────────────────────
+
+def _scrape_fctables(league_key: str) -> dict:
+    """Try to scrape form/standings from fctables.com."""
+    # Map league key to fctables URLs
+    url_map = {
+        "brazil-serie-a": "https://www.fctables.com/brazil/serie-a",
+        "brazil-serie-b": "https://www.fctables.com/brazil/serie-b",
+        "chile-primera": "https://www.fctables.com/chile/primera-division",
+        "usl-championship": "https://www.fctables.com/usa/usl-championship",
+    }
+    url = url_map.get(league_key)
+    if not url:
+        return {}
+
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+        headers = {"User-Agent": "Mozilla/5.0"}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return {}
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        # Try to find the standings table
+        table = soup.find("table", class_=re.compile("standings|table"))
+        if not table:
+            return {}
+
+        teams = {}
+        rows = table.find_all("tr")
+        for row in rows[1:]:  # Skip header
+            cells = row.find_all("td")
+            if len(cells) >= 8:
+                name = cells[1].get_text(strip=True) if len(cells) > 1 else ""
+                pts = cells[2].get_text(strip=True) if len(cells) > 2 else "0"
+                # form might be in a later cell
+                teams[name.lower()] = {"pts": pts, "pos": len(teams) + 1}
+
+        return {"teams": teams, "source": "fctables"}
+    except Exception:
+        return {}
+
+
+def scrape_form(matches: list[Match]) -> dict[str, dict]:
+    """Scrape form data for all matches."""
+    form_data = {}
+    leagues_scraped = set()
+    for m in matches:
+        if m.league not in leagues_scraped:
+            data = _scrape_fctables(m.league)
+            if data:
+                leagues_scraped.add(m.league)
+                form_data[m.league] = data
+    return form_data
+
+
+# ─────────────────────────────────────────────
+# Analysis Engine
+# ─────────────────────────────────────────────
+
+def analyze(match: Match, form_data: dict = None) -> Prediction:
+    """Run rule-based analysis on a single match."""
+    odds = match.odds
+    if not odds:
+        return Prediction(match=match, primary_pick="No odds data", confidence="Low")
+
+    profile = get_league_profile(match.league)
+    reasoning = []
+    supporting = []
+
+    # ── 1. Evaluate 1X2 market ──
+    min_odds = min(odds.home_win, odds.draw, odds.away_win)
+    result_pick = ""
+    result_score = ""
+
+    # Strong favorite detection
+    if odds.home_win <= 1.40 and odds.home_win == min_odds:
+        result_pick = "Home win"
+        reasoning.append(f"Heavy home favorite ({odds.home_win:.2f})")
+        supporting.append("Win")
+    elif odds.away_win <= 1.40 and odds.away_win == min_odds:
+        result_pick = "Away win"
+        reasoning.append(f"Heavy away favorite ({odds.away_win:.2f})")
+        supporting.append("Win")
+    elif odds.home_win <= 1.60 and odds.home_win < odds.away_win * 0.85:
+        result_pick = "Home win"
+        reasoning.append(f"Clear home favorite ({odds.home_win:.2f})")
+        supporting.append("Win")
+    elif odds.away_win <= 1.60 and odds.away_win < odds.home_win * 0.85:
+        result_pick = "Away win"
+        reasoning.append(f"Clear away favorite ({odds.away_win:.2f})")
+        supporting.append("Win")
+    elif abs(odds.home_win - odds.away_win) < 0.40 and odds.draw < 3.30:
+        result_pick = "Draw"
+        reasoning.append("Tight odds — draw value")
+        supporting.append("Draw")
+    elif odds.home_win < odds.away_win:
+        result_pick = "Home win"
+        supporting.append("Slight home edge")
+    else:
+        result_pick = "Away win"
+        supporting.append("Slight away edge")
+
+    # ── 2. Evaluate Over/Under market ──
+    ou_pick = ""
+    if odds.over_25 > 0 and odds.under_25 > 0:
+        if odds.over_25 <= 1.50:
+            ou_pick = "Over 2.5"
+            reasoning.append(f"Market expects goals (O2.5 @ {odds.over_25:.2f})")
+            supporting.append("Over 2.5")
+        elif odds.under_25 <= 1.50:
+            ou_pick = "Under 2.5"
+            reasoning.append(f"Market expects low-scoring (U2.5 @ {odds.under_25:.2f})")
+            supporting.append("Under 2.5")
+        elif odds.under_25 < odds.over_25 and profile.under_25_rate > 0.60:
+            ou_pick = "Under 2.5"
+            reasoning.append(f"League trend ({profile.name}) + market lean toward Under 2.5")
+            supporting.append("Under 2.5")
+        elif odds.over_25 < odds.under_25:
+            ou_pick = "Over 2.5"
+            supporting.append("Over 2.5")
+
+    # ── 3. Evaluate BTTS market ──
+    btts_pick = ""
+    if odds.btts_yes > 0 and odds.btts_no > 0:
+        if odds.btts_yes <= 1.50:
+            btts_pick = "BTTS Yes"
+            reasoning.append(f"BTTS Yes heavily favored ({odds.btts_yes:.2f})")
+            supporting.append("BTTS Yes")
+        elif odds.btts_no <= 1.50:
+            btts_pick = "BTTS No"
+            reasoning.append(f"BTTS No heavily favored ({odds.btts_no:.2f})")
+            supporting.append("BTTS No")
+        elif odds.btts_yes < odds.btts_no:
+            btts_pick = "BTTS Yes"
+            supporting.append("BTTS Yes")
+        else:
+            btts_pick = "BTTS No"
+            supporting.append("BTTS No")
+
+    # ── 4. League trend overrides ──
+    if profile.under_25_rate > 0.65 and ou_pick != "Over 2.5":
+        if ou_pick != "Under 2.5":
+            ou_pick = "Under 2.5"
+            supporting.append("Under 2.5")
+            reasoning.append(f"League trend: {profile.name} {profile.under_25_rate:.0%} matches Under 2.5")
+    if profile.btts_no_rate > 0.62 and btts_pick != "BTTS Yes":
+        if btts_pick != "BTTS No":
+            btts_pick = "BTTS No"
+            supporting.append("BTTS No")
+            reasoning.append(f"League trend: {profile.name} {profile.btts_no_rate:.0%} matches BTTS No")
+
+    # ── 5. Determine primary pick ──
+    # Choose the market with strongest signal
+    picks_priority = []
+
+    # Near certain: any odds < 1.25
+    if odds.home_win > 0 and odds.home_win < 1.25:
+        picks_priority.append(("Home win", "Near Certain"))
+    if odds.away_win > 0 and odds.away_win < 1.25:
+        picks_priority.append(("Away win", "Near Certain"))
+
+    # Very strong: odds < 1.50
+    if odds.home_win > 0 and odds.home_win < 1.50:
+        picks_priority.append(("Home win", "High"))
+    if odds.away_win > 0 and odds.away_win < 1.50:
+        picks_priority.append(("Away win", "High"))
+    if ou_pick == "Under 2.5" and odds.under_25 < 1.50:
+        picks_priority.append(("Under 2.5", "High"))
+    if ou_pick == "Over 2.5" and odds.over_25 < 1.50:
+        picks_priority.append(("Over 2.5", "High"))
+    if btts_pick == "BTTS No" and odds.btts_no < 1.50:
+        picks_priority.append(("BTTS No", "High"))
+    if btts_pick == "BTTS Yes" and odds.btts_yes < 1.50:
+        picks_priority.append(("BTTS Yes", "High"))
+
+    # League pattern based
+    if profile.under_25_rate > 0.70 and ou_pick == "Under 2.5":
+        picks_priority.append((f"{result_pick} & Under 2.5", "High"))
+
+    # Default to result pick with medium confidence
+    if not picks_priority:
+        if ou_pick and odds.under_25 > 0 and odds.under_25 < 1.60:
+            picks_priority.append((f"{ou_pick}", "Medium-High"))
+        elif ou_pick:
+            picks_priority.append((f"{result_pick}", "Medium"))
+        else:
+            picks_priority.append((f"{result_pick}", "Medium"))
+
+    primary, confidence = picks_priority[0]
+
+    # ── 6. Correct score lean ──
+    correct_score = suggest_score(match, result_pick, ou_pick, btts_pick, profile)
+
+    # ── 7. Format supporting markets ──
+    support_strs = []
+    if result_pick and result_pick != primary:
+        support_strs.append(result_pick)
+    if ou_pick and ou_pick not in (primary, result_pick):
+        support_strs.append(ou_pick)
+    if btts_pick and btts_pick not in (primary, result_pick, ou_pick):
+        support_strs.append(btts_pick)
+
+    return Prediction(
+        match=match,
+        primary_pick=primary,
+        correct_score=correct_score,
+        confidence=confidence,
+        reasoning=reasoning,
+        supporting_markets=support_strs,
+    )
+
+
+def suggest_score(match: Match, result: str, ou: str, btts: str, profile: LeagueProfile) -> str:
+    """Suggest a correct-score lean based on analysis."""
+    odds = match.odds
+    if not odds:
+        return ""
+
+    # Use odds to infer expected total goals
+    expected_goals = 2.5
+    if odds.under_25 < odds.over_25:
+        expected_goals = 2.0
+    if odds.under_25 < 1.50:
+        expected_goals = 1.5
+    if odds.over_25 < 1.50:
+        expected_goals = 3.0
+    if odds.over_25 < 1.30:
+        expected_goals = 3.5
+
+    # Use profile adjustment
+    expected_goals = (expected_goals + profile.avg_goals) / 2
+
+    btts_scoring = "Yes" in btts if btts else False
+
+    if result == "Home win" or (result.startswith("Home") and "win" in result):
+        if "No" in btts or (not btts and profile.btts_no_rate > 0.60):
+            if expected_goals < 2.0:
+                return "1-0"
+            elif expected_goals < 2.5:
+                return "2-0"
+            else:
+                return "3-0"
+        else:
+            if expected_goals < 2.0:
+                return "1-0"
+            elif expected_goals < 2.5:
+                return "2-1"
+            else:
+                return "3-1"
+    elif result == "Away win" or ("Away" in result and "win" in result):
+        if "No" in btts or (not btts and profile.btts_no_rate > 0.60):
+            if expected_goals < 2.0:
+                return "0-1"
+            elif expected_goals < 2.5:
+                return "0-2"
+            else:
+                return "0-3"
+        else:
+            if expected_goals < 2.0:
+                return "0-1"
+            elif expected_goals < 2.5:
+                return "1-2"
+            else:
+                return "1-3"
+    elif result == "Draw":
+        if "No" in btts or (not btts and profile.btts_no_rate > 0.60):
+            return "0-0"
+        else:
+            return "1-1"
+
+    return ""
+
+
+# ─────────────────────────────────────────────
+# Output Formatter
+# ─────────────────────────────────────────────
+
+def format_prediction(p: Prediction, show_reasoning: bool = True) -> str:
+    """Format a prediction for terminal output."""
+    m = p.match
+
+    # Color by confidence
+    conf_colors = {
+        "Near Certain": "\033[92m",   # green
+        "High": "\033[94m",           # blue
+        "Medium-High": "\033[93m",    # yellow
+        "Medium": "\033[93m",         # yellow
+        "Low": "\033[91m",            # red
+    }
+    reset = "\033[0m"
+    conf_color = conf_colors.get(p.confidence, "")
+
+    # Header
+    comp_str = f" ({m.competition})" if m.competition else ""
+    header = f"\n{'='*55}\n{m.home_team} vs {m.away_team}{comp_str}"
+    if m.kickoff:
+        header += f"\n{m.kickoff}"
+
+    # Primary pick
+    pick_line = f"\n  {conf_color}PICK:{reset} {p.primary_pick}"
+
+    # Correct score
+    if p.correct_score:
+        pick_line += f"  |  Score lean: {p.correct_score}"
+
+    # Confidence
+    pick_line += f"  |  {conf_color}Confidence: {p.confidence}{reset}"
+
+    # Supporting markets
+    if p.supporting_markets:
+        pick_line += f"\n  Markets: {', '.join(p.supporting_markets)}"
+
+    # Reasoning
+    if show_reasoning and p.reasoning:
+        reasons = "\n  ".join(p.reasoning)
+        pick_line += f"\n  Why: {reasons}"
+
+    return header + pick_line
+
+
+# ─────────────────────────────────────────────
+# CLI
+# ─────────────────────────────────────────────
+
+def interactive_paste():
+    """Read pasted match data from stdin."""
+    print("Paste match data, then Ctrl+D (Unix) or Ctrl+Z (Windows):")
+    return sys.stdin.read()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Football Match Predictor — rule-based analysis terminal app"
+    )
+    parser.add_argument("file", nargs="?", help="File containing match data")
+    parser.add_argument("--paste", action="store_true", help="Paste match data interactively")
+    parser.add_argument("--scrape", action="store_true", help="Attempt to scrape form data")
+    parser.add_argument("--reasoning", action="store_true", default=True, help="Show reasoning")
+    parser.add_argument("--json", action="store_true", help="Output as JSON")
+    parser.add_argument("--high-only", action="store_true", help="Show only High/Near Certain picks")
+    args = parser.parse_args()
+
+    # Read input
+    text = ""
+    if args.file:
+        try:
+            with open(args.file, "r") as f:
+                text = f.read()
+        except FileNotFoundError:
+            print(f"Error: file not found: {args.file}")
+            sys.exit(1)
+    elif args.paste:
+        text = interactive_paste()
+    else:
+        # Check if stdin has data (piped)
+        if not sys.stdin.isatty():
+            text = sys.stdin.read()
+        else:
+            parser.print_help()
+            print("\n\nProvide a file, use --paste, or pipe data to stdin.")
+            sys.exit(0)
+
+    # Parse matches
+    matches = parse_matches_from_text(text)
+    if not matches:
+        print("No matches could be parsed from input.")
+        print("Expected format: competition header, date line, home team, away team, odds...")
+        sys.exit(1)
+
+    # Optional scrape
+    form_data = {}
+    if args.scrape:
+        print(f"Scraping form data...", file=sys.stderr)
+        form_data = scrape_form(matches)
+
+    # Analyze
+    predictions = [analyze(m, form_data) for m in matches]
+
+    # Filter by confidence
+    if args.high_only:
+        predictions = [p for p in predictions if p.confidence in ("High", "Near Certain")]
+
+    # Output
+    if args.json:
+        output = []
+        for p in predictions:
+            output.append({
+                "home": p.match.home_team,
+                "away": p.match.away_team,
+                "competition": p.match.competition,
+                "pick": p.primary_pick,
+                "score_lean": p.correct_score,
+                "confidence": p.confidence,
+                "supporting_markets": p.supporting_markets,
+                "reasoning": p.reasoning,
+            })
+        print(json.dumps(output, indent=2))
+    else:
+        for p in predictions:
+            print(format_prediction(p, args.reasoning))
+
+        # Summary
+        conf_counts = {}
+        for p in predictions:
+            conf_counts[p.confidence] = conf_counts.get(p.confidence, 0) + 1
+        print(f"\n{'='*55}")
+        print(f"Total: {len(predictions)} predictions")
+        for c in ["Near Certain", "High", "Medium-High", "Medium", "Low"]:
+            if c in conf_counts:
+                print(f"  {c}: {conf_counts[c]}")
+        print()
+
+
+if __name__ == "__main__":
+    main()
