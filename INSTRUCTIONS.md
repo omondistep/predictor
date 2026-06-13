@@ -145,5 +145,28 @@ Two data sources:
   # Auto-review (re-scrape Forebet for scores)
   predict --review --auto
 
-  # Check accuracy
-  predict --calibrate
+   # Check accuracy
+   predict --calibrate
+
+10. ALIASES & QUICK COMMANDS
+-----------------------------
+
+   All commands auto-create symlinks in ~/.local/bin/ on first run.
+   Just add that directory to your PATH:
+
+       export PATH="$HOME/.local/bin:$PATH"
+
+   Or source the alias file in ~/.bashrc (works on Arch, Debian, macOS, etc.):
+
+       echo "source ~/predictor/aliases.sh" >> ~/.bashrc
+
+   Available aliases (after sourcing aliases.sh):
+     predict <file>           Run predictions from a URL list
+     predict --calibrate      Show model accuracy stats
+     predict --review         Review past predictions interactively
+     predict --high-only      Show only confident picks
+     predict-url <url>        Predict a single match from a URL
+     cnf / cnfupdate          Update league profile confidence
+     scrape-results           Scrape results from Forebet
+     predict-report           Full report: calibration + league profiles
+     predict-json             Output predictions as JSON
