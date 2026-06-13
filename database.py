@@ -7,6 +7,7 @@ after review, and supports model calibration based on historical accuracy.
 
 import sqlite3
 import os
+import re
 import json
 from datetime import datetime
 from pathlib import Path
@@ -168,6 +169,50 @@ def get_unreviewed_matches(limit: int = 50) -> list:
     return [dict(r) for r in rows]
 
 
+def _prediction_correct(pred: str, home_goals: int, away_goals: int) -> bool:
+    """Check if a prediction matches the actual result.
+    Supports: Home win, Away win, Draw, Home, Away,
+    Over X.5, Under X.5, 1X, X2, 12, and Forebet format (1/X/2)."""
+    if not pred:
+        return False
+    p = pred.strip()
+    total = home_goals + away_goals
+
+    # Forebet format: 1=Home, X=Draw, 2=Away
+    if p in ("1", "2", "X"):
+        if p == "1": return home_goals > away_goals
+        if p == "2": return away_goals > home_goals
+        if p == "X": return home_goals == away_goals
+
+    # Over/Under goals
+    m = re.match(r"(Over|Under)\s+(\d+\.?\d*)", p)
+    if m:
+        direction = m.group(1)
+        threshold = float(m.group(2))
+        if direction == "Over":
+            return total > threshold
+        else:
+            return total <= threshold
+
+    # Match result predictions
+    if p in ("Home win", "Home"):
+        return home_goals > away_goals
+    if p in ("Away win", "Away"):
+        return away_goals > home_goals
+    if p == "Draw":
+        return home_goals == away_goals
+
+    # Double chance
+    if p == "1X":
+        return home_goals >= away_goals
+    if p == "X2":
+        return away_goals >= home_goals
+    if p == "12":
+        return home_goals != away_goals
+
+    return False
+
+
 def update_result(match_id: int, home_goals: int, away_goals: int):
     """Record actual result for a match."""
     result = "Home win" if home_goals > away_goals else (
@@ -189,8 +234,8 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
         (match_id,)
     ).fetchone()
     if match:
-        our_correct = 1 if match["our_prediction"] == result else 0
-        fb_correct = 1 if match["forebet_pred"] == result else 0
+        our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
+        fb_correct = 1 if match["forebet_pred"] and _prediction_correct(match["forebet_pred"], home_goals, away_goals) else 0
         conn.execute("""
             INSERT INTO calibration_log
                 (league, match_id, our_prediction, actual_result,

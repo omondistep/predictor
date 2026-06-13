@@ -338,18 +338,19 @@ def show_report(aggregated: dict, min_matches: int):
 
 def ensure_alias():
     bindir = Path.home() / ".local" / "bin"
-    bin_path = bindir / "cnfupdate"
-    if bin_path.exists() and bin_path.samefile(PREDICT_PY.parent / "cnfupdate.py"):
-        return
     bindir.mkdir(parents=True, exist_ok=True)
-    try:
-        src = PREDICT_PY.parent / "cnfupdate.py"
-        if bin_path.exists() or bin_path.is_symlink():
-            bin_path.unlink()
-        bin_path.symlink_to(src.resolve())
-        print(f"Alias created: {bin_path} -> {src.resolve()}")
-    except Exception as e:
-        print(f"Warning: could not create alias: {e}")
+    src = PREDICT_PY.parent / "cnfupdate.py"
+    for name in ("cnfupdate", "cnf"):
+        bin_path = bindir / name
+        if bin_path.exists() and bin_path.samefile(src):
+            continue
+        try:
+            if bin_path.exists() or bin_path.is_symlink():
+                bin_path.unlink()
+            bin_path.symlink_to(src.resolve())
+            print(f"Alias created: {bin_path} -> {src.resolve()}")
+        except Exception as e:
+            print(f"Warning: could not create alias for {name}: {e}")
 
 
 # ── Main ──────────────────────────────────────
@@ -369,7 +370,36 @@ def main():
     print("=" * 50)
 
     # 1. Scrape
-    results = do_scrape(dry_run=dry_run)
+    single_url = None
+    for a in args:
+        if a.startswith("http://") or a.startswith("https://"):
+            single_url = a
+            break
+
+    if single_url:
+        results = RESULTS_JSON
+        existing = []
+        if results.exists():
+            try:
+                existing = json.loads(results.read_text())
+            except (json.JSONDecodeError, Exception):
+                pass
+        done_urls = {r["url"] for r in existing}
+        if single_url not in done_urls:
+            print(f"Scraping single URL ...")
+            data = scrape_one(single_url)
+            if data:
+                existing.append(data)
+                if not dry_run:
+                    results.write_text(json.dumps(existing, indent=2))
+                print(f"  Scraped: {data['home_goals']}-{data['away_goals']}")
+            else:
+                print("  Could not scrape URL (no score found).")
+        else:
+            print("  URL already scraped.")
+        results = existing
+    else:
+        results = do_scrape(dry_run=dry_run)
 
     if not results:
         print("No results to process.")

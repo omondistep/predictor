@@ -66,7 +66,13 @@ LEAGUE_PROFILES = {
     "finland-ykkonen":      {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.18},
     "finland-kakkonen":     {"avg_goals": 3.4, "u25_rate": 0.47, "btts_no_rate": 0.4, "draw_rate": 0.2, "home_win_rate": 0.33, "home_adv": 1.10, "volatility": 0.25},
     "morocco-botola":       {"avg_goals": 1.42, "u25_rate": 0.92, "btts_no_rate": 0.58, "draw_rate": 0.42, "home_win_rate": 0.33, "home_adv": 1.12, "volatility": 0.08},
-    "default":              {"avg_goals": 3.12, "u25_rate": 0.41, "btts_no_rate": 0.43, "draw_rate": 0.21, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.25},
+    "iceland":              {"avg_goals": 2.4, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.10, "volatility": 0.15},
+    "iceland-women":        {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.20},
+    "estonia":              {"avg_goals": 2.2, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
+    "georgia":              {"avg_goals": 2.3, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.20},
+    "lithuania":            {"avg_goals": 2.1, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
+    "women-football":       {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.05, "volatility": 0.20},
+    "default":              {"avg_goals": 2.8, "u25_rate": 0.45, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.20},
 }
 
 
@@ -92,6 +98,7 @@ def detect_league(text: str) -> str:
         return "argentina-b-nacional"
     if t.startswith("es"):
         if "2" in t: return "spain-segunda"
+        if "estonia" in t or "eesti" in t or "meistriliiga" in t: return "estonia"
         return "default"
     if t.startswith("at"):
         return "austria-landesliga"
@@ -204,6 +211,26 @@ def detect_league(text: str) -> str:
     if "spain" in t or "espana" in t or "espa" in t:
         if "segunda" in t:
             return "spain-segunda"
+    # Women's football — lower scoring on average
+    if (" w" in t or " women" in t or " wfc " in t or " wfc" in t
+        or t.endswith(" w") or t.endswith(" women")
+        or "(w)" in t or "/w " in t):
+        if "iceland" in t or "island" in t: return "iceland-women"
+        if "sweden" in t or "sverige" in t or "suecia" in t: return "sweden-allsvenskan"
+        return "women-football"
+    # Iceland
+    if "iceland" in t or "island" in t:
+        if " w" in t or " women" in t or "(w)" in t: return "iceland-women"
+        return "iceland"
+    # Estonia
+    if "estonia" in t or "eesti" in t:
+        return "estonia"
+    # Georgia
+    if "georgia" in t or "sakartvelo" in t:
+        return "georgia"
+    # Lithuania
+    if "lithuania" in t or "lietuva" in t:
+        return "lithuania"
     # General Reserve / Youth catch-all
     if "reserve" in t or "u21" in t or "u23" in t or "juniors" in t:
         return "reserve-leagues"
@@ -425,11 +452,64 @@ def analyze_from_data(data: dict) -> dict:
     p_draw /= total_p
     p_away /= total_p
 
-    def add(market: str, pick: str, conf: str, reason: str = ""):
+    # ── Odds-based value infrastructure ──
+    odds_h = data.get("odds_home")
+    odds_d = data.get("odds_draw")
+    odds_a = data.get("odds_away")
+    odds_o25 = data.get("odds_over25")
+    odds_u25 = data.get("odds_under25")
+    odds_btts_y = data.get("odds_btts_yes")
+    odds_btts_n = data.get("odds_btts_no")
+
+    def _pick_odds(market: str, pick: str):
+        if market == "1X2":
+            return {"Home win": odds_h, "Draw": odds_d, "Away win": odds_a}.get(pick)
+        if market == "DNB":
+            return {"Home": odds_h, "Away": odds_a}.get(pick)
+        if market == "DC":
+            if pick == "1X" and odds_h and odds_d:
+                return 1.0 / (1.0/odds_h + 1.0/odds_d)
+            if pick == "X2" and odds_a and odds_d:
+                return 1.0 / (1.0/odds_a + 1.0/odds_d)
+            if pick == "12" and odds_h and odds_a:
+                return 1.0 / (1.0/odds_h + 1.0/odds_a)
+        if market == "O/U":
+            return {"Over 0.5": None, "Under 0.5": None,
+                    "Over 1.5": None, "Under 1.5": None,
+                    "Over 2.5": odds_o25, "Under 2.5": odds_u25,
+                    "Over 3.5": None, "Under 3.5": None}.get(pick)
+        if market == "BTTS":
+            return {"Yes": odds_btts_y, "No": odds_btts_n}.get(pick)
+        return None
+
+    # Minimum odds floor by confidence level — prevents value destruction
+    ODDS_FLOORS = {"Near Certain": 1.10, "High": 1.18, "Medium-High": 1.28, "Medium": 1.40}
+
+    def _value_adjust(conf: str, market: str, pick: str):
+        """Return adjusted confidence or None to skip the pick based on odds value."""
+        po = _pick_odds(market, pick)
+        if po is None or po <= 1.0:
+            return conf  # No market odds available — trust model
+        implied = 1.0 / po
+        # Cap confidence if odds are too low for that level
+        for level, floor in sorted(ODDS_FLOORS.items(), key=lambda x: CONF_RANK[x[0]]):
+            if CONF_RANK.get(conf, 99) <= CONF_RANK[level] and po < floor:
+                conf = level
+        return conf
+
+    def add(market: str, pick: str, conf: str, reason: str = "", model_prob: float = None):
+        conf = _value_adjust(conf, market, pick)
+        if conf is None:
+            return
         rank = CONF_RANK.get(conf, 99)
+        po = _pick_odds(market, pick)
+        implied_prob = 1.0 / po if po and po > 1.0 else None
+        value_ratio = model_prob / implied_prob if (model_prob and implied_prob) else None
         candidates.append({
             "market": market, "pick": pick, "confidence": conf,
             "rank": rank, "reason": reason,
+            "model_prob": model_prob, "implied_prob": implied_prob,
+            "value_ratio": value_ratio,
         })
 
     # ── 1X2 (model-driven from Poisson probabilities) ──
@@ -476,48 +556,62 @@ def analyze_from_data(data: dict) -> dict:
         if hp and ap:
             parts.append(f"pos {_ord(hp)}-{_ord(ap)}")
         best_12_reason = " ".join(parts)
-        add("1X2", top_pick, best_12_conf, best_12_reason)
+        add("1X2", top_pick, best_12_conf, best_12_reason,
+            model_prob={"Home win": p_home, "Draw": p_draw, "Away win": p_away}.get(top_pick))
 
     # Also consider Draw as a secondary candidate if it's close but not top
     if top_pick != "Draw":
         if p_draw >= 0.32 and (top_prob - p_draw) <= 0.12:
-            add("1X2", "Draw", "Medium", f"model {p_draw:.0%} (close to top)")
+            add("1X2", "Draw", "Medium", f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
 
-    # ── Draw No Bet (derived from 1X2) ──
+    # ── Draw No Bet (derived from 1X2) — stricter after calibration ──
     dnb_home_conf = "Low"
     dnb_away_conf = "Low"
-    if p_home > p_away + 0.05:
-        if top_prob >= 0.50:
-            dnb_home_conf = best_12_conf if best_12_conf != "Low" else "Medium"
-        elif top_prob >= 0.38:
+    if p_home > p_away + 0.08:
+        if top_prob >= 0.55 and best_12_conf in ("Near Certain", "High"):
+            dnb_home_conf = best_12_conf
+        elif top_prob >= 0.50:
+            dnb_home_conf = "Medium-High"
+        elif top_prob >= 0.44:
             dnb_home_conf = "Medium"
-    elif p_away > p_home + 0.05:
-        if top_prob >= 0.50:
-            dnb_away_conf = best_12_conf if best_12_conf != "Low" else "Medium"
-        elif top_prob >= 0.38:
+    elif p_away > p_home + 0.10:  # Away DNB needs bigger margin
+        if top_prob >= 0.58 and best_12_conf in ("Near Certain", "High"):
+            dnb_away_conf = best_12_conf
+        elif top_prob >= 0.52:
+            dnb_away_conf = "Medium-High"
+        elif top_prob >= 0.46:
             dnb_away_conf = "Medium"
 
     # Volatility capping for DNB too
     if vol >= 0.25:
         if dnb_home_conf in ("Near Certain", "High"): dnb_home_conf = "Medium-High"
         if dnb_away_conf in ("Near Certain", "High"): dnb_away_conf = "Medium-High"
+        if dnb_away_conf == "Medium-High": dnb_away_conf = "Medium"
     elif vol >= 0.15:
         if dnb_home_conf == "Near Certain": dnb_home_conf = "High"
         if dnb_away_conf == "Near Certain": dnb_away_conf = "High"
+        if dnb_away_conf == "Medium-High": dnb_away_conf = "Medium"  # Away penalty
 
+    dnb_denom_h = p_home + p_draw
+    dnb_denom_a = p_away + p_draw
     if dnb_home_conf != "Low":
-        add("DNB", "Home", dnb_home_conf, "derived from model")
+        add("DNB", "Home", dnb_home_conf, "derived from model",
+            model_prob=(p_home / dnb_denom_h) if dnb_denom_h > 0 else None)
     if dnb_away_conf != "Low":
-        add("DNB", "Away", dnb_away_conf, "derived from model")
+        add("DNB", "Away", dnb_away_conf, "derived from model",
+            model_prob=(p_away / dnb_denom_a) if dnb_denom_a > 0 else None)
 
-    # ── Double Chance (derived from 1X2) ──
-    if p_home + p_draw > 0.68:
-        add("DC", "1X", "Medium-High" if p_home + p_draw > 0.78 else "Medium", "derived from model")
-    if p_away + p_draw > 0.68:
-        add("DC", "X2", "Medium-High" if p_away + p_draw > 0.78 else "Medium", "derived from model")
-    # Be more careful with '12' in high-draw leagues
-    if p_home + p_away > 0.82 and p_draw < 0.24:
-        add("DC", "12", "Medium-High" if p_home + p_away > 0.90 else "Medium", "derived from model")
+    # ── Double Chance (derived from 1X2) — tightened thresholds ──
+    if p_home + p_draw > 0.72:
+        add("DC", "1X", "Medium-High" if p_home + p_draw > 0.82 else "Medium", "derived from model",
+            model_prob=p_home + p_draw)
+    if p_away + p_draw > 0.72:
+        add("DC", "X2", "Medium-High" if p_away + p_draw > 0.82 else "Medium", "derived from model",
+            model_prob=p_away + p_draw)
+    # '12' only in low-draw leagues with strong separation
+    if p_home + p_away > 0.86 and p_draw < 0.22:
+        add("DC", "12", "Medium-High" if p_home + p_away > 0.92 else "Medium", "derived from model",
+            model_prob=p_home + p_away)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
@@ -539,13 +633,13 @@ def analyze_from_data(data: dict) -> dict:
         else:
             continue
 
-        if ou_val > 0.40:
+        if ou_val > 0.45:
             ou_conf = "Near Certain"
-        elif ou_val > 0.25:
+        elif ou_val > 0.30:
             ou_conf = "High"
-        elif ou_val > 0.12:
+        elif ou_val > 0.15:
             ou_conf = "Medium-High"
-        elif ou_val > 0.05:
+        elif ou_val > 0.07:
             ou_conf = "Medium"
         else:
             ou_conf = "Low"
@@ -556,6 +650,25 @@ def analyze_from_data(data: dict) -> dict:
         elif vol >= 0.15 and ou_conf == "Near Certain":
             ou_conf = "High"
 
+        # Cap O/U 1.5 — market odds are typically very low, never Near Certain
+        if thresh == 1.5 and ou_conf == "Near Certain":
+            ou_conf = "High"
+
+        # Calibration: O1.5 needs sufficient expected goals to be reliable
+        if thresh == 1.5 and "Over" in ou_pick:
+            if exp_total < 2.5:
+                ou_conf = "Low"  # Not enough expected goals to trust
+            elif exp_total < 3.0:
+                ou_conf = "Medium" if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium"] else ou_conf
+            # League-based cap for high u25_rate (many under-2.5 matches)
+            if profile.get("u25_rate", 0.5) > 0.55:
+                if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium"]:
+                    ou_conf = "Medium"
+            # Women's football: naturally lower scoring, cap at Medium
+            if profile.get("avg_goals", 3) < 2.2:
+                if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium"]:
+                    ou_conf = "Medium"
+
         if thresh == 2.5 and "Under" in ou_pick and profile["u25_rate"] > 0.65:
             ou_conf = "High" if profile["u25_rate"] > 0.75 else "Medium-High"
             if vol >= 0.25: ou_conf = "Medium-High"
@@ -563,7 +676,8 @@ def analyze_from_data(data: dict) -> dict:
 
         if ou_conf != "Low":
             ou_reason = f"exp goals {exp_total:.1f} model {p_o:.0%}o/{p_u:.0%}u"
-            add("O/U", ou_pick, ou_conf, ou_reason)
+            add("O/U", ou_pick, ou_conf, ou_reason,
+                model_prob=p_o if "Over" in ou_pick else p_u)
 
     # ── BTTS (model-driven) ──
     p_btss = prob_btts(exp_h, exp_a)
@@ -576,15 +690,19 @@ def analyze_from_data(data: dict) -> dict:
         btss_conf = conv_label(50 + int(value_yes * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        add("BTTS", "Yes", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n")
+        add("BTTS", "Yes", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n", model_prob=p_btss)
     elif value_no > 0:
         btss_conf = conv_label(50 + int(value_no * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        add("BTTS", "No", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n")
+        add("BTTS", "No", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n", model_prob=p_btn)
 
     # ── Rank candidates and pick primary ──
-    candidates.sort(key=lambda c: c["rank"])
+    candidates.sort(key=lambda c: (
+        0 if c.get("value_ratio") else 1,
+        -(c.get("value_ratio") or 0),
+        c["rank"],
+    ))
 
     primary = candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
 
@@ -617,6 +735,7 @@ def analyze_from_data(data: dict) -> dict:
         "reasoning": reasoning,
         "supporting_markets": [],
         "_exp_goals": (exp_h, exp_a),
+        "_volatility": vol,
     }
 
 
@@ -733,8 +852,18 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
 
         # ── HEADER ──
         print(top())
+
+        # Volatility badge
+        vol_val = r.get('_volatility', 0)
+        if vol_val >= 0.25:
+            vol_tag = f" \033[91m⚡VOL\033[0m"
+        elif vol_val >= 0.15:
+            vol_tag = f" \033[93m⚡vol\033[0m"
+        else:
+            vol_tag = f" \033[92m---\033[0m"
+
         print(box(f" {r['home']} vs {r['away']} "))
-        print(box(f" {r.get('league', '')}  |  {r.get('date', '')} "))
+        print(box(f" {r.get('league', '')}{vol_tag}  |  {r.get('date', '')} "))
         print(hline())
 
         # ── FORM + STANDINGS ──
@@ -780,16 +909,18 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             print(box(f"H2H: {hw}W-{hd}D-{ha}L  ({hm} matches)"))
         print(hline())
 
-        # ── TOP MARKETS TABLE ──
+        # ── TOP MARKETS RANKED BY VALUE RATIO ──
         all_picks = r.get('all_picks') or []
         if all_picks:
-            print(box("Top Markets:"))
+            print(box("Ranked by value ratio (model ÷ implied):"))
             for idx, p in enumerate(all_picks[:5]):
                 star = "★" if idx == 0 else " "
                 pm = p['market']
                 pp = p['pick']
-                pc = p['confidence']
-                print(box(f" {star} {pm:5s}: {pp:<20s} ({pc})"))
+                pc = {'Near Certain': 'NC', 'High': 'Hi', 'Medium-High': 'MH', 'Medium': 'Me', 'Low': 'Lo'}.get(p['confidence'], '?')
+                vr = p.get('value_ratio')
+                vr_str = f" v:{vr:.2f}" if vr else ""
+                print(box(f" {star} {pm:5s}: {pp:<20s} ({pc}{vr_str})"))
             if len(all_picks) > 5:
                 print(box(f" (+{len(all_picks)-5} more)"))
 
@@ -987,10 +1118,22 @@ def run_calibration():
     if stats["by_league"]:
         print(f"\n{'='*55}")
         print("ACCURACY BY LEAGUE")
-        print(f"{'League':<30} {'Total':<8} {'Correct':<8} {'Rate':<8}")
-        print("-" * 54)
+        print(f"{'League':<30} {'Vol':<6} {'Total':<8} {'Correct':<8} {'Rate':<8}")
+        print("-" * 60)
         for row in stats["by_league"]:
-            print(f"{row['league'][:28]:<30} {row['total']:<8} {row['our_correct']:<8} {row['our_pct']}%")
+            league_key = detect_league(row["league"])
+            profile = get_profile(league_key)
+            vol = profile.get("volatility", 0.1)
+            if vol >= 0.25:
+                vol_str = f"\033[91m{vol:.2f}\033[0m"
+            elif vol >= 0.15:
+                vol_str = f"\033[93m{vol:.2f}\033[0m"
+            else:
+                vol_str = f"\033[92m{vol:.2f}\033[0m"
+            # Strip ANSI for width calculation
+            plain_vol = f"{vol:.2f}"
+            padding = 6 - len(plain_vol)
+            print(f"{row['league'][:28]:<30} {vol_str}{' '*padding} {row['total']:<8} {row['our_correct']:<8} {row['our_pct']}%")
 
     # Suggest profile adjustments
     print(f"\n{'='*55}")
@@ -1008,12 +1151,38 @@ def run_calibration():
                 print(f"  ✓ {league}: High accuracy ({acc}%). Profile is well-calibrated.")
             
             # Note: A more advanced version would query goals from DB here
+
+    print(f"\n{'='*55}")
+    print("ACTIVE FILTERS (from calibration)")
+    print(f"  Min odds: Near Certain ≥ 1.10, High ≥ 1.18, Medium-High ≥ 1.28, Medium ≥ 1.40")
+    print(f"  DNB: Home margin ≥ 8%, Away margin ≥ 10%. Away DNB penalized in volatile leagues.")
+    print(f"  DC:  Threshold raised to 72% combined prob (was 68%)")
+    print(f"  O/U: Near Certain needs 45% deviation. O1.5 needs exp_total ≥ 2.5; capped at Medium if < 3.0")
+    print(f"  All picks filtered through odds-based value check at recommendation time")
     print()
 
 
 # ─────────────────────────────────────────────
 # Legacy odds-based mode
 # ─────────────────────────────────────────────
+
+def ensure_alias():
+    """Create symlinks in ~/.local/bin/ for easy access."""
+    bindir = Path.home() / ".local" / "bin"
+    bindir.mkdir(parents=True, exist_ok=True)
+    src = Path(__file__).resolve()
+    for name in ("predict", "predictor"):
+        bin_path = bindir / name
+        if bin_path.exists() and bin_path.samefile(src):
+            continue
+        try:
+            if bin_path.exists() or bin_path.is_symlink():
+                bin_path.unlink()
+            bin_path.symlink_to(src)
+            print(f"Alias created: {bin_path} -> {src}")
+        except Exception as e:
+            print(f"Warning: could not create alias for {name}: {e}")
+
 
 # ─────────────────────────────────────────────
 # Main CLI
@@ -1049,6 +1218,7 @@ Options:
 
     args = parser.parse_args()
 
+    ensure_alias()
     init_db()
 
     if args.learn:
