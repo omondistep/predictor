@@ -32,46 +32,46 @@ from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 # ─────────────────────────────────────────────
 
 LEAGUE_PROFILES = {
-    "brazil-serie-a":      {"avg_goals": 2.3, "u25_rate": 0.67, "btts_no_rate": 0.67, "draw_rate": 0.3, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.05},
+    "brazil-serie-a":      {"avg_goals": 3.01, "u25_rate": 0.4, "btts_no_rate": 0.49, "draw_rate": 0.21, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.05},
     "brazil-serie-b":      {"avg_goals": 2.1, "u25_rate": 0.58, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.05},
     "brazil-serie-c":      {"avg_goals": 2.18, "u25_rate": 0.45, "btts_no_rate": 0.45, "draw_rate": 0.36, "home_win_rate": 0.45, "home_adv": 1.20, "volatility": 0.10},
     "brazil-serie-d":      {"avg_goals": 2.2, "u25_rate": 0.72, "btts_no_rate": 0.68, "draw_rate": 0.2, "home_win_rate": 0.64, "home_adv": 1.25, "volatility": 0.15},
-    "brazil-u20":          {"avg_goals": 2.9, "u25_rate": 0.40, "btts_no_rate": 0.40, "draw_rate": 0.24, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.30},
-    "argentina-b-nacional": {"avg_goals": 1.52, "u25_rate": 0.72, "btts_no_rate": 0.72, "draw_rate": 0.36, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.10},
-    "argentina-primera-b":  {"avg_goals": 1.75, "u25_rate": 0.71, "btts_no_rate": 0.79, "draw_rate": 0.29, "home_win_rate": 0.61, "home_adv": 1.15, "volatility": 0.10},
+    "brazil-u20":          {"avg_goals": 4.0, "u25_rate": 0.2, "btts_no_rate": 0.4, "draw_rate": 0.4, "home_win_rate": 0.6, "home_adv": 1.10, "volatility": 0.30},
+    "argentina-b-nacional": {"avg_goals": 2.81, "u25_rate": 0.52, "btts_no_rate": 0.48, "draw_rate": 0.22, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.10},
+    "argentina-primera-b":  {"avg_goals": 2.36, "u25_rate": 0.55, "btts_no_rate": 0.64, "draw_rate": 0.18, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.10},
     "argentina-primera-c":  {"avg_goals": 1.71, "u25_rate": 0.64, "btts_no_rate": 0.71, "draw_rate": 0.29, "home_win_rate": 0.57, "home_adv": 1.15, "volatility": 0.15},
-    "argentina-federal-a":  {"avg_goals": 1.6, "u25_rate": 0.78, "btts_no_rate": 0.72, "draw_rate": 0.37, "home_win_rate": 0.38, "home_adv": 1.20, "volatility": 0.15},
-    "chile-primera":        {"avg_goals": 2.3, "u25_rate": 0.52, "btts_no_rate": 0.50, "draw_rate": 0.27, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.05},
-    "chile-primera-b":      {"avg_goals": 2.0, "u25_rate": 0.60, "btts_no_rate": 0.58, "draw_rate": 0.30, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.10},
-    "usl-championship":     {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.50, "home_adv": 1.15, "volatility": 0.10},
-    "usl-league-one":       {"avg_goals": 2.5, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.25, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.15},
-    "usl-league-two":       {"avg_goals": 3.2, "u25_rate": 0.35, "btts_no_rate": 0.35, "draw_rate": 0.20, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.30},
+    "argentina-federal-a":  {"avg_goals": 1.55, "u25_rate": 0.91, "btts_no_rate": 0.91, "draw_rate": 0.18, "home_win_rate": 0.73, "home_adv": 1.20, "volatility": 0.15},
+    "chile-primera":        {"avg_goals": 2.56, "u25_rate": 0.44, "btts_no_rate": 0.44, "draw_rate": 0.33, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.05},
+    "chile-primera-b":      {"avg_goals": 2.25, "u25_rate": 0.62, "btts_no_rate": 0.5, "draw_rate": 0.25, "home_win_rate": 0.62, "home_adv": 1.15, "volatility": 0.10},
+    "usl-championship":     {"avg_goals": 2.71, "u25_rate": 0.71, "btts_no_rate": 0.57, "draw_rate": 0.36, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.10},
+    "usl-league-one":       {"avg_goals": 3.35, "u25_rate": 0.35, "btts_no_rate": 0.47, "draw_rate": 0.12, "home_win_rate": 0.65, "home_adv": 1.15, "volatility": 0.15},
+    "usl-league-two":       {"avg_goals": 3.67, "u25_rate": 0.26, "btts_no_rate": 0.39, "draw_rate": 0.14, "home_win_rate": 0.47, "home_adv": 1.15, "volatility": 0.30},
     "mls-next-pro":         {"avg_goals": 3.1, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.20, "home_win_rate": 0.50, "home_adv": 1.10, "volatility": 0.25},
     "nwsl":                {"avg_goals": 2.4, "u25_rate": 0.50, "btts_no_rate": 0.48, "draw_rate": 0.25, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-primera":      {"avg_goals": 2.2, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.28, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-segunda":      {"avg_goals": 1.8, "u25_rate": 0.70, "btts_no_rate": 0.65, "draw_rate": 0.34, "home_win_rate": 0.40, "home_adv": 1.15, "volatility": 0.15},
-    "ecuador-serie-a":      {"avg_goals": 2.2, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.25, "volatility": 0.10},
+    "uruguay-primera":      {"avg_goals": 1.62, "u25_rate": 0.75, "btts_no_rate": 0.75, "draw_rate": 0.38, "home_win_rate": 0.38, "home_adv": 1.10, "volatility": 0.10},
+    "uruguay-segunda":      {"avg_goals": 2.33, "u25_rate": 0.56, "btts_no_rate": 0.56, "draw_rate": 0.33, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.15},
+    "ecuador-serie-a":      {"avg_goals": 2.2, "u25_rate": 0.6, "btts_no_rate": 0.4, "draw_rate": 0.2, "home_win_rate": 0.6, "home_adv": 1.25, "volatility": 0.10},
     "ecuador-serie-b":      {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.25, "volatility": 0.15},
     "peru-primera":         {"avg_goals": 2.3, "u25_rate": 0.52, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.30, "volatility": 0.10},
-    "paraguay-primera":     {"avg_goals": 2.2, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.10},
+    "paraguay-primera":     {"avg_goals": 3.25, "u25_rate": 0.25, "btts_no_rate": 0.38, "draw_rate": 0.25, "home_win_rate": 0.25, "home_adv": 1.15, "volatility": 0.10},
     "paraguay-segunda":     {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.15},
     "spain-segunda":        {"avg_goals": 2.2, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.30, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.05},
     "austria-landesliga":   {"avg_goals": 4.33, "u25_rate": 0.11, "btts_no_rate": 0.27, "draw_rate": 0.09, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.25},
     "reserve-leagues":      {"avg_goals": 3.0, "u25_rate": 0.35, "btts_no_rate": 0.35, "draw_rate": 0.24, "home_win_rate": 0.42, "home_adv": 1.05, "volatility": 0.35},
     "sweden-allsvenskan":   {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.08},
-    "sweden-superettan":    {"avg_goals": 2.4, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.26, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.12},
+    "sweden-superettan":    {"avg_goals": 3.6, "u25_rate": 0.2, "btts_no_rate": 0.2, "draw_rate": 0.4, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.12},
     "sweden-ettan":         {"avg_goals": 2.8, "u25_rate": 0.40, "btts_no_rate": 0.38, "draw_rate": 0.23, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.20},
-    "sweden-division-2":    {"avg_goals": 3.17, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.3, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.25},
+    "sweden-division-2":    {"avg_goals": 3.62, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.12, "home_win_rate": 0.25, "home_adv": 1.10, "volatility": 0.25},
     "finland-veikkausliiga":{"avg_goals": 2.5, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.25, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.12},
     "finland-ykkonen":      {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.18},
-    "finland-kakkonen":     {"avg_goals": 3.4, "u25_rate": 0.47, "btts_no_rate": 0.4, "draw_rate": 0.2, "home_win_rate": 0.33, "home_adv": 1.10, "volatility": 0.25},
-    "morocco-botola":       {"avg_goals": 1.42, "u25_rate": 0.92, "btts_no_rate": 0.58, "draw_rate": 0.42, "home_win_rate": 0.33, "home_adv": 1.12, "volatility": 0.08},
+    "finland-kakkonen":     {"avg_goals": 2.82, "u25_rate": 0.55, "btts_no_rate": 0.55, "draw_rate": 0.36, "home_win_rate": 0.18, "home_adv": 1.10, "volatility": 0.25},
+    "morocco-botola":       {"avg_goals": 1.73, "u25_rate": 0.73, "btts_no_rate": 0.55, "draw_rate": 0.27, "home_win_rate": 0.64, "home_adv": 1.12, "volatility": 0.08},
     "iceland":              {"avg_goals": 2.4, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.10, "volatility": 0.15},
     "iceland-women":        {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.20},
     "estonia":              {"avg_goals": 2.2, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
     "georgia":              {"avg_goals": 2.3, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.20},
     "lithuania":            {"avg_goals": 2.1, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
-    "women-football":       {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.05, "volatility": 0.20},
+    "women-football":       {"avg_goals": 3.52, "u25_rate": 0.39, "btts_no_rate": 0.43, "draw_rate": 0.17, "home_win_rate": 0.52, "home_adv": 1.05, "volatility": 0.20},
     "default":              {"avg_goals": 2.8, "u25_rate": 0.45, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.20},
 }
 
@@ -483,7 +483,7 @@ def analyze_from_data(data: dict) -> dict:
         return None
 
     # Minimum odds floor by confidence level — prevents value destruction
-    ODDS_FLOORS = {"Near Certain": 1.10, "High": 1.18, "Medium-High": 1.28, "Medium": 1.40}
+    ODDS_FLOORS = {"Near Certain": 1.10, "High": 1.18, "Medium-High": 1.28, "Medium": 1.50}
 
     def _value_adjust(conf: str, market: str, pick: str):
         """Return adjusted confidence or None to skip the pick based on odds value."""
@@ -495,6 +495,9 @@ def analyze_from_data(data: dict) -> dict:
         for level, floor in sorted(ODDS_FLOORS.items(), key=lambda x: CONF_RANK[x[0]]):
             if CONF_RANK.get(conf, 99) <= CONF_RANK[level] and po < floor:
                 conf = level
+        # Skip Medium picks with odds below floor (no lower level to downgrade to)
+        if conf == "Medium" and po < ODDS_FLOORS.get("Medium", 1.5):
+            return None
         return conf
 
     def add(market: str, pick: str, conf: str, reason: str = "", model_prob: float = None):
@@ -527,7 +530,7 @@ def analyze_from_data(data: dict) -> dict:
     if top_pick == "Draw":
         if top_prob >= 0.36 and margin >= 0.04:
             best_12_conf = "Medium-High"
-        elif top_prob >= 0.31:
+        elif top_prob >= 0.33:
             best_12_conf = "Medium"
     else:
         # Tightened thresholds for Home/Away win
@@ -537,7 +540,7 @@ def analyze_from_data(data: dict) -> dict:
             best_12_conf = "High" if margin >= 0.10 else "Medium-High"
         elif top_prob >= 0.42:
             best_12_conf = "Medium-High" if margin >= 0.06 else "Medium"
-        elif top_prob >= 0.36:
+        elif top_prob >= 0.38 and margin >= 0.04:
             best_12_conf = "Medium"
 
     # Volatility Capping: Reduce confidence for volatile leagues
@@ -564,6 +567,28 @@ def analyze_from_data(data: dict) -> dict:
         if p_draw >= 0.32 and (top_prob - p_draw) <= 0.12:
             add("1X2", "Draw", "Medium", f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
 
+    # Always show all three 1X2 outcomes (home/draw/away) regardless of probability
+    existing_12 = {(c['market'], c['pick']) for c in candidates if c['market'] == '1X2'}
+    for outcome_name, outcome_prob in [("Home win", p_home), ("Draw", p_draw), ("Away win", p_away)]:
+        if ("1X2", outcome_name) not in existing_12:
+            if outcome_prob >= 0.50:
+                cnf = "High"
+            elif outcome_prob >= 0.38:
+                cnf = "Medium-High"
+            elif outcome_prob >= 0.30:
+                cnf = "Medium"
+            elif outcome_prob >= 0.20:
+                cnf = "Low"
+            else:
+                cnf = "Low"
+            candidates.append({
+                "market": "1X2", "pick": outcome_name,
+                "confidence": cnf, "rank": 99,
+                "reason": "", "model_prob": outcome_prob,
+                "implied_prob": None, "value_ratio": None,
+                "_always_show": True,
+            })
+
     # ── Draw No Bet (derived from 1X2) — stricter after calibration ──
     dnb_home_conf = "Low"
     dnb_away_conf = "Low"
@@ -572,14 +597,14 @@ def analyze_from_data(data: dict) -> dict:
             dnb_home_conf = best_12_conf
         elif top_prob >= 0.50:
             dnb_home_conf = "Medium-High"
-        elif top_prob >= 0.44:
+        elif top_prob >= 0.46:
             dnb_home_conf = "Medium"
     elif p_away > p_home + 0.10:  # Away DNB needs bigger margin
         if top_prob >= 0.58 and best_12_conf in ("Near Certain", "High"):
             dnb_away_conf = best_12_conf
         elif top_prob >= 0.52:
             dnb_away_conf = "Medium-High"
-        elif top_prob >= 0.46:
+        elif top_prob >= 0.48:
             dnb_away_conf = "Medium"
 
     # Volatility capping for DNB too
@@ -635,11 +660,11 @@ def analyze_from_data(data: dict) -> dict:
 
         if ou_val > 0.45:
             ou_conf = "Near Certain"
-        elif ou_val > 0.30:
+        elif ou_val > 0.35:
             ou_conf = "High"
-        elif ou_val > 0.15:
+        elif ou_val > 0.18:
             ou_conf = "Medium-High"
-        elif ou_val > 0.07:
+        elif ou_val > 0.10:
             ou_conf = "Medium"
         else:
             ou_conf = "Low"
@@ -686,12 +711,12 @@ def analyze_from_data(data: dict) -> dict:
     value_yes = p_btss - 0.5
     value_no = p_btn - 0.5
 
-    if value_yes > 0 and value_yes >= value_no:
+    if value_yes > 0.08 and value_yes >= value_no:
         btss_conf = conv_label(50 + int(value_yes * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
         add("BTTS", "Yes", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n", model_prob=p_btss)
-    elif value_no > 0:
+    elif value_no > 0.06:
         btss_conf = conv_label(50 + int(value_no * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
@@ -699,12 +724,12 @@ def analyze_from_data(data: dict) -> dict:
 
     # ── Rank candidates and pick primary ──
     candidates.sort(key=lambda c: (
-        0 if c.get("value_ratio") else 1,
-        -(c.get("value_ratio") or 0),
+        -(c.get("model_prob") or 0),
         c["rank"],
     ))
 
-    primary = candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
+    non_show = [c for c in candidates if not c.get('_always_show')]
+    primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
 
     # ── Build reasoning ──
     for c in candidates[:6]:  # top 6
@@ -798,6 +823,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "forebet_pct": (data.get("forebet_home_pct"),
                            data.get("forebet_draw_pct"),
                            data.get("forebet_away_pct")),
+            "forebet_over25_pct": data.get("forebet_over25_pct"),
+            "forebet_btts_yes_pct": data.get("forebet_btts_yes_pct"),
             # Raw data for table display
             "home_form": data.get("home_form", ""),
             "away_form": data.get("away_form", ""),
@@ -909,32 +936,97 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             print(box(f"H2H: {hw}W-{hd}D-{ha}L  ({hm} matches)"))
         print(hline())
 
-        # ── TOP MARKETS RANKED BY VALUE RATIO ──
+        # ── MODEL vs FOREBET (ranked by probability) ──
         all_picks = r.get('all_picks') or []
         if all_picks:
-            print(box("Ranked by value ratio (model ÷ implied):"))
-            for idx, p in enumerate(all_picks[:5]):
-                star = "★" if idx == 0 else " "
-                pm = p['market']
-                pp = p['pick']
-                pc = {'Near Certain': 'NC', 'High': 'Hi', 'Medium-High': 'MH', 'Medium': 'Me', 'Low': 'Lo'}.get(p['confidence'], '?')
-                vr = p.get('value_ratio')
-                vr_str = f" v:{vr:.2f}" if vr else ""
-                print(box(f" {star} {pm:5s}: {pp:<20s} ({pc}{vr_str})"))
-            if len(all_picks) > 5:
-                print(box(f" (+{len(all_picks)-5} more)"))
-
-        # ── FOREBET COMPARISON ──
-        if compare_forebet and r.get('forebet'):
-            fb = r['forebet']
+            fb_pred = r.get('forebet')
             fb_pcts = r.get('forebet_pct', (None, None, None))
-            if fb_pcts[0] is not None:
-                fb_label = {"1": "Home win", "X": "Draw", "2": "Away win"}.get(fb, fb)
-                picks_12 = [p for p in all_picks if p['market'] == '1X2']
-                our_12 = picks_12[0]['pick'] if picks_12 else r['pick']
-                agree = fb == {"Home win": "1", "Draw": "X", "Away win": "2"}.get(our_12, "")
-                icon = "✓ AGREES" if agree else "✗ DISAGREES"
-                print(box(f"Forebet 1X2: {fb_label}  ({fb_pcts[0]}-{fb_pcts[1]}-{fb_pcts[2]}%)  {icon}"))
+            fb_o25 = r.get('forebet_over25_pct')
+            fb_btts = r.get('forebet_btts_yes_pct')
+            green = "\033[92m"
+            reset = "\033[0m"
+
+            oh = r.get('odds_home')
+            od = r.get('odds_draw')
+            oa = r.get('odds_away')
+            oo25 = r.get('odds_over25')
+            ou25 = r.get('odds_under25')
+            ob_y = r.get('odds_btts_yes')
+            ob_n = r.get('odds_btts_no')
+
+            def _implied(odds_dict):
+                """Return (pick_name, pct) from odds implied probabilities."""
+                imp = {}
+                total = 0.0
+                for name, odd_val in odds_dict.items():
+                    if odd_val and odd_val > 1.0:
+                        imp[name] = 1.0 / odd_val
+                        total += imp[name]
+                if not imp or total <= 0:
+                    return None, None
+                for k in imp:
+                    imp[k] = imp[k] / total
+                best = max(imp, key=imp.get)
+                return best, imp[best] * 100
+
+            def _fb_for(market: str):
+                if market == "1X2" and fb_pred and fb_pcts[0] is not None:
+                    pick = {"1": "Home win", "X": "Draw", "2": "Away win"}.get(fb_pred, fb_pred)
+                    pct = {"1": fb_pcts[0], "X": fb_pcts[1], "2": fb_pcts[2]}.get(fb_pred, 0)
+                    return pick, pct
+                if market == "O/U" and fb_o25 is not None:
+                    pick = "Over" if fb_o25 > 50 else "Under"
+                    pct = fb_o25 if fb_o25 > 50 else 100 - fb_o25
+                    return pick, pct
+                if market == "BTTS" and fb_btts is not None:
+                    pick = "Yes" if fb_btts > 50 else "No"
+                    pct = fb_btts if fb_btts > 50 else 100 - fb_btts
+                    return pick, pct
+                # Fallback to odds-implied probabilities
+                if market == "1X2":
+                    return _implied({"Home win": oh, "Draw": od, "Away win": oa})
+                if market == "O/U":
+                    return _implied({"Over 2.5": oo25, "Under 2.5": ou25})
+                if market == "BTTS":
+                    return _implied({"Yes": ob_y, "No": ob_n})
+                return None, None
+
+            def _short(pick: str, n: int = 11) -> str:
+                """Truncate long pick names."""
+                return pick[:n] if len(pick) > n else pick
+
+            print(box(" Model Pick       Prob Cnf │ Forebet Pick      Prob"))
+            print(box("─────────────────────────────┼─────────────────────"))
+            for idx, p in enumerate(all_picks):
+                if p.get('_always_show'):
+                    star = " "
+                else:
+                    star = "★" if idx == 0 else " "
+                pm = p['market']
+                pp = _short(p['pick'], 11)
+                mp = p.get('model_prob')
+                mp_str = f"{mp:.0%}" if mp else ""
+                pc = {'Near Certain': 'NC', 'High': 'Hi', 'Medium-High': 'MH', 'Medium': 'Me', 'Low': 'Lo'}.get(p['confidence'], '')
+                vr = p.get('value_ratio')
+                vr_str = f" ({vr:.2f})" if vr else ""
+                left = f"{star} {pm:5s} {pp:11s} {mp_str:>4s} {pc:2s}{vr_str}"
+
+                # Forebet column
+                fb_pick, fb_pct = _fb_for(pm)
+                if fb_pick:
+                    if pm == "O/U":
+                        agree = pp.split()[0] == fb_pick
+                    else:
+                        agree = pp == fb_pick
+                    right = f"{_short(fb_pick, 18):18s} {fb_pct:3.0f}%"
+                    if agree:
+                        right = f"{green}{right} ✓{reset}"
+                        left = f"{green}{left}{reset}"
+                else:
+                    right = "—"
+                    agree = False
+
+                print(box(f" {left:29s} │ {right}"))
 
         # ── REASONING ──
         if show_reasoning and r.get('reasoning'):
@@ -1154,10 +1246,13 @@ def run_calibration():
 
     print(f"\n{'='*55}")
     print("ACTIVE FILTERS (from calibration)")
-    print(f"  Min odds: Near Certain ≥ 1.10, High ≥ 1.18, Medium-High ≥ 1.28, Medium ≥ 1.40")
-    print(f"  DNB: Home margin ≥ 8%, Away margin ≥ 10%. Away DNB penalized in volatile leagues.")
-    print(f"  DC:  Threshold raised to 72% combined prob (was 68%)")
-    print(f"  O/U: Near Certain needs 45% deviation. O1.5 needs exp_total ≥ 2.5; capped at Medium if < 3.0")
+    print(f"  Min odds: Near Certain ≥ 1.10, High ≥ 1.18, Medium-High ≥ 1.28, Medium ≥ 1.50")
+    print(f"  1X2: Near Certain ≥ 58% (≥60% margin≥10%), High ≥ 50% (margin≥10%), MH ≥ 42% (margin≥6%), Medium ≥ 38% (margin≥4%)")
+    print(f"  Draw: MH ≥ 36% (margin≥4%), Medium ≥ 33%")
+    print(f"  DNB: Home margin ≥ 8% (Medium ≥ 46%), Away margin ≥ 10% (Medium ≥ 48%). Away penalized in volatile leagues.")
+    print(f"  DC:  Threshold at 72% combined prob (Medium); MH ≥ 82%")
+    print(f"  O/U: Near Certain needs 45% deviation, High ≥ 35%, MH ≥ 18%, Medium ≥ 10%")
+    print(f"  BTTS: Yes requires value > 8% (>58% prob), No requires value > 6% (>56% prob)")
     print(f"  All picks filtered through odds-based value check at recommendation time")
     print()
 

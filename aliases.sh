@@ -37,6 +37,10 @@ alias cnfupdate="python3 '$PREDICTOR_DIR/cnfupdate.py'"
 # ── Results scraper ─────────────────────────────────────────────────────────
 alias scrape-results="python3 '$PREDICTOR_DIR/scrape_results.py'"
 
+# ── Historical calibration ──────────────────────────────────────────────────
+alias histcal="python3 '$PREDICTOR_DIR/historical_calibrate.py'"
+alias historical-calibrate="python3 '$PREDICTOR_DIR/historical_calibrate.py'"
+
 # ── Development / testing ───────────────────────────────────────────────────
 alias predict-test="python3 '$PREDICTOR_DIR/predict.py' '$PREDICTOR_DIR/test_links.txt'"
 alias predict-test-high="python3 '$PREDICTOR_DIR/predict.py' --high-only '$PREDICTOR_DIR/test_links.txt'"
