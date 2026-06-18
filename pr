@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Use venv python if available, otherwise system python
+if [ -x "$DIR/.venv/bin/python" ]; then
+    PYTHON="$DIR/.venv/bin/python"
+else
+    echo "No .venv found. Run ./install.sh first." >&2
+    exit 1
+fi
+
+exec "$PYTHON" "$DIR/predict.py" "$@"

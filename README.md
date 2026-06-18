@@ -6,17 +6,44 @@ ratings. Saves everything to SQLite for post-match calibration.
 
 ## Quick Start
 
+### Linux/macOS (Arch/Debian)
+
 ```bash
-# Alias (auto-created on first run)
-pr https://www.forebet.com/en/football/matches/...     # ML mode (default)
-pr --no-ml https://...                                  # Classic mode
+git clone https://github.com/omondistep/predictor.git
+cd predictor
+./install.sh         # sets up venv, deps, symlink, trains ML model
+export PATH="$PATH:$HOME/.local/bin"
 
-# Or using python directly
-python predict.py links.txt                             # read URLs from file
-python predict.py "https://..."                         # single URL
+# Then just use `pr` anywhere:
+pr https://www.forebet.com/en/football/matches/...
+pr links.txt
+pr --calibrate
+pr --review
+```
 
-# Pipe URLs
-echo "https://..." | xargs python predict.py
+### Windows (PowerShell)
+
+```powershell
+# Clone
+git clone https://github.com/omondistep/predictor.git
+cd predictor
+
+# Setup
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\python ml_model.py --train
+$env:Path += ";$pwd"
+
+# Usage
+.\pr.ps1 https://www.forebet.com/en/football/matches/...
+.\pr.ps1 links.txt
+
+# Or directly
+python predict.py https://...
+python predict.py --ml links.txt
+
+# Permanent alias (add to your $PROFILE):
+# New-Alias pr .\pr.ps1
 ```
 
 ## Commands
