@@ -1,81 +1,90 @@
 # Football Match Predictor
 
-Rule-based terminal app for football match analysis and predictions.
-Uses the same analytical strategy as the manual workflow: league trends,
-odds structure, home/away splits, and market value.
+Rule-based + ML-enhanced football match predictor. Scrapes Forebet match data,
+runs Poisson and ensemble ML models, and surfaces value picks with confidence
+ratings. Saves everything to SQLite for post-match calibration.
 
 ## Quick Start
 
 ```bash
-# Paste match data directly
-python predict.py --paste
+# Alias (auto-created on first run)
+pr https://www.forebet.com/en/football/matches/...     # ML mode (default)
+pr --no-ml https://...                                  # Classic mode
 
-# Pipe data from a file
-cat matches.txt | python predict.py
+# Or using python directly
+python predict.py links.txt                             # read URLs from file
+python predict.py "https://..."                         # single URL
 
-# Read from file argument
-python predict.py matches.txt
-
-# Show only high-confidence predictions
-python predict.py matches.txt --high-only
-
-# Export as JSON
-python predict.py matches.txt --json > predictions.json
+# Pipe URLs
+echo "https://..." | xargs python predict.py
 ```
 
-## Input Format
+## Commands
 
-The app expects match data in the same format used in the original analysis:
+| Command | Description |
+|---------|-------------|
+| `pr <url>` | Scrape + predict (ML-enhanced ensemble) |
+| `pr links.txt` | Same, reading URLs from a file |
+| `pr --no-ml <url>` | Classic Poisson-only prediction |
+| `pr --review` | Auto-review past predictions from DB (fetches results from Forebet, fallback to manual) |
+| `pr --review results.txt` | Review URLs from a file — fetch each, extract score, update DB |
+| `pr --calibrate` | Show accuracy stats per confidence level and league |
+| `pr --learn <url>` | Scrape a Forebet results-list page to auto-update match results |
+| `pr --high-only` | Show only High / Near Certain picks |
+| `pr --json` | JSON output (for scripting) |
+| `pr --no-reasoning` | Hide reasoning lines |
+| `pr --no-compare` | Skip Forebet comparison display |
+| `pr --help` | Show all options |
 
+## ML Model Management
+
+```bash
+python ml_model.py --train       # Train RandomForest + GradientBoosting (14K+ examples)
+python ml_model.py --analyze     # Show feature importance (mutual information)
+python ml_model.py --predict     # Test prediction on sample data
+python ml_model.py --load        # Load existing model and test
 ```
-USA - USL, Championship (1)
-31/05/26 - 03:00 | ID: 3718
- Home Team Name
- Away Team Name
-2.33
-3.50
-2.47
-1.37
-1.41
-1.23
-1.60
-2.20
-1.54
-2.22
-```
 
-Odds columns: Home Win, Draw, Away Win, 1X, 12, X2, Over 2.5, Under 2.5, BTTS Yes, BTTS No
+The ML model is trained on 14,385 game dataset records + reviewed history.db
+matches. Feature extraction covers form, position, goal averages, H2H, odds,
+Forebet probabilities, and league profiles. Training outputs 5 components
+(scaler, RF 1X2, GB 1X2, RF O/U, GB O/U) to `ml_models/ml_predictor/`.
 
-## Options
+## Prediction Pipeline
 
-| Flag | Description |
-|------|-------------|
-| `file` | Path to file with match data |
-| `--paste` | Paste match data interactively |
-| `--json` | Output as JSON (for scripting) |
-| `--high-only` | Show only High / Near Certain picks |
-| `--scrape` | Attempt web scraping for form data (experimental) |
-| `--no-reasoning` | Hide reasoning lines |
-
-## Analysis Engine
-
-The rule engine evaluates multiple signals:
-
-1. **1X2 Market** — Strong favorite detection (odds < 1.40), clear favorite (< 1.60), even match → draw
-2. **Over/Under 2.5** — Market expectation + league trend override
-3. **BTTS** — Market expectation + league scoring patterns
-4. **League Profiles** — Hardcoded statistical profiles for 30+ leagues (avg goals, U2.5 rate, BTTS No rate, draw rate)
-5. **Confidence Scoring** — Near Certain (odds < 1.25), High (odds < 1.50 or strong league pattern), Medium, Low
+1. **Scrape** — Forebet match page → form, positions, odds, H2H, league
+2. **Detect league** — Match `detect_league()` → pick statistical profile
+3. **Compute expected goals** — Enhanced Poisson with attack/defense strength (Dixon-Coles style), form/position adjustments, volatility regression
+4. **Ensemble** — Blend Poisson (60%) + RandomForest + GradientBoosting (40%) + Forebet (25%) into final 1X2, O/U, BTTS probabilities
+5. **Value detection** — Compare model probability vs odds-implied probability → confidence rating (Near Certain / High / Medium-High / Medium / Low)
+6. **Save** — Match data + predictions → `history.db`
 
 ## League Coverage
 
-Includes statistical profiles for: Brazil Série A/B/C/D, USL Championship/League One/Two,
-MLS Next Pro, NWSL, Chile Primera/Primera B, Argentina B Nacional/Primera B/C/Federal A,
+62 league profiles including: Brazil Série A/B/C/D, Argentina B Nacional/Primera B/C/Federal A,
+Chile Primera/Primera B, USL Championship/League One/Two, MLS Next Pro, NWSL,
 Uruguay Primera/Segunda, Ecuador Serie A/B, Peru Primera, Paraguay Primera/Segunda,
-Canada Premier, Spain Segunda/Tercera, and more.
+Sweden Allsvenskan/Superettan/Ettan/Div 2, Finland Veikkausliiga/Ykkonen/Kakkonen,
+Morocco Botola, Mexico Liga MX/Expansion MX, Colombia Primera A/B,
+Venezuela Primera, plus 21 newly merged leagues from game dataset (DR Congo,
+Libya, Sudan, Saudi 1st, Turkiye 3. Lig, Thailand 3, Algeria Ligue 2, etc.).
 
-## Installation
+## Database
 
-```bash
-pip install -r requirements.txt
-```
+- `history.db` — All predictions + scraped data + reviewed results
+- `predict.py --review` — Auto-fetches actual scores from Forebet (past matches only)
+- `predict.py --calibrate` — Accuracy breakdown by confidence level and league
+- `predict.py --learn <results_url>` — Batch-import results from Forebet results pages
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `predict.py` | Main CLI — scraping, analysis, DB, review, calibration |
+| `ml_model.py` | ML training + enhanced Poisson + hybrid ensemble |
+| `database.py` | SQLite operations |
+| `forebet_scraper.py` | Forebet HTML scraper |
+| `historical_calibrate.py` | Historical data collection |
+| `cnfupdate.py` | Confidence tuning |
+| `merge_game_dataset.py` | Merged 15K game/ records into league profiles |
+| `ml_models/ml_predictor/` | Trained model components (RF, GB, scaler) |

@@ -158,13 +158,18 @@ def save_prediction(data: dict) -> int:
 
 
 def get_unreviewed_matches(limit: int = 50) -> list:
-    """Get matches that haven't been reviewed yet."""
+    """Get unreviewed matches that have already been played (past dates only)."""
+    from datetime import datetime
+    today = datetime.now().strftime("%d/%m/%Y")
     conn = get_db()
     rows = conn.execute("""
         SELECT id, forebet_url, home_team, away_team, match_date, league
-        FROM matches WHERE reviewed = 0
+        FROM matches
+        WHERE reviewed = 0
+          AND match_date IS NOT NULL
+          AND match_date < ?
         ORDER BY match_date DESC LIMIT ?
-    """, (limit,)).fetchall()
+    """, (today, limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

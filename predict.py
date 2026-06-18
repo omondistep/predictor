@@ -22,56 +22,80 @@ from pathlib import Path
 
 # Local modules
 from database import (
-    init_db, save_prediction, get_unreviewed_matches, update_result,
+    get_db, init_db, save_prediction, get_unreviewed_matches, update_result,
     get_calibration_summary, get_predictions_for_review, get_league_accuracy
 )
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
+
+# ML-enhanced modules (optional)
+_ML_MODEL = None
 
 # ─────────────────────────────────────────────
 # League Profiles
 # ─────────────────────────────────────────────
 
 LEAGUE_PROFILES = {
-    "brazil-serie-a":      {"avg_goals": 3.01, "u25_rate": 0.4, "btts_no_rate": 0.49, "draw_rate": 0.21, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.05},
-    "brazil-serie-b":      {"avg_goals": 2.1, "u25_rate": 0.58, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.05},
-    "brazil-serie-c":      {"avg_goals": 2.18, "u25_rate": 0.45, "btts_no_rate": 0.45, "draw_rate": 0.36, "home_win_rate": 0.45, "home_adv": 1.20, "volatility": 0.10},
-    "brazil-serie-d":      {"avg_goals": 2.2, "u25_rate": 0.72, "btts_no_rate": 0.68, "draw_rate": 0.2, "home_win_rate": 0.64, "home_adv": 1.25, "volatility": 0.15},
+    "brazil-serie-a":      {"avg_goals": 2.6, "u25_rate": 0.54, "btts_no_rate": 0.46, "draw_rate": 0.3, "home_win_rate": 0.39, "home_adv": 1.15, "volatility": 0.05},
+    "brazil-serie-b":      {"avg_goals": 2.61, "u25_rate": 0.54, "btts_no_rate": 0.5, "draw_rate": 0.27, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.05},
+    "brazil-serie-c":      {"avg_goals": 2.27, "u25_rate": 0.61, "btts_no_rate": 0.57, "draw_rate": 0.31, "home_win_rate": 0.42, "home_adv": 1.20, "volatility": 0.10},
+    "brazil-serie-d":      {"avg_goals": 2.49, "u25_rate": 0.54, "btts_no_rate": 0.56, "draw_rate": 0.26, "home_win_rate": 0.45, "home_adv": 1.25, "volatility": 0.15},
     "brazil-u20":          {"avg_goals": 4.0, "u25_rate": 0.2, "btts_no_rate": 0.4, "draw_rate": 0.4, "home_win_rate": 0.6, "home_adv": 1.10, "volatility": 0.30},
-    "argentina-b-nacional": {"avg_goals": 2.81, "u25_rate": 0.52, "btts_no_rate": 0.48, "draw_rate": 0.22, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.10},
-    "argentina-primera-b":  {"avg_goals": 2.36, "u25_rate": 0.55, "btts_no_rate": 0.64, "draw_rate": 0.18, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.10},
-    "argentina-primera-c":  {"avg_goals": 1.71, "u25_rate": 0.64, "btts_no_rate": 0.71, "draw_rate": 0.29, "home_win_rate": 0.57, "home_adv": 1.15, "volatility": 0.15},
+    "argentina-b-nacional": {"avg_goals": 2.0, "u25_rate": 0.69, "btts_no_rate": 0.59, "draw_rate": 0.31, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.10},
+    "argentina-primera-b":  {"avg_goals": 1.97, "u25_rate": 0.69, "btts_no_rate": 0.56, "draw_rate": 0.44, "home_win_rate": 0.39, "home_adv": 1.15, "volatility": 0.10},
+    "argentina-primera-c":  {"avg_goals": 2.03, "u25_rate": 0.74, "btts_no_rate": 0.68, "draw_rate": 0.24, "home_win_rate": 0.35, "home_adv": 1.15, "volatility": 0.15},
     "argentina-federal-a":  {"avg_goals": 1.55, "u25_rate": 0.91, "btts_no_rate": 0.91, "draw_rate": 0.18, "home_win_rate": 0.73, "home_adv": 1.20, "volatility": 0.15},
-    "chile-primera":        {"avg_goals": 2.56, "u25_rate": 0.44, "btts_no_rate": 0.44, "draw_rate": 0.33, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.05},
-    "chile-primera-b":      {"avg_goals": 2.25, "u25_rate": 0.62, "btts_no_rate": 0.5, "draw_rate": 0.25, "home_win_rate": 0.62, "home_adv": 1.15, "volatility": 0.10},
+    "chile-primera":        {"avg_goals": 2.31, "u25_rate": 0.57, "btts_no_rate": 0.57, "draw_rate": 0.27, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.05},
+    "chile-primera-b":      {"avg_goals": 2.51, "u25_rate": 0.6, "btts_no_rate": 0.49, "draw_rate": 0.26, "home_win_rate": 0.54, "home_adv": 1.15, "volatility": 0.10},
     "usl-championship":     {"avg_goals": 2.71, "u25_rate": 0.71, "btts_no_rate": 0.57, "draw_rate": 0.36, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.10},
     "usl-league-one":       {"avg_goals": 3.35, "u25_rate": 0.35, "btts_no_rate": 0.47, "draw_rate": 0.12, "home_win_rate": 0.65, "home_adv": 1.15, "volatility": 0.15},
     "usl-league-two":       {"avg_goals": 3.67, "u25_rate": 0.26, "btts_no_rate": 0.39, "draw_rate": 0.14, "home_win_rate": 0.47, "home_adv": 1.15, "volatility": 0.30},
     "mls-next-pro":         {"avg_goals": 3.1, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.20, "home_win_rate": 0.50, "home_adv": 1.10, "volatility": 0.25},
     "nwsl":                {"avg_goals": 2.4, "u25_rate": 0.50, "btts_no_rate": 0.48, "draw_rate": 0.25, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-primera":      {"avg_goals": 1.62, "u25_rate": 0.75, "btts_no_rate": 0.75, "draw_rate": 0.38, "home_win_rate": 0.38, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-segunda":      {"avg_goals": 2.33, "u25_rate": 0.56, "btts_no_rate": 0.56, "draw_rate": 0.33, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.15},
-    "ecuador-serie-a":      {"avg_goals": 2.2, "u25_rate": 0.6, "btts_no_rate": 0.4, "draw_rate": 0.2, "home_win_rate": 0.6, "home_adv": 1.25, "volatility": 0.10},
+    "uruguay-primera":      {"avg_goals": 2.96, "u25_rate": 0.4, "btts_no_rate": 0.47, "draw_rate": 0.23, "home_win_rate": 0.39, "home_adv": 1.10, "volatility": 0.10},
+    "uruguay-segunda":      {"avg_goals": 2.0, "u25_rate": 0.83, "btts_no_rate": 0.33, "draw_rate": 0.67, "home_win_rate": 0.0, "home_adv": 1.15, "volatility": 0.15},
+    "ecuador-serie-a":      {"avg_goals": 2.36, "u25_rate": 0.57, "btts_no_rate": 0.43, "draw_rate": 0.21, "home_win_rate": 0.64, "home_adv": 1.25, "volatility": 0.10},
     "ecuador-serie-b":      {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.25, "volatility": 0.15},
-    "peru-primera":         {"avg_goals": 2.3, "u25_rate": 0.52, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.30, "volatility": 0.10},
-    "paraguay-primera":     {"avg_goals": 3.25, "u25_rate": 0.25, "btts_no_rate": 0.38, "draw_rate": 0.25, "home_win_rate": 0.25, "home_adv": 1.15, "volatility": 0.10},
+    "peru-primera":         {"avg_goals": 2.67, "u25_rate": 0.42, "btts_no_rate": 0.42, "draw_rate": 0.25, "home_win_rate": 0.67, "home_adv": 1.30, "volatility": 0.10},
+    "paraguay-primera":     {"avg_goals": 2.2, "u25_rate": 0.69, "btts_no_rate": 0.51, "draw_rate": 0.36, "home_win_rate": 0.29, "home_adv": 1.15, "volatility": 0.10},
     "paraguay-segunda":     {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.15},
-    "spain-segunda":        {"avg_goals": 2.2, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.30, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.05},
-    "austria-landesliga":   {"avg_goals": 4.33, "u25_rate": 0.11, "btts_no_rate": 0.27, "draw_rate": 0.09, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.25},
+    "spain-segunda":        {"avg_goals": 2.58, "u25_rate": 0.53, "btts_no_rate": 0.56, "draw_rate": 0.19, "home_win_rate": 0.5, "home_adv": 1.15, "volatility": 0.05},
+    "austria-landesliga":   {"avg_goals": 2.95, "u25_rate": 0.45, "btts_no_rate": 0.45, "draw_rate": 0.23, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.25},
     "reserve-leagues":      {"avg_goals": 3.0, "u25_rate": 0.35, "btts_no_rate": 0.35, "draw_rate": 0.24, "home_win_rate": 0.42, "home_adv": 1.05, "volatility": 0.35},
     "sweden-allsvenskan":   {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.08},
     "sweden-superettan":    {"avg_goals": 3.6, "u25_rate": 0.2, "btts_no_rate": 0.2, "draw_rate": 0.4, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.12},
     "sweden-ettan":         {"avg_goals": 2.8, "u25_rate": 0.40, "btts_no_rate": 0.38, "draw_rate": 0.23, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.20},
-    "sweden-division-2":    {"avg_goals": 3.62, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.12, "home_win_rate": 0.25, "home_adv": 1.10, "volatility": 0.25},
+    "sweden-division-2":    {"avg_goals": 3.48, "u25_rate": 0.33, "btts_no_rate": 0.59, "draw_rate": 0.13, "home_win_rate": 0.57, "home_adv": 1.10, "volatility": 0.25},
     "finland-veikkausliiga":{"avg_goals": 2.5, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.25, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.12},
     "finland-ykkonen":      {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.18},
     "finland-kakkonen":     {"avg_goals": 2.82, "u25_rate": 0.55, "btts_no_rate": 0.55, "draw_rate": 0.36, "home_win_rate": 0.18, "home_adv": 1.10, "volatility": 0.25},
-    "morocco-botola":       {"avg_goals": 1.73, "u25_rate": 0.73, "btts_no_rate": 0.55, "draw_rate": 0.27, "home_win_rate": 0.64, "home_adv": 1.12, "volatility": 0.08},
-    "iceland":              {"avg_goals": 2.4, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.10, "volatility": 0.15},
+    "morocco-botola":       {"avg_goals": 2.0, "u25_rate": 0.63, "btts_no_rate": 0.57, "draw_rate": 0.3, "home_win_rate": 0.41, "home_adv": 1.12, "volatility": 0.08},
+    "iceland":              {"avg_goals": 3.83, "u25_rate": 0.5, "btts_no_rate": 0.67, "draw_rate": 0.17, "home_win_rate": 0.83, "home_adv": 1.10, "volatility": 0.15},
     "iceland-women":        {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.20},
     "estonia":              {"avg_goals": 2.2, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
     "georgia":              {"avg_goals": 2.3, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.20},
     "lithuania":            {"avg_goals": 2.1, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
-    "women-football":       {"avg_goals": 3.52, "u25_rate": 0.39, "btts_no_rate": 0.43, "draw_rate": 0.17, "home_win_rate": 0.52, "home_adv": 1.05, "volatility": 0.20},
+    "women-football":       {"avg_goals": 3.03, "u25_rate": 0.42, "btts_no_rate": 0.45, "draw_rate": 0.23, "home_win_rate": 0.44, "home_adv": 1.05, "volatility": 0.20},
+    "algeria-ligue-2": {"avg_goals": 2.06, "u25_rate": 0.68, "btts_no_rate": 0.68, "draw_rate": 0.29, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.12},  # Algeria - Ligue 2
+    "colombia-a": {"avg_goals": 2.46, "u25_rate": 0.55, "btts_no_rate": 0.39, "draw_rate": 0.39, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.12},  # Colombia - Primera A
+    "colombia-b": {"avg_goals": 2.18, "u25_rate": 0.67, "btts_no_rate": 0.56, "draw_rate": 0.31, "home_win_rate": 0.38, "home_adv": 1.1, "volatility": 0.12},  # Colombia - Primera B
+    "costa-rica-liga-de-ascenso": {"avg_goals": 2.75, "u25_rate": 0.56, "btts_no_rate": 0.47, "draw_rate": 0.25, "home_win_rate": 0.5, "home_adv": 1.15, "volatility": 0.12},  # Costa Rica - Liga de Ascenso
+    "dr-congo-ligue-1": {"avg_goals": 1.79, "u25_rate": 0.76, "btts_no_rate": 0.61, "draw_rate": 0.36, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.08},  # DR Congo - Ligue 1
+    "el-salvador-primera": {"avg_goals": 2.68, "u25_rate": 0.46, "btts_no_rate": 0.44, "draw_rate": 0.26, "home_win_rate": 0.36, "home_adv": 1.1, "volatility": 0.12},  # El Salvador - Primera Division
+    "guatemala-liga-nacional": {"avg_goals": 2.22, "u25_rate": 0.63, "btts_no_rate": 0.48, "draw_rate": 0.26, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.12},  # Guatemala - Liga Nacional
+    "guatemala-primera": {"avg_goals": 2.3, "u25_rate": 0.52, "btts_no_rate": 0.45, "draw_rate": 0.26, "home_win_rate": 0.61, "home_adv": 1.2, "volatility": 0.12},  # Guatemala - Primera Division
+    "honduras-liga-nacional": {"avg_goals": 2.5, "u25_rate": 0.58, "btts_no_rate": 0.39, "draw_rate": 0.45, "home_win_rate": 0.32, "home_adv": 1.1, "volatility": 0.12},  # Honduras - Liga Nacional
+    "libya-premier": {"avg_goals": 2.38, "u25_rate": 0.59, "btts_no_rate": 0.59, "draw_rate": 0.28, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.12},  # Libya - Premier League
+    "mexico-liga-de-expansion-mx": {"avg_goals": 3.03, "u25_rate": 0.47, "btts_no_rate": 0.47, "draw_rate": 0.27, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga de Expansion MX
+    "mexico-liga-mx": {"avg_goals": 2.74, "u25_rate": 0.45, "btts_no_rate": 0.52, "draw_rate": 0.19, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga MX
+    "mexico-liga-serie-a": {"avg_goals": 2.73, "u25_rate": 0.47, "btts_no_rate": 0.5, "draw_rate": 0.23, "home_win_rate": 0.54, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga Premier Serie A
+    "nicaragua-primera": {"avg_goals": 2.66, "u25_rate": 0.57, "btts_no_rate": 0.52, "draw_rate": 0.27, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.12},  # Nicaragua - Primera Division
+    "panama-football": {"avg_goals": 2.3, "u25_rate": 0.6, "btts_no_rate": 0.5, "draw_rate": 0.43, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Panama - Football League
+    "saudi-arabia-1st": {"avg_goals": 3.44, "u25_rate": 0.28, "btts_no_rate": 0.28, "draw_rate": 0.22, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.12},  # Saudi Arabia - 1st Division
+    "sudan-premier": {"avg_goals": 1.96, "u25_rate": 0.68, "btts_no_rate": 0.57, "draw_rate": 0.4, "home_win_rate": 0.23, "home_adv": 1.1, "volatility": 0.08},  # Sudan - Premier League
+    "syria-premier": {"avg_goals": 2.77, "u25_rate": 0.49, "btts_no_rate": 0.46, "draw_rate": 0.2, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Syria - Premier League
+    "thailand-thai-3": {"avg_goals": 2.31, "u25_rate": 0.63, "btts_no_rate": 0.64, "draw_rate": 0.22, "home_win_rate": 0.49, "home_adv": 1.15, "volatility": 0.12},  # Thailand - Thai League 3
+    "turkiye-tff-3-lig": {"avg_goals": 2.39, "u25_rate": 0.57, "btts_no_rate": 0.63, "draw_rate": 0.22, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.12},  # Türkiye - TFF 3. Lig
+    "venezuela-primera": {"avg_goals": 2.34, "u25_rate": 0.57, "btts_no_rate": 0.54, "draw_rate": 0.37, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Venezuela - Primera Division
     "default":              {"avg_goals": 2.8, "u25_rate": 0.45, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.20},
 }
 
@@ -207,6 +231,128 @@ def detect_league(text: str) -> str:
     # Morocco
     if "morocco" in t or "botola" in t or "maroc" in t:
         return "morocco-botola"
+    # Colombia
+    if t.startswith("co"):
+        if "2" in t[:4] or "b" in t[:4]: return "colombia-b"
+        return "colombia-a"
+    if "colombia" in t:
+        if "primera b" in t or "segunda" in t: return "colombia-b"
+        return "colombia-a"
+    # Mexico
+    if t.startswith("mx"):
+        if "w" in t[:4]: return "women-football"
+        if "2" in t[:4]: return "mexico-liga-de-expansion-mx"
+        if "3" in t[:4] or "4" in t[:4]: return "mexico-liga-serie-a"
+        return "mexico-liga-mx"
+    if "mexico" in t or "mx" in t[:3]:
+        if "liga mx women" in t or " women" in t: return "women-football"
+        if "expansion" in t: return "mexico-liga-de-expansion-mx"
+        if "premier" in t: return "mexico-liga-serie-a"
+        if "liga mx" in t: return "mexico-liga-mx"
+    # Venezuela
+    if t.startswith("ve"):
+        if "2" in t[:4]: return "default"
+        return "venezuela-primera"
+    if "venezuela" in t:
+        if "segunda" in t: return "default"
+        return "venezuela-primera"
+    # Guatemala
+    if t.startswith("gt"):
+        if "1" in t[:4]: return "guatemala-liga-nacional"
+        return "guatemala-primera"
+    if "guatemala" in t:
+        if "liga nacional" in t: return "guatemala-liga-nacional"
+        if "primera" in t: return "guatemala-primera"
+    # El Salvador
+    if t.startswith("sv"):
+        return "el-salvador-primera"
+    if "el salvador" in t:
+        return "el-salvador-primera"
+    # Honduras
+    if t.startswith("hn"):
+        return "honduras-liga-nacional"
+    if "honduras" in t:
+        return "honduras-liga-nacional"
+    # Nicaragua
+    if t.startswith("ni"):
+        return "nicaragua-primera"
+    if "nicaragua" in t:
+        return "nicaragua-primera"
+    # Costa Rica
+    if t.startswith("cr"):
+        if "1" in t[:4]: return "default"
+        return "costa-rica-liga-de-ascenso"
+    if "costa rica" in t:
+        if "ascenso" in t: return "costa-rica-liga-de-ascenso"
+        return "default"
+    # Panama
+    if t.startswith("pa"):
+        return "panama-football"
+    if "panama" in t:
+        return "panama-football"
+    # Libya
+    if t.startswith("ly"):
+        return "libya-premier"
+    if "libya" in t:
+        return "libya-premier"
+    # Sudan
+    if t.startswith("sd"):
+        return "sudan-premier"
+    if "sudan" in t:
+        return "sudan-premier"
+    # Syria
+    if t.startswith("sy"):
+        return "syria-premier"
+    if "syria" in t:
+        return "syria-premier"
+    # DR Congo
+    if t.startswith("cd"):
+        return "dr-congo-ligue-1"
+    if "dr congo" in t:
+        return "dr-congo-ligue-1"
+    # Saudi Arabia
+    if t.startswith("sa"):
+        if "1" in t[:4]: return "default"
+        return "saudi-arabia-1st"
+    if "saudi" in t:
+        if "professional" in t or "1st" in t: return "default"
+        return "saudi-arabia-1st"
+    # Turkey (Turkiye)
+    if t.startswith("tr"):
+        if "1" in t[:4]: return "default"
+        if "2" in t[:4]: return "default"
+        if "3" in t[:4]: return "turkiye-tff-3-lig"
+        if "4" in t[:4]: return "turkiye-tff-3-lig"
+        if "c" in t[-1:].lower(): return "default"
+        return "turkiye-tff-3-lig"
+    if "turkiye" in t or "türkiye" in t or "turkey" in t:
+        if "super lig" in t: return "default"
+        if "1. lig" in t or "tff 1" in t: return "default"
+        if "2. lig" in t or "tff 2" in t: return "default"
+        if "3. lig" in t or "tff 3" in t: return "turkiye-tff-3-lig"
+        if "kupasi" in t: return "default"
+        return "turkiye-tff-3-lig"
+    # Thailand
+    if t.startswith("th"):
+        if "1" in t[:4]: return "default"
+        if "2" in t[:4]: return "default"
+        if "3" in t[:4]: return "thailand-thai-3"
+        if "c" in t[-1:].lower(): return "default"
+        if "l" in t[-1:].lower(): return "default"
+        return "thailand-thai-3"
+    if "thailand" in t or "thai" in t:
+        if "premier" in t or "league 1" in t: return "default"
+        if "league 2" in t: return "default"
+        if "league 3" in t: return "thailand-thai-3"
+        if "fa cup" in t or "league cup" in t: return "default"
+        return "thailand-thai-3"
+    # Algeria
+    if t.startswith("dz"):
+        if "1" in t[:4]: return "default"
+        return "algeria-ligue-2"
+    if "algeria" in t or "algerie" in t:
+        if "ligue 1" in t: return "default"
+        return "algeria-ligue-2"
     # Spain
     if "spain" in t or "espana" in t or "espa" in t:
         if "segunda" in t:
@@ -415,8 +561,21 @@ def conv_label(score: int) -> str:
     return "Low"
 
 
-def analyze_from_data(data: dict) -> dict:
-    """Analyze all markets, recommend highest-conviction pick."""
+def _load_ml_model():
+    """Lazy-load the trained ML model."""
+    global _ML_MODEL
+    if _ML_MODEL is None:
+        from ml_model import MLPredictor
+        _ML_MODEL = MLPredictor.load()
+    return _ML_MODEL if _ML_MODEL and _ML_MODEL.is_trained else None
+
+
+def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
+    """Analyze all markets, recommend highest-conviction pick.
+    
+    When use_ml=True, replaces the simple Poisson model with the enhanced
+    attack/defense strength model and blends with ML probabilities.
+    """
     profile = get_profile(detect_league(data.get("league", "")))
     reasoning = []
     candidates = []
@@ -429,28 +588,50 @@ def analyze_from_data(data: dict) -> dict:
     hw_ = data.get("h2h_home_wins", 0) if hm_ >= 3 else 0
     ha_ = data.get("h2h_away_wins", 0) if hm_ >= 3 else 0
 
-    # Expected goals model
-    exp_h, exp_a = estimate_goals(data, profile)
-    exp_total = exp_h + exp_a
+    # ── ML-enhanced probability computation ──
+    ml_model = _load_ml_model() if use_ml else None
 
-    # Estimated probabilities from Poisson model
-    p_home = prob_home_win(exp_h, exp_a)
-    p_draw = prob_draw(exp_h, exp_a)
-    p_away = prob_away_win(exp_h, exp_a)
+    if ml_model:
+        from ml_model import poisson_predict, ensemble_predict
+        # Use enhanced attack/defense Poisson
+        enhanced = poisson_predict(data, profile)
+        p_home = enhanced["prob_home"]
+        p_draw = enhanced["prob_draw"]
+        p_away = enhanced["prob_away"]
+        p_over = enhanced["prob_over"]
+        p_under = enhanced["prob_under"]
+        exp_h = enhanced["exp_home_goals"]
+        exp_a = enhanced["exp_away_goals"]
+        exp_total = exp_h + exp_a
 
-    # Draw inflation (Poisson often underestimates draws)
-    # Use higher boost for low-scoring matches or high-draw leagues
-    draw_rate = profile.get("draw_rate", 0.25)
-    draw_boost = 0.07 if exp_total < 2.5 else 0.04
-    if draw_rate >= 0.32:
-        draw_boost += 0.04
-    p_draw += draw_boost
+        # Blend with ML model
+        ensemble = ensemble_predict(data, profile, ml_model)
+        p_home = ensemble["prob_home"]
+        p_draw = ensemble["prob_draw"]
+        p_away = ensemble["prob_away"]
+        p_over = ensemble["prob_over"]
+        p_under = ensemble["prob_under"]
+        # Keep exp goals from enhanced Poisson for display
+    else:
+        # Original simple Poisson model
+        exp_h, exp_a = estimate_goals(data, profile)
+        exp_total = exp_h + exp_a
+        p_home = prob_home_win(exp_h, exp_a)
+        p_draw = prob_draw(exp_h, exp_a)
+        p_away = prob_away_win(exp_h, exp_a)
 
-    # Re-normalize
-    total_p = p_home + p_draw + p_away
-    p_home /= total_p
-    p_draw /= total_p
-    p_away /= total_p
+        # Draw inflation
+        draw_rate = profile.get("draw_rate", 0.25)
+        draw_boost = 0.07 if exp_total < 2.5 else 0.04
+        if draw_rate >= 0.32:
+            draw_boost += 0.04
+        p_draw += draw_boost
+
+        # Re-normalize
+        total_p = p_home + p_draw + p_away
+        p_home /= total_p
+        p_draw /= total_p
+        p_away /= total_p
 
     # ── Odds-based value infrastructure ──
     odds_h = data.get("odds_home")
@@ -775,7 +956,8 @@ def log(msg, end="\n"):
 
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                             high_only: bool = False, json_out: bool = False,
-                            compare_forebet: bool = True):
+                            compare_forebet: bool = True,
+                            use_ml: bool = False):
     """Read Forebet links, scrape, analyze, store, and output predictions."""
     with open(links_path) as f:
         urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
@@ -801,7 +983,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             continue
 
         # Analyze
-        pred = analyze_from_data(data)
+        pred = analyze_from_data(data, use_ml=use_ml)
 
         # Store in DB (map analysis keys to DB column names)
         db_data = {
@@ -1081,51 +1263,104 @@ def _extract_result_from_forebet(soup) -> tuple | None:
     """Try to extract final score from Forebet page. Returns (h, a) or None."""
     if not soup:
         return None
-    # Check h1 or title for score pattern
+
+    candidates = []
+
+    # 1. Check all divs for clean score text (e.g. "3 - 2", "1-0")
+    for div in soup.find_all("div"):
+        text = div.get_text(strip=True)
+        m = re.match(r"^(\d+)\s*[-–:]\s*(\d+)$", text)
+        if m:
+            h, a = int(m.group(1)), int(m.group(2))
+            # Filter out implausible scores (times like "13-2", max realistic football score ~10)
+            if h <= 10 and a <= 10 and h + a <= 15 and not (h == 0 and a == 0):
+                candidates.append((h, a))
+
+    # 2. Check h1
     h1 = soup.find("h1")
     if h1:
         m = re.search(r"(\d+)\s*[-–:]\s*(\d+)", h1.get_text())
         if m:
-            return (int(m.group(1)), int(m.group(2)))
-    # Check stat-content tables for recent result
+            h, a = int(m.group(1)), int(m.group(2))
+            if h <= 10 and a <= 10 and h + a <= 15:
+                candidates.append((h, a))
+
+    # 3. Check stat-content tables
     tables = soup.find_all("table", {"class": "stat-content"})
     for table in tables:
         rows = table.find_all("tr")
         for row in rows[:5]:
             cells = row.find_all("td")
             if len(cells) >= 3:
-                m = re.search(r"(\d+)\s*-\s*(\d+)", cells[-1].get_text())
+                m = re.search(r"(\d+)\s*[-–:]\s*(\d+)", cells[-1].get_text())
                 if m:
-                    return (int(m.group(1)), int(m.group(2)))
-    return None
+                    h, a = int(m.group(1)), int(m.group(2))
+                    if h <= 10 and a <= 10 and h + a <= 15:
+                        candidates.append((h, a))
+
+    if not candidates:
+        return None
+
+    # Return the most common score (likely the match result, not a timestamp or odd)
+    from collections import Counter
+    best = Counter(candidates).most_common(1)[0][0]
+    return best
 
 
-def run_review(mark_reviewed: bool = False):
-    """Review past predictions and record actual results."""
+def run_review(urls_file: str | None = None):
+    """Review predictions — auto-fetch from Forebet, fall back to manual input.
+
+    If urls_file is given, read URLs from that file, fetch each, extract score, update DB.
+    Otherwise, read unreviewed matches from history.db.
+    """
     init_db()
-    pending = get_unreviewed_matches(limit=100)
+    updated = 0
 
+    if urls_file:
+        with open(urls_file) as f:
+            urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+        print(f"Reviewing {len(urls)} URLs from {urls_file}\n")
+        for i, url in enumerate(urls, 1):
+            print(f"[{i}/{len(urls)}]", end=" ")
+            scraper = ForebetScraper(url)
+            if scraper.fetch():
+                score = _extract_result_from_forebet(scraper.soup)
+                if score:
+                    # Match against DB by URL
+                    conn = get_db()
+                    row = conn.execute("SELECT id FROM matches WHERE forebet_url = ?", (url,)).fetchone()
+                    conn.close()
+                    if row:
+                        update_result(row["id"], score[0], score[1])
+                        print(f"✓ {score[0]}-{score[1]} (ID {row['id']})")
+                        updated += 1
+                    else:
+                        print(f"  {score[0]}-{score[1]} (no matching DB record)")
+                else:
+                    print(f"  No score on page")
+            else:
+                print(f"  Could not fetch")
+        print(f"\nUpdated {updated} match results.")
+        return
+
+    # DB-based review (existing behavior)
+    pending = get_unreviewed_matches(limit=100)
     if not pending:
         print("No unreviewed matches found.")
         return
 
     print(f"Found {len(pending)} unreviewed matches.\n")
-
     for m in pending:
         print(f"ID {m['id']}: {m['home_team']} vs {m['away_team']} ({m['match_date']})")
-        if mark_reviewed and m.get('forebet_url'):
+        score = None
+        if m.get('forebet_url'):
             scraper = ForebetScraper(m['forebet_url'])
             if scraper.fetch():
                 score = _extract_result_from_forebet(scraper.soup)
                 if score:
                     update_result(m['id'], score[0], score[1])
                     print(f"  ✓ Auto: {score[0]}-{score[1]}")
-                else:
-                    print(f"  - No score on page yet")
-                    continue
-            else:
-                print(f"  - Could not fetch")
-        else:
+        if not score:
             print(f"  URL: {m.get('forebet_url', 'N/A')}")
             try:
                 resp = input("  Score (e.g. 2-1) or Enter to skip: ").strip()
@@ -1266,7 +1501,7 @@ def ensure_alias():
     bindir = Path.home() / ".local" / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
     src = Path(__file__).resolve()
-    for name in ("predict", "predictor"):
+    for name in ("pr", "predict", "predictor"):
         bin_path = bindir / name
         if bin_path.exists() and bin_path.samefile(src):
             continue
@@ -1299,10 +1534,11 @@ Options:
   --json         JSON output for scripting
   --no-compare   Skip Forebet comparison display
   --no-reasoning Hide reasoning
+  --no-ml, --classic  Disable ML-enhanced model (use classic Poisson only)
         """
     )
     parser.add_argument("file", nargs="?", help="File with Forebet URLs")
-    parser.add_argument("--review", action="store_true", help="Review past predictions")
+    parser.add_argument("--review", nargs="?", const=True, default=None, help="Review past predictions, or review URLs from a file")
     parser.add_argument("--auto", action="store_true", help="Auto-review by re-scraping")
     parser.add_argument("--learn", help="URL of Forebet results page to learn from")
     parser.add_argument("--calibrate", action="store_true", help="Show calibration stats")
@@ -1310,6 +1546,7 @@ Options:
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--no-compare", action="store_true", help="Skip Forebet comparison")
     parser.add_argument("--no-reasoning", action="store_true", help="Hide reasoning")
+    parser.add_argument("--no-ml", "--classic", action="store_true", help="Disable ML-enhanced prediction (use classic model)")
 
     args = parser.parse_args()
 
@@ -1325,7 +1562,7 @@ Options:
         return
 
     if args.review:
-        run_review(mark_reviewed=args.auto)
+        run_review(urls_file=None if args.review is True else args.review)
         return
 
     if args.file:
@@ -1341,6 +1578,7 @@ Options:
                 high_only=args.high_only,
                 json_out=args.json,
                 compare_forebet=not args.no_compare,
+                use_ml=not args.no_ml,
             )
             os.unlink(tmp_path)
         else:
@@ -1350,6 +1588,7 @@ Options:
                 high_only=args.high_only,
                 json_out=args.json,
                 compare_forebet=not args.no_compare,
+                use_ml=not args.no_ml,
             )
     else:
         parser.print_help()

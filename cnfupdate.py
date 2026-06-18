@@ -84,6 +84,76 @@ def detect_league(text: str) -> str:
         return "finland-kakkonen"
     if t.startswith("ma"):
         return "morocco-botola"
+    # Colombia
+    if t.startswith("co"):
+        if "2" in t[:4] or "b" in t[:4]: return "colombia-b"
+        return "colombia-a"
+    # Mexico
+    if t.startswith("mx"):
+        if "w" in t[:4]: return "women-football"
+        if "2" in t[:4]: return "mexico-liga-de-expansion-mx"
+        if "3" in t[:4] or "4" in t[:4]: return "mexico-liga-serie-a"
+        return "mexico-liga-mx"
+    # Venezuela
+    if t.startswith("ve"):
+        if "2" in t[:4]: return "default"
+        return "venezuela-primera"
+    # Guatemala
+    if t.startswith("gt"):
+        if "1" in t[:4]: return "guatemala-liga-nacional"
+        return "guatemala-primera"
+    # El Salvador
+    if t.startswith("sv"):
+        return "el-salvador-primera"
+    # Honduras
+    if t.startswith("hn"):
+        return "honduras-liga-nacional"
+    # Nicaragua
+    if t.startswith("ni"):
+        return "nicaragua-primera"
+    # Costa Rica
+    if t.startswith("cr"):
+        if "1" in t[:4]: return "default"
+        return "costa-rica-liga-de-ascenso"
+    # Panama
+    if t.startswith("pa"):
+        return "panama-football"
+    # Libya
+    if t.startswith("ly"):
+        return "libya-premier"
+    # Sudan
+    if t.startswith("sd"):
+        return "sudan-premier"
+    # Syria
+    if t.startswith("sy"):
+        return "syria-premier"
+    # DR Congo
+    if t.startswith("cd"):
+        return "dr-congo-ligue-1"
+    # Saudi Arabia
+    if t.startswith("sa"):
+        if "1" in t[:4]: return "default"
+        return "saudi-arabia-1st"
+    # Turkey (Turkiye)
+    if t.startswith("tr"):
+        if "1" in t[:4]: return "default"
+        if "2" in t[:4]: return "default"
+        if "3" in t[:4]: return "turkiye-tff-3-lig"
+        if "4" in t[:4]: return "turkiye-tff-3-lig"
+        if "c" in t[-1:].lower(): return "default"
+        return "turkiye-tff-3-lig"
+    # Thailand
+    if t.startswith("th"):
+        if "1" in t[:4]: return "default"
+        if "2" in t[:4]: return "default"
+        if "3" in t[:4]: return "thailand-thai-3"
+        if "c" in t[-1:].lower(): return "default"
+        if "l" in t[-1:].lower(): return "default"
+        return "thailand-thai-3"
+    # Algeria
+    if t.startswith("dz"):
+        if "1" in t[:4]: return "default"
+        return "algeria-ligue-2"
     # Full name checks
     if "brazil" in t or "brasil" in t:
         if "u20" in t: return "brazil-u20"
@@ -126,6 +196,75 @@ def detect_league(text: str) -> str:
         if "ykkonen" in t: return "finland-ykkonen"
         return "finland-kakkonen"
     if "morocco" in t or "botola" in t: return "morocco-botola"
+    # Colombia
+    if "colombia" in t:
+        if "primera b" in t or "segunda" in t: return "colombia-b"
+        return "colombia-a"
+    # Mexico
+    if "mexico" in t or "mx" in t[:3]:
+        if "women" in t: return "women-football"
+        if "expansion" in t: return "mexico-liga-de-expansion-mx"
+        if "premier" in t: return "mexico-liga-serie-a"
+        if "liga mx" in t: return "mexico-liga-mx"
+    # Venezuela
+    if "venezuela" in t:
+        if "segunda" in t: return "default"
+        return "venezuela-primera"
+    # Guatemala
+    if "guatemala" in t:
+        if "liga nacional" in t: return "guatemala-liga-nacional"
+        if "primera" in t: return "guatemala-primera"
+    # El Salvador
+    if "el salvador" in t:
+        return "el-salvador-primera"
+    # Honduras
+    if "honduras" in t:
+        return "honduras-liga-nacional"
+    # Nicaragua
+    if "nicaragua" in t:
+        return "nicaragua-primera"
+    # Costa Rica
+    if "costa rica" in t:
+        if "ascenso" in t: return "costa-rica-liga-de-ascenso"
+        return "default"
+    # Panama
+    if "panama" in t:
+        return "panama-football"
+    # Libya
+    if "libya" in t:
+        return "libya-premier"
+    # Sudan
+    if "sudan" in t:
+        return "sudan-premier"
+    # Syria
+    if "syria" in t:
+        return "syria-premier"
+    # DR Congo
+    if "dr congo" in t:
+        return "dr-congo-ligue-1"
+    # Saudi Arabia
+    if "saudi" in t:
+        if "professional" in t or "1st" in t: return "default"
+        return "saudi-arabia-1st"
+    # Turkey (Turkiye)
+    if "turkiye" in t or "türkiye" in t or "turkey" in t:
+        if "super lig" in t: return "default"
+        if "1. lig" in t or "tff 1" in t: return "default"
+        if "2. lig" in t or "tff 2" in t: return "default"
+        if "3. lig" in t or "tff 3" in t: return "turkiye-tff-3-lig"
+        if "kupasi" in t: return "default"
+        return "turkiye-tff-3-lig"
+    # Thailand
+    if "thailand" in t or "thai" in t:
+        if "premier" in t or "league 1" in t: return "default"
+        if "league 2" in t: return "default"
+        if "league 3" in t: return "thailand-thai-3"
+        if "fa cup" in t or "league cup" in t: return "default"
+        return "thailand-thai-3"
+    # Algeria
+    if "algeria" in t or "algerie" in t:
+        if "ligue 1" in t: return "default"
+        return "algeria-ligue-2"
     if "reserve" in t or "u21" in t or "u23" in t: return "reserve-leagues"
     return "default"
 
