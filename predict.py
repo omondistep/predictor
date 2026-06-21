@@ -29,6 +29,7 @@ from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 
 # ML-enhanced modules (optional)
 _ML_MODEL = None
+_DYNAMIC_WEIGHTS = None  # Cached per-league dynamic weights
 
 # ─────────────────────────────────────────────
 # League Profiles
@@ -394,6 +395,101 @@ def get_profile(league_key: str) -> dict:
 CONF_RANK = {"Near Certain": 0, "High": 1, "Medium-High": 2, "Medium": 3, "Low": 4}
 CONF_LABELS = ["Near Certain", "High", "Medium-High", "Medium", "Low"]
 
+# ── Auto-calibrated thresholds (improvement 10) ──
+# These get updated from history.db calibration data on each run
+CALIBRATED_THRESHOLDS = {
+    "near_certain": 0.58,
+    "high": 0.50,
+    "high_margin": 0.10,
+    "medium_high": 0.42,
+    "medium_high_margin": 0.06,
+    "medium": 0.38,
+    "medium_margin": 0.04,
+    "draw_medium_high": 0.36,
+    "draw_medium_high_margin": 0.04,
+    "draw_medium": 0.33,
+}
+
+def _auto_calibrate_thresholds():
+    """Load calibration data from DB and conservatively adjust thresholds.
+    Requires sufficient sample size and only tightens (raises) thresholds
+    when overconfidence is detected — never loosens with small samples."""
+    try:
+        from database import get_db
+        conn = get_db()
+
+        # Require minimum total pool to avoid noisy adjustments
+        total_pool = conn.execute("SELECT COUNT(*) as cnt FROM calibration_log").fetchone()["cnt"]
+        if total_pool < 50:
+            conn.close()
+            return
+
+        rows = conn.execute("""
+            SELECT confidence,
+                   COUNT(*) as total,
+                   SUM(correct) as correct,
+                   ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct
+            FROM calibration_log
+            GROUP BY confidence
+            ORDER BY CASE confidence
+                WHEN 'Near Certain' THEN 1
+                WHEN 'High' THEN 2
+                WHEN 'Medium-High' THEN 3
+                WHEN 'Medium' THEN 4
+                WHEN 'Low' THEN 5
+            END
+        """).fetchall()
+        conn.close()
+
+        adjusted = 0
+        min_samples = 25  # Increased from 10 — need 25+ records per level
+        target_map = {
+            "Near Certain": 0.78,
+            "High": 0.65,
+            "Medium-High": 0.55,
+            "Medium": 0.50,
+        }
+
+        for row in rows:
+            conf = row["confidence"]
+            actual_pct = row["pct"] / 100.0
+            target = target_map.get(conf, 0.50)
+            n = row["total"]
+            if n < min_samples:
+                continue
+
+            # Only tighten (raise thresholds) when overconfident
+            # Never loosen (lower thresholds) automatically — that introduces risk
+            if actual_pct < target - 0.03:
+                if conf == "Near Certain":
+                    CALIBRATED_THRESHOLDS["near_certain"] = min(0.72, CALIBRATED_THRESHOLDS["near_certain"] + 0.02)
+                    adjusted += 1
+                elif conf == "High":
+                    CALIBRATED_THRESHOLDS["high"] = min(0.65, CALIBRATED_THRESHOLDS["high"] + 0.02)
+                    adjusted += 1
+                elif conf == "Medium-High":
+                    CALIBRATED_THRESHOLDS["medium_high"] = min(0.55, CALIBRATED_THRESHOLDS["medium_high"] + 0.02)
+                    adjusted += 1
+                elif conf == "Medium":
+                    CALIBRATED_THRESHOLDS["medium"] = min(0.50, CALIBRATED_THRESHOLDS["medium"] + 0.02)
+                    adjusted += 1
+
+        # Validate hierarchy: Near_Certain > High > Medium-High > Medium
+        nc = CALIBRATED_THRESHOLDS["near_certain"]
+        hi = CALIBRATED_THRESHOLDS["high"]
+        mh = CALIBRATED_THRESHOLDS["medium_high"]
+        me = CALIBRATED_THRESHOLDS["medium"]
+        if not (nc > hi > mh > me):
+            CALIBRATED_THRESHOLDS["near_certain"] = max(nc, hi + 0.05)
+            CALIBRATED_THRESHOLDS["high"] = max(hi, mh + 0.05)
+            CALIBRATED_THRESHOLDS["medium_high"] = max(mh, me + 0.05)
+            adjusted += 1
+
+        if adjusted:
+            print(f"[calibrate] Thresholds tightened from {total_pool} calibration records ({adjusted} changes)")
+    except Exception as e:
+        print(f"[calibrate] Could not auto-calibrate: {e}")
+
 
 def _ppg(form_str: str) -> float:
     """Points per game from a form string like 'WDLDDL'."""
@@ -433,11 +529,17 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     exp_h = base * h_adv
     exp_a = base * a_adv
 
-    # Adjust for form
+    # Adjust for form — capped to avoid streak overreaction
+    hf_len = sum(1 for c in hf if c in "WDL") if hf else 0
+    af_len = sum(1 for c in af if c in "WDL") if af else 0
     if h_f is not None:
-        exp_h *= max(0.5, h_f / 1.2)
+        f = min(1.25, max(0.75, h_f / 1.2))
+        f = 1.0 + (f - 1.0) * min(1.0, hf_len / 6)
+        exp_h *= f
     if a_f is not None:
-        exp_a *= max(0.5, a_f / 1.2)
+        f = min(1.25, max(0.75, a_f / 1.2))
+        f = 1.0 + (f - 1.0) * min(1.0, af_len / 6)
+        exp_a *= f
 
     # Adjust for standings
     if hp and ap and total_teams:
@@ -461,6 +563,44 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
         exp_a = (exp_a + h_ga) / 2
     if a_ga:
         exp_h = (exp_h + a_ga) / 2
+
+    # Venue-specific goal averages (home-at-home, away-at-away)
+    hh_gf = data.get("home_home_avg_goals_for")
+    hh_ga = data.get("home_home_avg_goals_against")
+    aa_gf = data.get("away_away_avg_goals_for")
+    aa_ga = data.get("away_away_avg_goals_against")
+    if hh_gf:
+        exp_h = (exp_h + hh_gf) / 2
+    if aa_gf:
+        exp_a = (exp_a + aa_gf) / 2
+    if hh_ga:
+        exp_a = (exp_a + hh_ga) / 2
+    if aa_ga:
+        exp_h = (exp_h + aa_ga) / 2
+
+    # Shots-on-target proxy for xG
+    h_sot = data.get("home_shots_ontarget_pct")
+    a_sot = data.get("away_shots_ontarget_pct")
+    h_tsh = data.get("home_total_shots_pg")
+    a_tsh = data.get("away_total_shots_pg")
+    if h_sot and h_tsh:
+        # Expected goals ≈ shots_on_target * 0.65 – 0.75 (league average conversion)
+        h_xg_proxy = h_tsh * (h_sot / 100.0) * 0.70
+        exp_h = (exp_h + h_xg_proxy) / 2
+    if a_sot and a_tsh:
+        a_xg_proxy = a_tsh * (a_sot / 100.0) * 0.70
+        exp_a = (exp_a + a_xg_proxy) / 2
+
+    # H2H goal average adjustment
+    h2h_avg = data.get("h2h_avg_total_goals")
+    h2h_m = data.get("h2h_matches", 0) or 0
+    if h2h_avg and h2h_m >= 3:
+        league_avg = profile.get("avg_goals", 2.5)
+        h2h_adj = h2h_avg / league_avg
+        h2h_adj = max(0.8, min(1.2, h2h_adj))  # clamp
+        h2h_adj = 1.0 + (h2h_adj - 1.0) * min(1.0, h2h_m / 6)
+        exp_h *= h2h_adj
+        exp_a *= h2h_adj
 
     # Volatility regression: higher volatility -> regress toward league mean
     vol = profile.get("volatility", 0.1)
@@ -513,9 +653,17 @@ def prob_over(exp_h: float, exp_a: float, threshold: float) -> float:
     return 1.0 - poisson_cdf(total, int(threshold))
 
 
-def prob_btts(exp_h: float, exp_a: float) -> float:
-    """P(Both teams score)."""
-    return (1.0 - poisson_prob(exp_h, 0)) * (1.0 - poisson_prob(exp_a, 0))
+def prob_btts(exp_h: float, exp_a: float, rho: float = 0.0) -> float:
+    """P(Both teams score), with optional Dixon-Coles goal correlation adjustment.
+    When rho < 0 (typical -0.12), reduces BTTS probability because low-scoring
+    draws are less likely than independent Poisson suggests."""
+    import math
+    p_h_scores = 1.0 - math.exp(-exp_h)
+    p_a_scores = 1.0 - math.exp(-exp_a)
+    if rho < 0:
+        p_both_zero = math.exp(-exp_h - exp_a)
+        return p_h_scores * p_a_scores + rho * p_both_zero
+    return p_h_scores * p_a_scores
 
 
 def pick_from_odds(odds: tuple, our_prob: float, label_h: str, label_a: str):
@@ -562,12 +710,21 @@ def conv_label(score: int) -> str:
 
 
 def _load_ml_model():
-    """Lazy-load the trained ML model."""
+    """Lazy-load the trained ML model (auto-trains if needed)."""
     global _ML_MODEL
     if _ML_MODEL is None:
         from ml_model import MLPredictor
-        _ML_MODEL = MLPredictor.load()
+        _ML_MODEL = MLPredictor.load(auto_train=True)
     return _ML_MODEL if _ML_MODEL and _ML_MODEL.is_trained else None
+
+
+def _get_dynamic_weights(league_key: str):
+    """Get dynamic ensemble weights from DB tracking (improvement 3)."""
+    try:
+        from database import get_dynamic_weights
+        return get_dynamic_weights(league=league_key, market="1X2")
+    except Exception:
+        return None
 
 
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
@@ -575,8 +732,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     
     When use_ml=True, replaces the simple Poisson model with the enhanced
     attack/defense strength model and blends with ML probabilities.
+    Uses Dixon-Coles bivariate Poisson for goal correlation (improvement 4).
+    Uses dynamic ensemble weights from DB (improvement 3).
     """
-    profile = get_profile(detect_league(data.get("league", "")))
+    league_key = detect_league(data.get("league", ""))
+    profile = get_profile(league_key)
     reasoning = []
     candidates = []
 
@@ -588,13 +748,17 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     hw_ = data.get("h2h_home_wins", 0) if hm_ >= 3 else 0
     ha_ = data.get("h2h_away_wins", 0) if hm_ >= 3 else 0
 
+    # Auto-calibrate thresholds from DB (improvement 10)
+    _auto_calibrate_thresholds()
+
     # ── ML-enhanced probability computation ──
     ml_model = _load_ml_model() if use_ml else None
+    method_parts = []
 
     if ml_model:
         from ml_model import poisson_predict, ensemble_predict
-        # Use enhanced attack/defense Poisson
-        enhanced = poisson_predict(data, profile)
+        # Use enhanced attack/defense Poisson with Dixon-Coles
+        enhanced = poisson_predict(data, profile, use_dixon_coles=True)
         p_home = enhanced["prob_home"]
         p_draw = enhanced["prob_draw"]
         p_away = enhanced["prob_away"]
@@ -603,35 +767,56 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         exp_h = enhanced["exp_home_goals"]
         exp_a = enhanced["exp_away_goals"]
         exp_total = exp_h + exp_a
+        method_parts.append("dc-poisson")
 
-        # Blend with ML model
-        ensemble = ensemble_predict(data, profile, ml_model)
+        # Get dynamic weights from DB (improvement 3)
+        dynamic_weights = _get_dynamic_weights(league_key)
+
+        # Blend with ML model using dynamic weights
+        ensemble = ensemble_predict(data, profile, ml_model, dynamic_weights=dynamic_weights)
         p_home = ensemble["prob_home"]
         p_draw = ensemble["prob_draw"]
         p_away = ensemble["prob_away"]
         p_over = ensemble["prob_over"]
         p_under = ensemble["prob_under"]
-        # Keep exp goals from enhanced Poisson for display
+        method_parts.append(f"ml({getattr(ml_model, 'cv_accuracy_1x2', 0):.2f})")
+        if dynamic_weights:
+            method_parts.append("dyn-weights")
     else:
-        # Original simple Poisson model
-        exp_h, exp_a = estimate_goals(data, profile)
-        exp_total = exp_h + exp_a
-        p_home = prob_home_win(exp_h, exp_a)
-        p_draw = prob_draw(exp_h, exp_a)
-        p_away = prob_away_win(exp_h, exp_a)
+        # Enhanced Poisson with Dixon-Coles even without ML
+        from ml_model import poisson_predict as ml_poisson_predict
+        try:
+            enhanced = ml_poisson_predict(data, profile, use_dixon_coles=True)
+            p_home = enhanced["prob_home"]
+            p_draw = enhanced["prob_draw"]
+            p_away = enhanced["prob_away"]
+            p_over = enhanced["prob_over"]
+            p_under = enhanced["prob_under"]
+            exp_h = enhanced["exp_home_goals"]
+            exp_a = enhanced["exp_away_goals"]
+            exp_total = exp_h + exp_a
+            method_parts.append("dc-poisson")
+        except Exception:
+            # Original simple Poisson model
+            exp_h, exp_a = estimate_goals(data, profile)
+            exp_total = exp_h + exp_a
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
 
-        # Draw inflation
-        draw_rate = profile.get("draw_rate", 0.25)
-        draw_boost = 0.07 if exp_total < 2.5 else 0.04
-        if draw_rate >= 0.32:
-            draw_boost += 0.04
-        p_draw += draw_boost
+            # Draw inflation
+            draw_rate = profile.get("draw_rate", 0.25)
+            draw_boost = 0.07 if exp_total < 2.5 else 0.04
+            if draw_rate >= 0.32:
+                draw_boost += 0.04
+            p_draw += draw_boost
 
-        # Re-normalize
-        total_p = p_home + p_draw + p_away
-        p_home /= total_p
-        p_draw /= total_p
-        p_away /= total_p
+            # Re-normalize
+            total_p = p_home + p_draw + p_away
+            p_home /= total_p
+            p_draw /= total_p
+            p_away /= total_p
+            method_parts.append("simple-poisson")
 
     # ── Odds-based value infrastructure ──
     odds_h = data.get("odds_home")
@@ -707,21 +892,33 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     best_12_conf = "Low"
     best_12_reason = ""
 
+    # Use calibrated thresholds (improvement 10)
+    nc_thresh = CALIBRATED_THRESHOLDS["near_certain"]
+    hi_thresh = CALIBRATED_THRESHOLDS["high"]
+    hi_margin = CALIBRATED_THRESHOLDS["high_margin"]
+    mh_thresh = CALIBRATED_THRESHOLDS["medium_high"]
+    mh_margin = CALIBRATED_THRESHOLDS["medium_high_margin"]
+    med_thresh = CALIBRATED_THRESHOLDS["medium"]
+    med_margin = CALIBRATED_THRESHOLDS["medium_margin"]
+
     # Draws are harder to predict — use tighter thresholds
     if top_pick == "Draw":
-        if top_prob >= 0.36 and margin >= 0.04:
+        draw_mh = CALIBRATED_THRESHOLDS["draw_medium_high"]
+        draw_mh_margin = CALIBRATED_THRESHOLDS["draw_medium_high_margin"]
+        draw_med = CALIBRATED_THRESHOLDS["draw_medium"]
+        if top_prob >= draw_mh and margin >= draw_mh_margin:
             best_12_conf = "Medium-High"
-        elif top_prob >= 0.33:
+        elif top_prob >= draw_med:
             best_12_conf = "Medium"
     else:
-        # Tightened thresholds for Home/Away win
-        if top_prob >= 0.58:
+        # Calibrated thresholds for Home/Away win
+        if top_prob >= nc_thresh:
             best_12_conf = "Near Certain"
-        elif top_prob >= 0.50:
-            best_12_conf = "High" if margin >= 0.10 else "Medium-High"
-        elif top_prob >= 0.42:
-            best_12_conf = "Medium-High" if margin >= 0.06 else "Medium"
-        elif top_prob >= 0.38 and margin >= 0.04:
+        elif top_prob >= hi_thresh:
+            best_12_conf = "High" if margin >= hi_margin else "Medium-High"
+        elif top_prob >= mh_thresh:
+            best_12_conf = "Medium-High" if margin >= mh_margin else "Medium"
+        elif top_prob >= med_thresh and margin >= med_margin:
             best_12_conf = "Medium"
 
     # Volatility Capping: Reduce confidence for volatile leagues
@@ -770,33 +967,42 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 "_always_show": True,
             })
 
-    # ── Draw No Bet (derived from 1X2) — stricter after calibration ──
+    # ── Draw No Bet (derived from 1X2) — volatility-gated ──
+    # Skip DNB entirely in very high volatility (unpredictable leagues)
     dnb_home_conf = "Low"
     dnb_away_conf = "Low"
-    if p_home > p_away + 0.08:
-        if top_prob >= 0.55 and best_12_conf in ("Near Certain", "High"):
-            dnb_home_conf = best_12_conf
-        elif top_prob >= 0.50:
-            dnb_home_conf = "Medium-High"
-        elif top_prob >= 0.46:
-            dnb_home_conf = "Medium"
-    elif p_away > p_home + 0.10:  # Away DNB needs bigger margin
-        if top_prob >= 0.58 and best_12_conf in ("Near Certain", "High"):
-            dnb_away_conf = best_12_conf
-        elif top_prob >= 0.52:
-            dnb_away_conf = "Medium-High"
-        elif top_prob >= 0.48:
-            dnb_away_conf = "Medium"
+    if vol < 0.25:
+        if p_home > p_away + 0.08:
+            if top_prob >= 0.55 and best_12_conf in ("Near Certain", "High"):
+                dnb_home_conf = best_12_conf
+            elif top_prob >= 0.50:
+                dnb_home_conf = "Medium-High"
+            elif top_prob >= 0.46:
+                dnb_home_conf = "Medium"
+        elif p_away > p_home + 0.10:  # Away DNB needs bigger margin
+            if top_prob >= 0.58 and best_12_conf in ("Near Certain", "High"):
+                dnb_away_conf = best_12_conf
+            elif top_prob >= 0.52:
+                dnb_away_conf = "Medium-High"
+            elif top_prob >= 0.48:
+                dnb_away_conf = "Medium"
 
-    # Volatility capping for DNB too
-    if vol >= 0.25:
+    # Volatility capping for DNB
+    if vol >= 0.20:
         if dnb_home_conf in ("Near Certain", "High"): dnb_home_conf = "Medium-High"
-        if dnb_away_conf in ("Near Certain", "High"): dnb_away_conf = "Medium-High"
-        if dnb_away_conf == "Medium-High": dnb_away_conf = "Medium"
+        if dnb_away_conf != "Low": dnb_away_conf = "Medium"  # Skip away DNB in moderate-high vol
     elif vol >= 0.15:
         if dnb_home_conf == "Near Certain": dnb_home_conf = "High"
         if dnb_away_conf == "Near Certain": dnb_away_conf = "High"
-        if dnb_away_conf == "Medium-High": dnb_away_conf = "Medium"  # Away penalty
+        if dnb_away_conf == "Medium-High": dnb_away_conf = "Medium"
+
+    # DNB-specific odds floor: require minimum odds for any DNB pick
+    dnb_odds_home = data.get("odds_home")
+    dnb_odds_away = data.get("odds_away")
+    if dnb_home_conf != "Low" and dnb_odds_home and dnb_odds_home < 1.40:
+        dnb_home_conf = "Low"
+    if dnb_away_conf != "Low" and dnb_odds_away and dnb_odds_away < 1.45:
+        dnb_away_conf = "Low"
 
     dnb_denom_h = p_home + p_draw
     dnb_denom_a = p_away + p_draw
@@ -856,9 +1062,10 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         elif vol >= 0.15 and ou_conf == "Near Certain":
             ou_conf = "High"
 
-        # Cap O/U 1.5 — market odds are typically very low, never Near Certain
-        if thresh == 1.5 and ou_conf == "Near Certain":
-            ou_conf = "High"
+        # Cap O/U 1.5 — too many 1-0/0-0 results even with high exp goals
+        if thresh == 1.5:
+            if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium-High"]:
+                ou_conf = "Medium-High"
 
         # Calibration: O1.5 needs sufficient expected goals to be reliable
         if thresh == 1.5 and "Over" in ou_pick:
@@ -880,28 +1087,78 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if vol >= 0.25: ou_conf = "Medium-High"
             ou_val = max(ou_val, 0.3)
 
+        # Forebet O/U % cross-check — adjust confidence when Forebet disagrees
+        if thresh == 1.5:
+            fb_over = data.get("forebet_over25_pct")  # Forebet gives O25 not O15
+            fb_under = data.get("forebet_under25_pct")
+        else:
+            # Use venue-specific O/U % from stats section as Forebet-style signal
+            fb_over = data.get(f"{'home' if 'Over' in ou_pick else 'away'}_over{int(thresh)}_pct")
+            fb_under = data.get(f"{'home' if 'Under' in ou_pick else 'away'}_under{int(thresh)}_pct")
+        fb_ou_diff = 0.0
+        if fb_over is not None and fb_under is not None:
+            fb_ou_diff = (fb_over - fb_under) / 100.0 if "Over" in ou_pick else (fb_under - fb_over) / 100.0
+            # If Forebet is neutral (40-60 range), cap our confidence
+            if abs(fb_ou_diff) < 0.15 and ou_conf in ("Near Certain", "High"):
+                ou_conf = "Medium-High"
+            # If Forebet strongly agrees (>20% edge), boost
+            if fb_ou_diff > 0.20 and ou_conf == "Medium":
+                ou_conf = "Medium-High"
+
+        # Venue-specific O/U % cross-check
+        home_ou_pct = data.get(f"home_over{int(thresh)}_pct")
+        away_ou_pct = data.get(f"away_over{int(thresh)}_pct")
+        if home_ou_pct is not None and away_ou_pct is not None:
+            combined_ou_avg = (home_ou_pct + away_ou_pct) / 2.0
+            if "Over" in ou_pick and combined_ou_avg < 40:
+                if CONF_RANK.get(ou_conf, 99) > CONF_RANK["Medium"]:
+                    ou_conf = "Medium"
+            elif "Under" in ou_pick and combined_ou_avg > 60:
+                if CONF_RANK.get(ou_conf, 99) > CONF_RANK["Medium"]:
+                    ou_conf = "Medium"
+
         if ou_conf != "Low":
             ou_reason = f"exp goals {exp_total:.1f} model {p_o:.0%}o/{p_u:.0%}u"
+            # Append Forebet agreement indicator
+            if fb_over is not None and abs(fb_ou_diff) >= 0.15:
+                ou_reason += f" fb{'✓' if fb_ou_diff > 0 else '✗'}"
             add("O/U", ou_pick, ou_conf, ou_reason,
                 model_prob=p_o if "Over" in ou_pick else p_u)
 
-    # ── BTTS (model-driven) ──
-    p_btss = prob_btts(exp_h, exp_a)
+    # ── BTTS (model-driven, with Dixon-Coles correlation) ──
+    dc_rho = profile.get("dixon_coles_rho", -0.12)
+    p_btss = prob_btts(exp_h, exp_a, rho=dc_rho)
     p_btn = 1.0 - p_btss
 
     value_yes = p_btss - 0.5
     value_no = p_btn - 0.5
 
-    if value_yes > 0.08 and value_yes >= value_no:
+    # Forebet BTTS cross-check
+    fb_btts_yes = data.get("home_btts_yes_pct")
+    fb_btts_no = data.get("home_btts_no_pct")
+
+    # Higher threshold for YES (was 0.08) to reduce false positives
+    if value_yes > 0.10 and value_yes >= value_no:
         btss_conf = conv_label(50 + int(value_yes * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        add("BTTS", "Yes", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n", model_prob=p_btss)
-    elif value_no > 0.06:
+        if profile.get("avg_goals", 2.8) < 2.5 and btss_conf in ("Near Certain", "High"):
+            btss_conf = "Medium-High"
+        # Forebet cross-check: if stats show low BTTS %, cap confidence
+        if fb_btts_yes is not None and fb_btts_yes < 40 and btss_conf in ("Near Certain", "High"):
+            btss_conf = "Medium-High"
+        btss_reason = f"model {p_btss:.0%}y/{p_btn:.0%}n"
+        if fb_btts_yes:
+            btss_reason += f" fb{fb_btts_yes}%"
+        add("BTTS", "Yes", btss_conf, btss_reason, model_prob=p_btss)
+    elif value_no > 0.08:
         btss_conf = conv_label(50 + int(value_no * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        add("BTTS", "No", btss_conf, f"model {p_btss:.0%}y/{p_btn:.0%}n", model_prob=p_btn)
+        btss_reason = f"model {p_btss:.0%}y/{p_btn:.0%}n"
+        if fb_btts_no:
+            btss_reason += f" fb{fb_btts_no}%"
+        add("BTTS", "No", btss_conf, btss_reason, model_prob=p_btn)
 
     # ── Rank candidates and pick primary ──
     candidates.sort(key=lambda c: (
@@ -931,6 +1188,63 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         star = "★" if c == primary else " "
         picks_summary.append(f"{star}{c['market']}: {c['pick']} ({c['confidence']})")
 
+    # ── Data quality warnings ──
+    hf = data.get("home_form", "") or ""
+    af = data.get("away_form", "") or ""
+    hf_len = sum(1 for c in hf if c in "WDL")
+    af_len = sum(1 for c in af if c in "WDL")
+    hm = data.get("h2h_matches", 0) or 0
+    h2h_avg = data.get("h2h_avg_total_goals") or 0
+    h_gf = data.get("home_avg_goals_for")
+    a_gf = data.get("away_avg_goals_for")
+    warnings = []
+    if hf_len < 3:
+        warnings.append(f"Home form: only {hf_len} games")
+    if af_len < 3:
+        warnings.append(f"Away form: only {af_len} games")
+    if hm < 3:
+        warnings.append(f"H2H: only {hm} meetings")
+    elif h2h_avg and h2h_avg < 1.5:
+        warnings.append(f"H2H avg {h2h_avg:.1f} goals — low scoring history")
+    elif h2h_avg and h2h_avg > 4.5:
+        warnings.append(f"H2H avg {h2h_avg:.1f} goals — high scoring history")
+    if not h_gf or not a_gf:
+        warnings.append("No attack/defense data")
+    if vol >= 0.25:
+        warnings.append(f"High volatility ({vol:.2f})")
+    if not data.get("home_pos") or not data.get("away_pos"):
+        warnings.append("No league position data")
+
+    # New stat-based warnings
+    hh_gf = data.get("home_home_avg_goals_for")
+    aa_gf = data.get("away_away_avg_goals_for")
+    if hh_gf is None:
+        warnings.append("No home-venue attack data")
+    if aa_gf is None:
+        warnings.append("No away-venue attack data")
+    h_ou15 = data.get("home_over15_pct")
+    a_ou15 = data.get("away_over15_pct")
+    if h_ou15 is not None and a_ou15 is not None:
+        avg_ou15 = (h_ou15 + a_ou15) / 2.0
+        if avg_ou15 > 80:
+            warnings.append(f"Very high O15 ({avg_ou15:.0f}%)")
+        elif avg_ou15 < 30:
+            warnings.append(f"Very low O15 ({avg_ou15:.0f}%)")
+    h_sot = data.get("home_shots_ontarget_pct")
+    if h_sot is None:
+        warnings.append("No shots data")
+
+    # ── Kelly Criterion stake sizing (improvement 9) ──
+    kelly_stake = 0.0
+    model_prob = primary.get("model_prob")
+    implied_prob = primary.get("implied_prob")
+    odds_val = _pick_odds(primary["market"], primary["pick"])
+    if model_prob and implied_prob and implied_prob > 0 and odds_val and odds_val > 1.0:
+        edge = (model_prob / implied_prob) - 1.0
+        if edge > 0:
+            kelly_fraction = edge / (odds_val - 1) if odds_val > 1 else 0
+            kelly_stake = round(min(kelly_fraction * 0.25, 0.05), 4)  # Quarter-Kelly, max 5%
+
     return {
         "pick": primary["pick"],
         "market": primary["market"],
@@ -942,6 +1256,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "supporting_markets": [],
         "_exp_goals": (exp_h, exp_a),
         "_volatility": vol,
+        "_method": "+".join(method_parts) if method_parts else "unknown",
+        "_kelly_stake": kelly_stake,
+        "_model_prob": model_prob,
+        "_implied_prob": implied_prob,
+        "_odds": odds_val,
+        "_poisson_probs": (p_home, p_draw, p_away),
+        "_warnings": warnings,
     }
 
 
@@ -954,8 +1275,154 @@ def log(msg, end="\n"):
     print(msg, end=end, file=sys.stderr, flush=True)
 
 
+def _write_html(results, all_urls, compare_forebet, high_only):
+    """Generate an HTML report of predictions."""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    filtered = [r for r in results if r["confidence"] in ("Near Certain", "High")] if high_only else results
+
+    conf_counts = {}
+    for r in filtered:
+        conf_counts[r["confidence"]] = conf_counts.get(r["confidence"], 0) + 1
+
+    agreements = 0
+    total_fb = 0
+    if compare_forebet:
+        for r in filtered:
+            if r.get("forebet"):
+                picks_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
+                our_12 = picks_12[0]["pick"] if picks_12 else r["pick"]
+                fb_val = {"Home win": "1", "Draw": "X", "Away win": "2"}.get(our_12, "")
+                if fb_val and r["forebet"] == fb_val:
+                    agreements += 1
+                total_fb += 1
+
+    def _c(val):
+        m = {"Near Certain": "#22c55e", "High": "#3b82f6", "Medium-High": "#eab308", "Medium": "#f97316", "Low": "#ef4444"}
+        return m.get(val, "#888")
+
+    def _star(conf):
+        return {3: "★★★", 2: "★★☆", 1: "★☆☆"}.get({"Near Certain": 3, "High": 2, "Medium-High": 1}.get(conf, 0), "")
+
+    def _venue_stats_html(r):
+        parts = []
+        hh_gf = r.get("home_home_avg_goals_for")
+        hh_ga = r.get("home_home_avg_goals_against")
+        if hh_gf is not None:
+            parts.append(f"Home(H): {hh_gf:.1f}GF/{hh_ga:.1f}GA")
+        aa_gf = r.get("away_away_avg_goals_for")
+        aa_ga = r.get("away_away_avg_goals_against")
+        if aa_gf is not None:
+            parts.append(f"Away(A): {aa_gf:.1f}GF/{aa_ga:.1f}GA")
+        ou15 = r.get("home_over15_pct")
+        if ou15 is not None:
+            parts.append(f"O15: {ou15}%")
+        btts_h = r.get("home_btts_yes_pct")
+        if btts_h is not None:
+            parts.append(f"BTTS: {btts_h}%")
+        sot_h = r.get("home_shots_ontarget_pct")
+        ts_h = r.get("home_total_shots_pg")
+        if sot_h is not None and ts_h is not None:
+            sot_est = round(ts_h * (sot_h / 100.0) * 0.70, 1)
+            parts.append(f"SoT: {sot_h}% ({sot_est:.1f} xG)")
+        cs_h = r.get("home_clean_sheets_pct")
+        if cs_h is not None:
+            parts.append(f"CS: {cs_h}%")
+        if parts:
+            return '<p class="venue-stats">' + " &middot; ".join(parts) + "</p>"
+        return ""
+
+    rows = []
+    for r in filtered:
+        eh, ea = r.get("_exp_goals", (None, None))
+        exp_str = f"{eh:.1f}-{ea:.1f}" if eh is not None else "—"
+        hf = r.get("home_form", "")
+        af = r.get("away_form", "")
+        picks_rows = ""
+        for p in r.get("all_picks") or []:
+            mp = p.get("model_prob")
+            mp_s = f"{mp:.0%}" if mp else ""
+            vr = p.get("value_ratio")
+            vr_s = f" ({vr:.2f})" if vr else ""
+            picks_rows += f"<tr><td>{p['market']}</td><td>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td></tr>\n"
+
+        reason_html = ""
+        if r.get("reasoning"):
+            for reason in r["reasoning"][:4]:
+                reason_html += f"<li>{reason}</li>\n"
+            reason_html = f"<details><summary>Reasoning</summary><ul>{reason_html}</ul></details>"
+
+        kelly_tag = f" &middot; Kelly: {r.get('kelly_stake', 0)*100:.1f}%" if r.get('kelly_stake', 0) > 0 else ""
+        method_tag = f" &middot; {r.get('method', '')}" if r.get('method') else ""
+
+        rows.append(f"""<div class="card" style="border-left: 4px solid {_c(r['confidence'])};">
+<div class="card-header">
+  <span class="teams">{r['home']} vs {r['away']}</span>
+  <span class="conf-badge" style="background:{_c(r['confidence'])}">{_star(r['confidence'])} {r['confidence']}</span>
+</div>
+<div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
+<div class="card-body">
+  <div class="pick-line"><strong>{r['pick']}</strong> ({r['market']}) &middot; Score lean: {r['score_lean'] or '—'} &middot; Exp: {exp_str}{kelly_tag}</div>
+  <table>
+    <tr><th>Home</th><td>Pos {r.get('home_pos', '—')}</td><td>Form {hf or '—'}</td><td>{r.get('odds_home', '—')}</td></tr>
+    <tr><th>Draw</th><td></td><td></td><td>{r.get('odds_draw', '—')}</td></tr>
+    <tr><th>Away</th><td>Pos {r.get('away_pos', '—')}</td><td>Form {af or '—'}</td><td>{r.get('odds_away', '—')}</td></tr>
+  </table>
+  <table><tr><th>O/U 2.5</th><td>{r.get('odds_over25', '—')}/{r.get('odds_under25', '—')}</td><th>BTTS</th><td>{r.get('odds_btts_yes', '—')}/{r.get('odds_btts_no', '—')}</td></tr></table>
+  {"<p>H2H: " + str(r.get('h2h_home_wins', 0)) + "W-" + str(r.get('h2h_draws', 0)) + "D-" + str(r.get('h2h_away_wins', 0)) + "L &ndash; GF/GA: " + str(r.get('h2h_goals_for', 0)) + "/" + str(r.get('h2h_goals_against', 0)) + " &ndash; avg " + str(r.get('h2h_avg_total_goals', 0)) + " goals (" + str(r.get('h2h_matches', 0)) + " matches)</p>" if r.get('h2h_matches', 0) >= 3 else ""}
+  {_venue_stats_html(r)}
+  {reason_html}
+  {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th></tr>" + picks_rows + "</table>") if picks_rows else ""}
+</div>
+</div>""")
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Predictions — {now}</title>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; padding:20px; }}
+h1 {{ font-size:1.4rem; margin-bottom:4px; }}
+.sub {{ color:#94a3b8; font-size:0.85rem; margin-bottom:20px; }}
+.stats {{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px; }}
+.stat {{ background:#1e293b; padding:10px 16px; border-radius:8px; font-size:0.85rem; }}
+.stat span {{ font-weight:700; font-size:1.1rem; }}
+.card {{ background:#1e293b; border-radius:8px; padding:16px; margin-bottom:12px; }}
+.card-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }}
+.teams {{ font-size:1.1rem; font-weight:700; }}
+.conf-badge {{ font-size:0.75rem; padding:2px 8px; border-radius:4px; color:#fff; font-weight:600; }}
+.card-meta {{ color:#94a3b8; font-size:0.8rem; margin-bottom:10px; }}
+.card-body {{ font-size:0.85rem; line-height:1.6; }}
+.pick-line {{ font-size:1rem; margin-bottom:8px; }}
+table {{ width:100%; border-collapse:collapse; margin:6px 0; }}
+th, td {{ text-align:left; padding:2px 8px 2px 0; }}
+th {{ color:#94a3b8; font-weight:500; width:60px; }}
+details {{ margin-top:6px; }}
+summary {{ cursor:pointer; color:#60a5fa; font-weight:500; }}
+ul {{ margin:4px 0 0 18px; color:#94a3b8; }}
+a {{ color:#60a5fa; }}
+</style>
+</head>
+<body>
+<h1>⚽ Predictions Report</h1>
+<p class="sub">Generated {now} &middot; {len(filtered)} picks ({(len(filtered)/len(all_urls)*100) if filtered else 0:.0f}% pick rate)</p>
+<div class="stats">
+<div class="stat">Total <span>{len(filtered)}</span></div>
+{"".join(f'<div class="stat" style="border-left:3px solid {_c(c)}">{c} <span style="color:{_c(c)}">{n}</span></div>' for c, n in conf_counts.items())}
+{f'<div class="stat">Forebet 1X2 agreement <span>{agreements}/{total_fb} ({100*agreements//total_fb if total_fb else 0}%)</span></div>' if compare_forebet and total_fb else ""}
+</div>
+{"".join(rows)}
+</body>
+</html>"""
+    path = Path("predictions.html")
+    path.write_text(html)
+    log(f"HTML report: {path.resolve()}")
+
+
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
-                            high_only: bool = False, json_out: bool = False,
+                            high_only: bool = False, json_out: bool = False, html_out: bool = False,
                             compare_forebet: bool = True,
                             use_ml: bool = False):
     """Read Forebet links, scrape, analyze, store, and output predictions."""
@@ -985,12 +1452,49 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # Analyze
         pred = analyze_from_data(data, use_ml=use_ml)
 
+        # ── Minimum odds check for primary pick (improvement 12) ──
+        min_odds = 1.10
+        if pred["confidence"] == "Near Certain":
+            min_odds = 1.08
+        elif pred["confidence"] == "High":
+            min_odds = 1.15
+        elif pred["confidence"] == "Medium-High":
+            min_odds = 1.25
+        elif pred["confidence"] == "Medium":
+            min_odds = 1.50
+
+        # Get the pick's odds and skip if too low
+        pick = pred.get("pick", "")
+        market = pred.get("market", "")
+        pick_odds_val = None
+        if market == "1X2":
+            pick_odds_val = {"Home win": data.get("odds_home"), "Draw": data.get("odds_draw"), "Away win": data.get("odds_away")}.get(pick)
+        elif market == "O/U":
+            if "Over" in pick:
+                pick_odds_val = data.get("odds_over25")
+            elif "Under" in pick:
+                pick_odds_val = data.get("odds_under25")
+
+        if pick_odds_val and pick_odds_val <= min_odds:
+            # Downgrade confidence — market too short for meaningful value
+            conf_rank = CONF_RANK.get(pred["confidence"], 99)
+            if conf_rank < CONF_RANK["Medium-High"]:
+                pred["confidence"] = "Medium-High"
+                log(f"  [odds] Downgraded {pick} (odds {pick_odds_val:.2f} < min {min_odds:.2f})")
+
         # Store in DB (map analysis keys to DB column names)
+        poisson_probs = pred.get("_poisson_probs", (None, None, None))
         db_data = {
             **data,
             "our_prediction": pred["pick"],
             "our_confidence": pred["confidence"],
             "our_score_lean": pred["score_lean"],
+            "our_stake": pred.get("_kelly_stake", 0.0),
+            "our_market": pred.get("market", ""),
+            "method_used": pred.get("_method", ""),
+            "poisson_prob_home": poisson_probs[0] if poisson_probs else None,
+            "poisson_prob_draw": poisson_probs[1] if poisson_probs else None,
+            "poisson_prob_away": poisson_probs[2] if poisson_probs else None,
         }
         match_id = save_prediction(db_data)
 
@@ -1023,12 +1527,54 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "h2h_home_wins": data.get("h2h_home_wins", 0),
             "h2h_draws": data.get("h2h_draws", 0),
             "h2h_away_wins": data.get("h2h_away_wins", 0),
+            "h2h_goals_for": data.get("h2h_goals_for", 0),
+            "h2h_goals_against": data.get("h2h_goals_against", 0),
+            "h2h_avg_total_goals": data.get("h2h_avg_total_goals", 0),
+            "home_home_avg_goals_for": data.get("home_home_avg_goals_for"),
+            "home_home_avg_goals_against": data.get("home_home_avg_goals_against"),
+            "away_away_avg_goals_for": data.get("away_away_avg_goals_for"),
+            "away_away_avg_goals_against": data.get("away_away_avg_goals_against"),
+            "home_over15_pct": data.get("home_over15_pct"),
+            "home_under15_pct": data.get("home_under15_pct"),
+            "away_over15_pct": data.get("away_over15_pct"),
+            "away_under15_pct": data.get("away_under15_pct"),
+            "home_over25_pct": data.get("home_over25_pct"),
+            "home_under25_pct": data.get("home_under25_pct"),
+            "away_over25_pct": data.get("away_over25_pct"),
+            "away_under25_pct": data.get("away_under25_pct"),
+            "home_over35_pct": data.get("home_over35_pct"),
+            "home_under35_pct": data.get("home_under35_pct"),
+            "away_over35_pct": data.get("away_over35_pct"),
+            "away_under35_pct": data.get("away_under35_pct"),
+            "home_btts_yes_pct": data.get("home_btts_yes_pct"),
+            "home_btts_no_pct": data.get("home_btts_no_pct"),
+            "away_btts_yes_pct": data.get("away_btts_yes_pct"),
+            "away_btts_no_pct": data.get("away_btts_no_pct"),
+            "home_scored_pct": data.get("home_scored_pct"),
+            "home_conceded_pct": data.get("home_conceded_pct"),
+            "away_scored_pct": data.get("away_scored_pct"),
+            "away_conceded_pct": data.get("away_conceded_pct"),
+            "home_total_shots_pg": data.get("home_total_shots_pg"),
+            "home_shots_ontarget_pct": data.get("home_shots_ontarget_pct"),
+            "away_total_shots_pg": data.get("away_total_shots_pg"),
+            "away_shots_ontarget_pct": data.get("away_shots_ontarget_pct"),
+            "home_clean_sheets_pct": data.get("home_clean_sheets_pct"),
+            "away_clean_sheets_pct": data.get("away_clean_sheets_pct"),
             "match_id": match_id,
+            # New fields
+            "method": pred.get("_method", ""),
+            "kelly_stake": pred.get("_kelly_stake", 0),
+            "pick_odds": pred.get("_odds"),
         })
 
     # ── Output ──
     if json_out:
         json.dump(results, indent=2, ensure_ascii=False, fp=sys.stdout)
+        return
+
+    # ── HTML output ──
+    if html_out:
+        _write_html(results, match_urls, compare_forebet, high_only)
         return
 
     # Filter by confidence
@@ -1037,11 +1583,45 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
 
     # Print
     preds_made = 0
+
+    ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+
+    def visible_len(text: str) -> int:
+        clean = ANSI_ESCAPE.sub('', text)
+        extra_width = 0
+        for char in clean:
+            cp = ord(char)
+            if cp >= 0x2600 and cp <= 0x27BF:
+                extra_width += 1
+        return len(clean) + extra_width
+
+    def pad_visible(text: str, width: int, char: str = " ") -> str:
+        """Pad a string to a given visible width, taking ANSI escapes into account."""
+        v_len = visible_len(text)
+        needed = max(0, width - v_len)
+        return text + (char * needed)
+
+    def color_form(form_str: str) -> str:
+        """Color form string: W=green, D=yellow, L=red."""
+        if not form_str or form_str == "—":
+            return "\033[38;5;244m—\033[0m"
+        res = []
+        for char in form_str:
+            if char == 'W':
+                res.append("\033[1;32mW\033[0m")
+            elif char == 'D':
+                res.append("\033[1;33mD\033[0m")
+            elif char == 'L':
+                res.append("\033[1;31mL\033[0m")
+            else:
+                res.append(char)
+        return "".join(res)
+
     for r in results:
         preds_made += 1
         print()
 
-        W = 68
+        W = 80
         C = W - 4  # content width between borders
 
         # Color setup
@@ -1051,13 +1631,14 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         reset = "\033[0m"
 
         def box(content):
-            return f"\033[38;5;244m│\033[0m {content:<{C}} \033[38;5;244m│\033[0m"
+            padded = pad_visible(content, C)
+            return f"\033[38;5;244m│\033[0m {padded} \033[38;5;244m│\033[0m"
         def hline(char="─"):
             return f"\033[38;5;244m├{char * C}┤\033[0m"
         def top():
-            return f"\033[38;5;244m┌{'─' * C}┐\033[0m"
+            return f"\033[38;5;244m╭{'─' * C}╮\033[0m"
         def bottom():
-            return f"\033[38;5;244m└{'─' * C}┘\033[0m"
+            return f"\033[38;5;244m╰{'─' * C}╯\033[0m"
 
         # ── HEADER ──
         print(top())
@@ -1065,14 +1646,14 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # Volatility badge
         vol_val = r.get('_volatility', 0)
         if vol_val >= 0.25:
-            vol_tag = f" \033[91m⚡VOL\033[0m"
+            vol_tag = f"\033[1;31m⚡VOL\033[0m"
         elif vol_val >= 0.15:
-            vol_tag = f" \033[93m⚡vol\033[0m"
+            vol_tag = f"\033[1;33m⚡vol\033[0m"
         else:
-            vol_tag = f" \033[92m---\033[0m"
+            vol_tag = f"\033[38;5;244m⚡std\033[0m"
 
-        print(box(f" {r['home']} vs {r['away']} "))
-        print(box(f" {r.get('league', '')}{vol_tag}  |  {r.get('date', '')} "))
+        print(box(f" \033[1m⚽ {r['home']} vs {r['away']}\033[0m "))
+        print(box(f" \033[38;5;248m{r.get('league', '')}\033[0m  •  {vol_tag}  •  \033[38;5;248m{r.get('date', '')}\033[0m "))
         print(hline())
 
         # ── FORM + STANDINGS ──
@@ -1082,32 +1663,81 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         h_ppg = _ppg(hf) if sum(1 for c in hf if c in 'WDL') >= 3 else None
         a_ppg = _ppg(af) if sum(1 for c in af if c in 'WDL') >= 3 else None
 
-        home_line = f"Home: pos {r.get('home_pos', '—')}  Form: {hf or '—'}"
+        h_pos = r.get('home_pos', '—')
+        a_pos = r.get('away_pos', '—')
+        h_pos_str = f"#{h_pos}" if h_pos and h_pos != '—' else "—"
+        a_pos_str = f"#{a_pos}" if a_pos and a_pos != '—' else "—"
+
+        home_line = f" \033[38;5;248mHome:\033[0m \033[1m{h_pos_str:<3s}\033[0m  \033[38;5;248mForm:\033[0m {color_form(hf)}"
         if h_ppg:
-            home_line += f"  ({h_ppg:.1f} ppg)"
-        away_line = f"Away: pos {r.get('away_pos', '—')}  Form: {af or '—'}"
+            home_line += f"  \033[38;5;244m({h_ppg:.1f} ppg)\033[0m"
+        away_line = f" \033[38;5;248mAway:\033[0m \033[1m{a_pos_str:<3s}\033[0m  \033[38;5;248mForm:\033[0m {color_form(af)}"
         if a_ppg:
-            away_line += f"  ({a_ppg:.1f} ppg)"
+            away_line += f"  \033[38;5;244m({a_ppg:.1f} ppg)\033[0m"
         print(box(home_line))
         print(box(away_line))
         print(hline())
 
         # ── PRIMARY PICK ──
         market_tag = f" ({r['market']})" if r['market'] else ""
-        score_str = f"  Score: {r['score_lean']}" if r['score_lean'] else ""
+        score_str = f"  •  \033[38;5;248mScore:\033[0m \033[1m{r['score_lean']}\033[0m" if r['score_lean'] else ""
         exp_str = ""
         if '_exp_goals' in r and r['_exp_goals']:
             eh, ea = r['_exp_goals']
-            exp_str = f"  Exp: {eh:.1f}-{ea:.1f}"
-        pick_line = f"{color}★ {r['pick']}{market_tag}{reset}  | {conf}{score_str}{exp_str}"
+            exp_str = f"  •  \033[38;5;248mExp:\033[0m \033[1m{eh:.1f}-{ea:.1f}\033[0m"
+        method_str = f"  •  \033[38;5;244m[{r.get('method', '')}]\033[0m" if r.get('method') else ""
+        kelly_str = f"  •  \033[1;32mKelly: {r.get('kelly_stake', 0)*100:.1f}%\033[0m" if r.get('kelly_stake', 0) > 0 else ""
+        
+        pick_part = f"\033[1;33m★\033[0m {color}\033[1m{r['pick']}{market_tag}\033[0m"
+        conf_part = f"\033[1m{color}{conf}\033[0m"
+        
+        pick_line = f" {pick_part}  •  {conf_part}{score_str}{exp_str}{kelly_str}"
         print(box(pick_line))
+
+        # Method line (separate to avoid overflow)
+        if r.get('method'):
+            method_line = f" \033[38;5;244mMethod:\033[0m \033[1m[{r.get('method', '')}]\033[0m"
+            print(box(method_line))
 
         # ── ODDS ──
         nl = lambda v: f"{v:.2f}" if isinstance(v, (int, float)) else str(v) if v else "—"
         odds_12 = f"{nl(r.get('odds_home'))}/{nl(r.get('odds_draw'))}/{nl(r.get('odds_away'))}"
-        odds_ou = f"O/U 2.5: {nl(r.get('odds_over25'))}/{nl(r.get('odds_under25'))}"
-        odds_bt = f"BTTS: {nl(r.get('odds_btts_yes'))}/{nl(r.get('odds_btts_no'))}"
-        print(box(f"1X2: {odds_12}  |  {odds_ou}  |  {odds_bt}"))
+        odds_ou = f"{nl(r.get('odds_over25'))}/{nl(r.get('odds_under25'))}"
+        odds_bt = f"{nl(r.get('odds_btts_yes'))}/{nl(r.get('odds_btts_no'))}"
+        
+        odds_line = (
+            f" \033[38;5;248m1X2:\033[0m \033[1m{odds_12}\033[0m  •  "
+            f"\033[38;5;248mO/U 2.5:\033[0m \033[1m{odds_ou}\033[0m  •  "
+            f"\033[38;5;248mBTTS:\033[0m \033[1m{odds_bt}\033[0m"
+        )
+        print(box(odds_line))
+
+        # ── Venue stats ──
+        _vs_parts = []
+        hh_gf = r.get("home_home_avg_goals_for")
+        hh_ga = r.get("home_home_avg_goals_against")
+        if hh_gf is not None:
+            _vs_parts.append(f"H(H): {hh_gf:.1f}/{hh_ga:.1f}")
+        aa_gf = r.get("away_away_avg_goals_for")
+        aa_ga = r.get("away_away_avg_goals_against")
+        if aa_gf is not None:
+            _vs_parts.append(f"A(A): {aa_gf:.1f}/{aa_ga:.1f}")
+        ou15 = r.get("home_over15_pct")
+        if ou15 is not None:
+            _vs_parts.append(f"O15: {ou15}%")
+        btts_h = r.get("home_btts_yes_pct")
+        if btts_h is not None:
+            _vs_parts.append(f"BTTS: {btts_h}%")
+        sot_h = r.get("home_shots_ontarget_pct")
+        ts_h = r.get("home_total_shots_pg")
+        if sot_h is not None and ts_h is not None:
+            _vs_parts.append(f"SoT: {sot_h}%")
+        cs_h = r.get("home_clean_sheets_pct")
+        if cs_h is not None:
+            _vs_parts.append(f"CS: {cs_h}%")
+        if _vs_parts:
+            vs_line = " \033[38;5;248mVenue:\033[0m " + "  ".join(_vs_parts)
+            print(box(vs_line))
 
         # ── H2H ──
         hm = r.get('h2h_matches', 0)
@@ -1115,7 +1745,14 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             hw = r.get('h2h_home_wins', 0)
             hd = r.get('h2h_draws', 0)
             ha = r.get('h2h_away_wins', 0)
-            print(box(f"H2H: {hw}W-{hd}D-{ha}L  ({hm} matches)"))
+            h2h_gf = r.get('h2h_goals_for', 0)
+            h2h_ga = r.get('h2h_goals_against', 0)
+            h2h_avg = r.get('h2h_avg_total_goals', 0)
+            h2h_line = (
+                f" \033[38;5;248mH2H:\033[0m \033[1m{hw}W-{hd}D-{ha}L\033[0m  "
+                f"\033[38;5;244m({hm} matches, GF/GA: {h2h_gf}/{h2h_ga}, avg {h2h_avg:.1f})\033[0m"
+            )
+            print(box(h2h_line))
         print(hline())
 
         # ── MODEL vs FOREBET (ranked by probability) ──
@@ -1177,8 +1814,22 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 """Truncate long pick names."""
                 return pick[:n] if len(pick) > n else pick
 
-            print(box(" Model Pick       Prob Cnf │ Forebet Pick      Prob"))
-            print(box("─────────────────────────────┼─────────────────────"))
+            conf_colors = {
+                'NC': '\033[1;32mNC\033[0m',
+                'Hi': '\033[1;34mHi\033[0m',
+                'MH': '\033[1;33mMH\033[0m',
+                'Me': '\033[33mMe\033[0m',
+                'Lo': '\033[31mLo\033[0m'
+            }
+
+            header_left = "\033[1;36mModel Pick\033[0m          \033[1;36mProb\033[0m \033[1;36mCn\033[0m  "
+            header_right = "\033[1;35mForebet Pick\033[0m      \033[1;35mProb\033[0m"
+            header_left_padded = pad_visible(header_left, 29)
+            print(box(f" {header_left_padded} │ {header_right}"))
+            
+            divider_line = "\033[38;5;244m─────────────────────────────┼─────────────────────\033[0m"
+            print(box(divider_line))
+
             for idx, p in enumerate(all_picks):
                 if p.get('_always_show'):
                     star = " "
@@ -1191,7 +1842,12 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 pc = {'Near Certain': 'NC', 'High': 'Hi', 'Medium-High': 'MH', 'Medium': 'Me', 'Low': 'Lo'}.get(p['confidence'], '')
                 vr = p.get('value_ratio')
                 vr_str = f" ({vr:.2f})" if vr else ""
-                left = f"{star} {pm:5s} {pp:11s} {mp_str:>4s} {pc:2s}{vr_str}"
+
+                star_styled = f"\033[1;33m★\033[0m" if star == "★" else " "
+                pm_styled = f"\033[38;5;248m{pm:5s}\033[0m"
+                mp_styled = f"\033[1m{mp_str:>4s}\033[0m" if mp_str else "    "
+                pc_styled = conf_colors.get(pc, f"{pc:2s}")
+                vr_styled = f"\033[38;5;244m{vr_str}\033[0m" if vr_str else ""
 
                 # Forebet column
                 fb_pick, fb_pct = _fb_for(pm)
@@ -1200,42 +1856,75 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                         agree = pp.split()[0] == fb_pick
                     else:
                         agree = pp == fb_pick
-                    right = f"{_short(fb_pick, 18):18s} {fb_pct:3.0f}%"
+                    
+                    fb_pick_short = _short(fb_pick, 18)
+                    fb_pct_str = f"{fb_pct:3.0f}%"
+                    
                     if agree:
-                        right = f"{green}{right} ✓{reset}"
-                        left = f"{green}{left}{reset}"
+                        right = f"\033[1;32m{fb_pick_short:18s} {fb_pct_str} ✓\033[0m"
+                        pp_styled = f"\033[1;32m{pp:11s}\033[0m"
+                    else:
+                        right = f"\033[38;5;248m{fb_pick_short:18s}\033[0m \033[1m{fb_pct_str}\033[0m"
+                        pp_styled = f"\033[1m{pp:11s}\033[0m"
                 else:
-                    right = "—"
+                    right = "\033[38;5;244m—\033[0m"
                     agree = False
+                    pp_styled = f"\033[1m{pp:11s}\033[0m"
 
-                print(box(f" {left:29s} │ {right}"))
+                left = f"{star_styled} {pm_styled} {pp_styled} {mp_styled} {pc_styled}{vr_styled}"
+                left_padded = pad_visible(left, 29)
+                print(box(f" {left_padded} │ {right}"))
 
         # ── REASONING ──
         if show_reasoning and r.get('reasoning'):
             for reason in r['reasoning'][:4]:
-                print(box(f" {reason}"))
+                if " — " in reason:
+                    left_part, right_part = reason.split(" — ", 1)
+                    styled_reason = f"\033[1m{left_part}\033[0m \033[38;5;244m— {right_part}\033[0m"
+                else:
+                    styled_reason = f"\033[38;5;244m{reason}\033[0m"
+                print(box(f"  • {styled_reason}"))
+
+        # ── DATA QUALITY WARNINGS ──
+        warnings = r.get('_warnings', [])
+        if warnings:
+            print(box(f" \033[1;33m⚠\033[0m \033[33m{'  •  '.join(warnings)}\033[0m"))
 
         # ── FOOTER ──
         short_url = r['url'][:45] + "..." if len(r['url']) > 48 else r['url']
-        tag = f"\033[38;5;245mID: {r['match_id']}  |  {short_url}\033[0m"
+        tag = f"\033[38;5;244mID: {r['match_id']}  •  {short_url}\033[0m"
         print(box(tag))
         print(bottom())
 
     # Summary
     print()
-    Ws = 68
-    C = Ws - 4
-    print(f"\033[38;5;244m┌{'─' * C}┐\033[0m")
+    Ws = 80
+    Cs = Ws - 4
+    
+    def s_box(content):
+        v_len = visible_len(content)
+        padding = max(0, Cs - v_len)
+        return f"\033[38;5;244m│\033[0m {content}{' ' * padding} \033[38;5;244m│\033[0m"
+
+    print(f"\033[38;5;244m╭{'─' * Cs}╮\033[0m")
+    print(s_box(f"\033[1mSUMMARY STATISTICS\033[0m"))
+    print(f"\033[38;5;244m├{'─' * Cs}┤\033[0m")
+    
     conf_counts = {}
     for r in results:
         conf_counts[r['confidence']] = conf_counts.get(r['confidence'], 0) + 1
-    print(f"\033[38;5;244m│\033[0m Predictions made: {preds_made} ({(len(results)/len(match_urls)*100) if preds_made else 0:.0f}% pick rate)")
+
+    pick_rate = (len(results)/len(match_urls)*100) if preds_made else 0
+    print(s_box(f"Predictions made: \033[1m{preds_made}\033[0m ({pick_rate:.0f}% pick rate)"))
+    
     for c in ["Near Certain", "High", "Medium-High", "Medium", "Low"]:
         if c in conf_counts:
             count = conf_counts[c]
             suffix = "match" if count == 1 else "matches"
-            print(f"\033[38;5;244m│\033[0m   {c}: {count} {suffix}")
-    print(f"\033[38;5;244m│\033[0m")
+            c_color = {"Near Certain": "\033[92m", "High": "\033[94m",
+                       "Medium-High": "\033[93m", "Medium": "\033[93m", "Low": "\033[91m"}.get(c, "")
+            print(s_box(f"  • {c_color}{c}\033[0m: \033[1m{count}\033[0m {suffix}"))
+            
     if compare_forebet:
         agreements = 0
         total_fb = 0
@@ -1249,9 +1938,10 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 total_fb += 1
         if total_fb:
             pct = 100 * agreements // total_fb
-            agree_str = f"✓ {agreements}/{total_fb} ({pct}%)" if pct >= 50 else f"✗ {agreements}/{total_fb} ({pct}%)"
-            print(f"\033[38;5;244m│\033[0m Forebet 1X2 agreement: {agree_str}")
-    print(f"\033[38;5;244m└{'─' * C}┘\033[0m")
+            agree_str = f"\033[1;32m✓ {agreements}/{total_fb} ({pct}%)\033[0m" if pct >= 50 else f"\033[1;31m✗ {agreements}/{total_fb} ({pct}%)\033[0m"
+            print(s_box(f"Forebet 1X2 agreement: {agree_str}"))
+            
+    print(f"\033[38;5;244m╰{'─' * Cs}╯\033[0m")
     print(f"\nSaved to database: history.db")
 
 
@@ -1543,6 +2233,7 @@ Options:
     parser.add_argument("--learn", help="URL of Forebet results page to learn from")
     parser.add_argument("--calibrate", action="store_true", help="Show calibration stats")
     parser.add_argument("--high-only", action="store_true", help="Show only confident picks")
+    parser.add_argument("--html", action="store_true", help="Output as HTML file (predictions.html)")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
     parser.add_argument("--no-compare", action="store_true", help="Skip Forebet comparison")
     parser.add_argument("--no-reasoning", action="store_true", help="Hide reasoning")
@@ -1577,6 +2268,7 @@ Options:
                 show_reasoning=not args.no_reasoning,
                 high_only=args.high_only,
                 json_out=args.json,
+                html_out=args.html,
                 compare_forebet=not args.no_compare,
                 use_ml=not args.no_ml,
             )
@@ -1587,6 +2279,7 @@ Options:
                 show_reasoning=not args.no_reasoning,
                 high_only=args.high_only,
                 json_out=args.json,
+                html_out=args.html,
                 compare_forebet=not args.no_compare,
                 use_ml=not args.no_ml,
             )

@@ -17,12 +17,13 @@ Usage:
 
 import json
 import math
+import os
 import pickle
 import re
 import sqlite3
 import warnings
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -30,7 +31,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, TimeSeriesSplit
 
 warnings.filterwarnings("ignore")
 
@@ -40,8 +41,12 @@ warnings.filterwarnings("ignore")
 BASE = Path(__file__).parent
 MODELS_DIR = BASE / "ml_models"
 DB_PATH = BASE / "history.db"
-GAME_DATA = Path("/home/stdk/game/data/historical_matches_combined.json")
-GAME_MODELS = Path("/home/stdk/game/models")
+GAME_DATA = Path(os.environ.get("GAME_DATA_PATH", "/home/stdk/game/data/historical_matches_combined.json"))
+GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", "/home/stdk/game/models"))
+# Override via env var
+if os.environ.get("ML_MODELS_DIR"):
+    MODELS_DIR = Path(os.environ.get("ML_MODELS_DIR"))
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Feature engineering (borrowed from game/ prediction_model.py)
@@ -223,8 +228,9 @@ class MLPredictor:
         self.accuracy_ou = 0.0
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-    def train(self, X: np.ndarray, y_1x2: np.ndarray, y_ou: np.ndarray):
-        """Train all models."""
+    def train(self, X: np.ndarray, y_1x2: np.ndarray, y_ou: np.ndarray,
+              sample_weights: Optional[np.ndarray] = None):
+        """Train all models with optional sample weights (improvement 5: time decay)."""
         n = len(X)
         if n < 100:
             print(f"Warning: only {n} training examples, need at least 100")
@@ -239,33 +245,51 @@ class MLPredictor:
             n_estimators=200, max_depth=12, min_samples_leaf=10,
             class_weight="balanced", random_state=42, n_jobs=-1,
         )
-        self.rf_model_1x2.fit(X_scaled, y_1x2)
+        self.rf_model_1x2.fit(X_scaled, y_1x2, sample_weight=sample_weights)
 
         print(f"Training GradientBoosting for 1X2 ({n} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
             n_estimators=150, max_depth=6, min_samples_leaf=10,
             learning_rate=0.1, subsample=0.8, random_state=42,
         )
-        self.gb_model_1x2.fit(X_scaled, y_1x2)
+        self.gb_model_1x2.fit(X_scaled, y_1x2, sample_weight=sample_weights)
 
         print(f"Training RandomForest for O/U ({n} examples)...")
         self.rf_model_ou = RandomForestClassifier(
             n_estimators=200, max_depth=10, min_samples_leaf=10,
             class_weight="balanced", random_state=42, n_jobs=-1,
         )
-        self.rf_model_ou.fit(X_scaled, y_ou)
+        self.rf_model_ou.fit(X_scaled, y_ou, sample_weight=sample_weights)
 
         print(f"Training GradientBoosting for O/U ({n} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
             n_estimators=150, max_depth=5, min_samples_leaf=10,
             learning_rate=0.1, subsample=0.8, random_state=42,
         )
-        self.gb_model_ou.fit(X_scaled, y_ou)
+        self.gb_model_ou.fit(X_scaled, y_ou, sample_weight=sample_weights)
 
         self.is_trained = True
         self.training_examples = n
 
-        # Evaluate
+        # Cross-validation accuracy (improvement 2)
+        try:
+            tscv = TimeSeriesSplit(n_splits=3)
+            cv_scores_1x2_rf = cross_val_score(self.rf_model_1x2, X_scaled, y_1x2, cv=tscv, scoring='accuracy')
+            cv_scores_1x2_gb = cross_val_score(self.gb_model_1x2, X_scaled, y_1x2, cv=tscv, scoring='accuracy')
+            cv_scores_ou_rf = cross_val_score(self.rf_model_ou, X_scaled, y_ou, cv=tscv, scoring='accuracy')
+            cv_scores_ou_gb = cross_val_score(self.gb_model_ou, X_scaled, y_ou, cv=tscv, scoring='accuracy')
+            print(f"   CV RF 1X2: {cv_scores_1x2_rf.mean():.3f} (+/-{cv_scores_1x2_rf.std() * 2:.3f})")
+            print(f"   CV GB 1X2: {cv_scores_1x2_gb.mean():.3f} (+/-{cv_scores_1x2_gb.std() * 2:.3f})")
+            print(f"   CV RF O/U: {cv_scores_ou_rf.mean():.3f} (+/-{cv_scores_ou_rf.std() * 2:.3f})")
+            print(f"   CV GB O/U: {cv_scores_ou_gb.mean():.3f} (+/-{cv_scores_ou_gb.std() * 2:.3f})")
+            self.cv_accuracy_1x2 = max(cv_scores_1x2_rf.mean(), cv_scores_1x2_gb.mean())
+            self.cv_accuracy_ou = max(cv_scores_ou_rf.mean(), cv_scores_ou_gb.mean())
+        except Exception as e:
+            print(f"   CV skipped: {e}")
+            self.cv_accuracy_1x2 = 0.0
+            self.cv_accuracy_ou = 0.0
+
+        # In-sample accuracy (for reference)
         rf_acc = (self.rf_model_1x2.predict(X_scaled) == y_1x2).mean()
         gb_acc = (self.gb_model_1x2.predict(X_scaled) == y_1x2).mean()
         self.accuracy_1x2 = max(rf_acc, gb_acc)
@@ -274,8 +298,8 @@ class MLPredictor:
         gb_acc_ou = (self.gb_model_ou.predict(X_scaled) == y_ou).mean()
         self.accuracy_ou = max(rf_acc_ou, gb_acc_ou)
 
-        print(f"   RF 1X2 accuracy: {rf_acc:.3f}, GB 1X2 accuracy: {gb_acc:.3f}")
-        print(f"   RF O/U accuracy: {rf_acc_ou:.3f}, GB O/U accuracy: {gb_acc_ou:.3f}")
+        print(f"   In-sample RF 1X2: {rf_acc:.3f}, GB 1X2: {gb_acc:.3f}")
+        print(f"   In-sample RF O/U: {rf_acc_ou:.3f}, GB O/U: {gb_acc_ou:.3f}")
 
     def predict_proba_1x2(self, X: np.ndarray) -> np.ndarray:
         """Return ensemble probabilities for [away, draw, home]."""
@@ -324,17 +348,29 @@ class MLPredictor:
             "training_examples": self.training_examples,
             "accuracy_1x2": self.accuracy_1x2,
             "accuracy_ou": self.accuracy_ou,
+            "cv_accuracy_1x2": getattr(self, 'cv_accuracy_1x2', 0.0),
+            "cv_accuracy_ou": getattr(self, 'cv_accuracy_ou', 0.0),
         }
         with open(path / "meta.json", "w") as f:
             json.dump(meta, f)
         print(f"Saved ML model components to {path}/")
 
     @staticmethod
-    def load() -> Optional["MLPredictor"]:
+    def load(auto_train: bool = True) -> Optional["MLPredictor"]:
+        """
+        Load trained model. If none exists and auto_train=True, train one.
+        (improvement 1: auto-train on startup)
+        """
         import joblib
         path = MODELS_DIR / "ml_predictor"
         meta_path = path / "meta.json"
         if not meta_path.exists():
+            if auto_train:
+                print("[ML] No trained model found. Auto-training...")
+                try:
+                    return train()
+                except Exception as e:
+                    print(f"[ML] Auto-training failed: {e}")
             return None
         ml = MLPredictor()
         ml.scaler = joblib.load(path / "scaler.joblib")
@@ -346,9 +382,51 @@ class MLPredictor:
             meta = json.load(f)
         ml.is_trained = meta["is_trained"]
         ml.training_examples = meta["training_examples"]
-        ml.accuracy_1x2 = meta["accuracy_1x2"]
-        ml.accuracy_ou = meta["accuracy_ou"]
+        ml.accuracy_1x2 = meta.get("accuracy_1x2", 0.0)
+        ml.accuracy_ou = meta.get("accuracy_ou", 0.0)
+        ml.cv_accuracy_1x2 = meta.get("cv_accuracy_1x2", 0.0)
+        ml.cv_accuracy_ou = meta.get("cv_accuracy_ou", 0.0)
         return ml
+
+
+# ---------------------------------------------------------------------------
+# Dixon-Coles Bivariate Poisson (improvement 4: goal correlation)
+# ---------------------------------------------------------------------------
+
+def dixon_coles_prob(exp_h: float, exp_a: float, rho: float = -0.15, max_goals: int = 8) -> Tuple[float, float, float]:
+    """
+    Dixon-Coles adjusted probabilities accounting for goal correlation.
+    rho < 0 means low-scoring draws are less likely than independent Poisson predicts.
+    Typical rho values: -0.10 to -0.20 for football.
+    """
+    p_home = 0.0
+    p_draw = 0.0
+    p_away = 0.0
+    for i in range(max_goals):
+        for j in range(max_goals):
+            prob = poisson_prob(exp_h, i) * poisson_prob(exp_a, j)
+            # Dixon-Coles adjustment for low scores
+            if i <= 1 and j <= 1:
+                adj = 1.0 + rho * (1 - i / exp_h if exp_h > 0 else 0) * (1 - j / exp_a if exp_a > 0 else 0)
+                prob *= max(0.0, adj)
+            if i > j:
+                p_home += prob
+            elif i == j:
+                p_draw += prob
+            else:
+                p_away += prob
+    total = p_home + p_draw + p_away
+    if total > 0:
+        p_home /= total
+        p_draw /= total
+        p_away /= total
+    return p_home, p_draw, p_away
+
+
+def dixon_coles_draw_inflation(exp_h: float, exp_a: float, rho: float = -0.15) -> float:
+    """Compute draw probability with Dixon-Coles correlation."""
+    _, p_d, _ = dixon_coles_prob(exp_h, exp_a, rho)
+    return p_d
 
 
 # ---------------------------------------------------------------------------
@@ -380,8 +458,10 @@ def prob_over(exp_h: float, exp_a: float, threshold: float = 2.5) -> float:
 def compute_attack_defense_strength(
     home_gf: float, home_ga: float, away_gf: float, away_ga: float,
     league_avg_goals: float, home_adv: float = 1.15,
+    form_len_h: int = 6, form_len_a: int = 6,
 ) -> Tuple[float, float]:
-    """Compute expected goals using attack/defense strength (Dixon-Coles style)."""
+    """Compute expected goals using attack/defense strength (Dixon-Coles style).
+    Regresses toward league mean when form sample is small."""
     league_avg = league_avg_goals / 2.0
     home_strength = (home_gf or 1.3) / league_avg if league_avg > 0 else 1.0
     home_defense = (home_ga or 1.0) / league_avg if league_avg > 0 else 1.0
@@ -390,13 +470,21 @@ def compute_attack_defense_strength(
 
     exp_h = home_strength * away_defense * league_avg * home_adv
     exp_a = away_strength * home_defense * league_avg * (2.0 - home_adv)
+
+    # Sample-size regression: fewer form games = less trust in team-specific data
+    min_games = 8
+    h_factor = min(1.0, form_len_h / min_games)
+    a_factor = min(1.0, form_len_a / min_games)
+    exp_h = exp_h * h_factor + league_avg * home_adv * (1 - h_factor)
+    exp_a = exp_a * a_factor + league_avg * (2.0 - home_adv) * (1 - a_factor)
+
     return max(0.1, exp_h), max(0.1, exp_a)
 
 
-def poisson_predict(data: dict, profile: dict) -> dict:
+def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> dict:
     """
     Enhanced Poisson prediction with attack/defense strength.
-    Borrows from game/ predict_match_poisson and predict.py estimate_goals.
+    Uses Dixon-Coles bivariate Poisson when use_dixon_coles=True (improvement 4).
     """
     h_gf = data.get("home_avg_goals_for")
     h_ga = data.get("home_avg_goals_against")
@@ -407,15 +495,27 @@ def poisson_predict(data: dict, profile: dict) -> dict:
     hp = data.get("home_pos")
     ap = data.get("away_pos")
 
-    # Attack/defense strength matchup
+    # Form length (games actually played) for sample-size regression
+    hf_len = sum(1 for c in data.get("home_form", "") if c in "WDL")
+    af_len = sum(1 for c in data.get("away_form", "") if c in "WDL")
+
+    # Attack/defense strength matchup (with sample-size regression)
     exp_h, exp_a = compute_attack_defense_strength(
         h_gf, h_ga, a_gf, a_ga,
-        profile["avg_goals"], profile.get("home_adv", 1.15)
+        profile["avg_goals"], profile.get("home_adv", 1.15),
+        form_len_h=hf_len, form_len_a=af_len,
     )
 
-    # Form adjustment
-    exp_h *= max(0.5, h_f / 1.2)
-    exp_a *= max(0.5, a_f / 1.2)
+    # Form adjustment — capped to avoid streak overreaction
+    form_mult_h = min(1.25, max(0.75, h_f / 1.2))
+    form_mult_a = min(1.25, max(0.75, a_f / 1.2))
+    # Shorter form sequences get more regression toward neutral (1.0)
+    form_conf_h = min(1.0, hf_len / 6)
+    form_conf_a = min(1.0, af_len / 6)
+    form_mult_h = 1.0 + (form_mult_h - 1.0) * form_conf_h
+    form_mult_a = 1.0 + (form_mult_a - 1.0) * form_conf_a
+    exp_h *= form_mult_h
+    exp_a *= form_mult_a
 
     # Position adjustment
     if hp and ap:
@@ -432,34 +532,45 @@ def poisson_predict(data: dict, profile: dict) -> dict:
     exp_a = exp_a * (1.0 - vol) + base * vol
     exp_h, exp_a = max(0.1, exp_h), max(0.1, exp_a)
 
-    # Compute probabilities
-    p_home = prob_home_win(exp_h, exp_a)
-    p_draw = prob_draw(exp_h, exp_a)
-    p_away = 1.0 - p_home - p_draw
-
-    # Draw inflation: when exp goals are close, draw is more likely
-    goal_diff = abs(exp_h - exp_a)
-    if goal_diff < 0.4:
-        draw_boost = (0.4 - goal_diff) / 0.4 * 0.05  # up to 5% boost
-        p_draw += draw_boost
-        p_home *= (1.0 - draw_boost) / (p_home + p_away + 1e-10)
+    # Dixon-Coles or independent Poisson
+    if use_dixon_coles:
+        rho = profile.get("dixon_coles_rho", -0.12)
+        p_home, p_draw, p_away = dixon_coles_prob(exp_h, exp_a, rho)
+    else:
+        p_home = prob_home_win(exp_h, exp_a)
+        p_draw = prob_draw(exp_h, exp_a)
         p_away = 1.0 - p_home - p_draw
+
+        # Legacy draw inflation
+        goal_diff = abs(exp_h - exp_a)
+        if goal_diff < 0.4:
+            draw_boost = (0.4 - goal_diff) / 0.4 * 0.05
+            p_draw += draw_boost
+            p_home *= (1.0 - draw_boost) / (p_home + p_away + 1e-10)
+            p_away = 1.0 - p_home - p_draw
 
     # Normalize
     total = p_home + p_draw + p_away
-    p_home /= total
-    p_draw /= total
-    p_away /= total
+    if total > 0:
+        p_home /= total
+        p_draw /= total
+        p_away /= total
 
     # Over/Under
     expected_total = exp_h + exp_a
     p_ov = 1.0 - sum(poisson_prob(expected_total, i) for i in range(3))
     p_un = 1.0 - p_ov
 
-    # BTTS
+    # BTTS (with Dixon-Coles correlation adjustment)
     p_home_scores = 1.0 - poisson_prob(exp_h, 0)
     p_away_scores = 1.0 - poisson_prob(exp_a, 0)
-    p_btts = p_home_scores * p_away_scores
+    p_btts_indep = p_home_scores * p_away_scores
+    dc_rho = profile.get("dixon_coles_rho", -0.12)
+    if dc_rho < 0:
+        p_both_zero = poisson_prob(exp_h, 0) * poisson_prob(exp_a, 0)
+        p_btts = p_btts_indep + dc_rho * p_both_zero
+    else:
+        p_btts = p_btts_indep
 
     return {
         "prob_home": p_home,
@@ -483,17 +594,17 @@ def ensemble_predict(
     data: dict,
     profile: dict,
     ml_model: Optional[MLPredictor] = None,
+    dynamic_weights: Optional[dict] = None,
 ) -> dict:
     """
     Combine Poisson, ML, and Forebet predictions into a single ensemble.
 
-    Weighting strategy:
-      - When ML model is trained and confident: 40% ML, 35% Poisson, 25% Forebet
-      - When ML is untrained: 60% Poisson, 40% Forebet
-      - When Forebet is missing: weight shifts to Poisson/ML
+    Weighting strategy (improvement 3):
+      - When dynamic_weights provided from DB tracking: use those
+      - Otherwise: 40% ML, 35% Poisson, 25% Forebet (or fallback based on availability)
     """
-    # Poisson prediction
-    poisson = poisson_predict(data, profile)
+    # Poisson prediction (always use Dixon-Coles)
+    poisson = poisson_predict(data, profile, use_dixon_coles=True)
 
     # ML prediction
     ml_pred = None
@@ -514,7 +625,24 @@ def ensemble_predict(
         fb_a /= fb_total
 
     # Determine weights based on available sources
-    if ml_pred and has_forebet:
+    if dynamic_weights:
+        w_poisson = dynamic_weights.get("poisson", 0.35)
+        w_ml = dynamic_weights.get("ml", 0.25)
+        w_fb = dynamic_weights.get("forebet", 0.25)
+        w_default = dynamic_weights.get("default", 0.15)
+        # Renormalize if a source is missing
+        if not ml_pred:
+            w_poisson += w_ml
+            w_ml = 0.0
+        if not has_forebet:
+            w_poisson += w_fb
+            w_fb = 0.0
+        total_w = w_poisson + w_ml + w_fb
+        if total_w > 0:
+            w_poisson /= total_w
+            w_ml /= total_w
+            w_fb /= total_w
+    elif ml_pred and has_forebet:
         w_ml, w_poisson, w_fb = 0.40, 0.35, 0.25
     elif ml_pred:
         w_ml, w_poisson, w_fb = 0.50, 0.50, 0.0
@@ -600,9 +728,15 @@ def ensemble_predict(
 # Training pipeline
 # ---------------------------------------------------------------------------
 
-def load_training_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Load training data from game dataset + history.db."""
+def load_training_data(with_weights: bool = False) -> Tuple:
+    """Load training data from game dataset + history.db.
+    
+    When with_weights=True, returns (X, y1, y2, sample_weights) with
+    time decay weights (improvement 5: recent matches weighted more).
+    """
     X_list, y1_list, y2_list = [], [], []
+    weight_list = []
+    cutoff = datetime.now() - timedelta(days=365)
 
     # 1. Game dataset (primary)
     if GAME_DATA.exists():
@@ -620,6 +754,11 @@ def load_training_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                # Time decay weight
+                if with_weights:
+                    match_date = r.get("date", "")
+                    w = _time_decay_weight(match_date, cutoff)
+                    weight_list.append(w)
             except Exception:
                 continue
     else:
@@ -653,6 +792,9 @@ def load_training_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                if with_weights:
+                    w = _time_decay_weight(r.get("match_date", ""), cutoff)
+                    weight_list.append(w)
             except Exception:
                 continue
 
@@ -660,7 +802,38 @@ def load_training_data() -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     y1 = np.array(y1_list, dtype=np.int32)
     y2 = np.array(y2_list, dtype=np.int32)
     print(f"Total training examples: {len(X)}")
+    
+    if with_weights and weight_list:
+        sw = np.array(weight_list, dtype=np.float32)
+        sw = sw / sw.mean()  # Normalize so mean weight = 1.0
+        return X, y1, y2, sw
+    
     return X, y1, y2
+
+
+def _time_decay_weight(date_str: str, cutoff: datetime, half_life_days: int = 90) -> float:
+    """Exponential time decay weight (improvement 5).
+    Matches older than cutoff get weight 0.5, recent matches weight 1.0.
+    """
+    if not date_str:
+        return 0.7
+    try:
+        # Try common date formats
+        for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%Y/%m/%d"):
+            try:
+                d = datetime.strptime(date_str, fmt)
+                break
+            except ValueError:
+                continue
+        else:
+            return 0.7
+        days_old = (datetime.now() - d).days
+        if days_old < 0:
+            return 1.0
+        weight = 0.5 ** (days_old / half_life_days)
+        return max(0.1, weight)
+    except Exception:
+        return 0.7
 
 
 def analyze_feature_importance(X: np.ndarray, y: np.ndarray):
@@ -676,8 +849,14 @@ def analyze_feature_importance(X: np.ndarray, y: np.ndarray):
 
 
 def train(force: bool = True):
-    """Train ML models from available data."""
-    X, y1, y2 = load_training_data()
+    """Train ML models from available data with time decay (improvement 5)."""
+    result = load_training_data(with_weights=True)
+    if len(result) == 4:
+        X, y1, y2, sw = result
+    else:
+        X, y1, y2 = result
+        sw = None
+
     if len(X) < 100:
         print("Not enough training data. Skipping ML training.")
         return
@@ -685,11 +864,12 @@ def train(force: bool = True):
     analyze_feature_importance(X, y1)
 
     ml = MLPredictor()
-    ml.train(X, y1, y2)
+    ml.train(X, y1, y2, sample_weights=sw)
     ml.save()
 
     print(f"\nTraining complete: {ml.training_examples} examples, "
-          f"1X2 acc={ml.accuracy_1x2:.3f}, O/U acc={ml.accuracy_ou:.3f}")
+          f"1X2 in-sample acc={ml.accuracy_1x2:.3f}, CV acc={getattr(ml, 'cv_accuracy_1x2', 0):.3f}, "
+          f"O/U in-sample acc={ml.accuracy_ou:.3f}, CV acc={getattr(ml, 'cv_accuracy_ou', 0):.3f}")
     return ml
 
 
