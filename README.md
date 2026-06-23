@@ -103,6 +103,19 @@ Libya, Sudan, Saudi 1st, Turkiye 3. Lig, Thailand 3, Algeria Ligue 2, etc.).
 - `predict.py --calibrate` — Accuracy breakdown by confidence level and league
 - `predict.py --learn <results_url>` — Batch-import results from Forebet results pages
 
+## Usage
+# Analyze bias and retrain if needed
+python predict.py --learn-calibration
+
+# Full calibration quality report
+python predict.py --calibration-report
+
+# Force retrain ML models
+python predict.py --force-retrain
+
+# Normal prediction (auto-runs calibration check)
+python predict.py links.txt
+
 ## Files
 
 | File | Purpose |

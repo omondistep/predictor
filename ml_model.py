@@ -31,7 +31,8 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.model_selection import cross_val_score, TimeSeriesSplit
+from sklearn.model_selection import cross_val_score, TimeSeriesSplit, train_test_split
+from sklearn.calibration import CalibratedClassifierCV
 
 warnings.filterwarnings("ignore")
 
@@ -214,7 +215,11 @@ def extract_targets_from_game_record(r: dict) -> Tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 class MLPredictor:
-    """ML-based predictor with RandomForest + GradientBoosting."""
+    """ML-based predictor with RandomForest + GradientBoosting.
+
+    Supports probability calibration via Platt scaling (sigmoid) or
+    isotonic regression, learned from a held-out calibration set.
+    """
 
     def __init__(self):
         self.rf_model_1x2: Optional[RandomForestClassifier] = None
@@ -222,15 +227,44 @@ class MLPredictor:
         self.rf_model_ou: Optional[RandomForestClassifier] = None
         self.gb_model_ou: Optional[GradientBoostingClassifier] = None
         self.scaler: Optional[StandardScaler] = None
+
+        # Calibrated versions (wrapping the base models)
+        self.cal_rf_1x2: Optional[CalibratedClassifierCV] = None
+        self.cal_gb_1x2: Optional[CalibratedClassifierCV] = None
+        self.cal_rf_ou: Optional[CalibratedClassifierCV] = None
+        self.cal_gb_ou: Optional[CalibratedClassifierCV] = None
+
         self.is_trained = False
         self.training_examples = 0
         self.accuracy_1x2 = 0.0
         self.accuracy_ou = 0.0
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
+    def _calibrate_classifier(self, clf, X_calib, y_calib, method: str = "sigmoid"):
+        """Calibrate classifier probabilities using held-out set.
+
+        Fits Platt scaling (sigmoid) on calibration data via cross-validation.
+        Falls back to the raw classifier if calibration fails.
+        """
+        if X_calib is None or y_calib is None or len(X_calib) < 100:
+            return None
+        try:
+            calibrated = CalibratedClassifierCV(clf, method=method, cv=3)
+            calibrated.fit(X_calib, y_calib)
+            return calibrated
+        except Exception:
+            return None
+
     def train(self, X: np.ndarray, y_1x2: np.ndarray, y_ou: np.ndarray,
-              sample_weights: Optional[np.ndarray] = None):
-        """Train all models with optional sample weights (improvement 5: time decay)."""
+              sample_weights: Optional[np.ndarray] = None,
+              calibration_method: Optional[str] = "sigmoid",
+              calibration_split: float = 0.15):
+        """Train all models with optional sample weights and probability calibration.
+
+        When calibration_method is set, holds out 'calibration_split' fraction
+        of data to fit Platt scaling (sigmoid) or isotonic regression, producing
+        better-calibrated probabilities.
+        """
         n = len(X)
         if n < 100:
             print(f"Warning: only {n} training examples, need at least 100")
@@ -240,33 +274,76 @@ class MLPredictor:
         self.scaler = StandardScaler()
         X_scaled = self.scaler.fit_transform(X)
 
-        print(f"Training RandomForest for 1X2 ({n} examples)...")
+        # Split calibration set if requested
+        X_train, X_calib, y1_train, y1_calib, y2_train, y2_calib = None, None, None, None, None, None
+        sw_train = None
+        if calibration_method and n >= 200:
+            stratify = y_1x2 if len(np.unique(y_1x2)) >= 3 else None
+            split_result = train_test_split(
+                X_scaled, y_1x2, y_ou,
+                test_size=calibration_split,
+                random_state=42,
+                stratify=stratify,
+            )
+            X_train, X_calib, y1_train, y1_calib, y2_train, y2_calib = split_result
+            if sample_weights is not None:
+                sw_train = sample_weights[:len(X_train)]
+            print(f"   Training: {len(X_train)}, Calibration: {len(X_calib)}")
+        else:
+            X_train = X_scaled
+            y1_train = y_1x2
+            y2_train = y_ou
+            sw_train = sample_weights
+
+        print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
         self.rf_model_1x2 = RandomForestClassifier(
             n_estimators=200, max_depth=12, min_samples_leaf=10,
             class_weight="balanced", random_state=42, n_jobs=-1,
         )
-        self.rf_model_1x2.fit(X_scaled, y_1x2, sample_weight=sample_weights)
+        self.rf_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
-        print(f"Training GradientBoosting for 1X2 ({n} examples)...")
+        print(f"Training GradientBoosting for 1X2 ({len(X_train)} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
             n_estimators=150, max_depth=6, min_samples_leaf=10,
             learning_rate=0.1, subsample=0.8, random_state=42,
         )
-        self.gb_model_1x2.fit(X_scaled, y_1x2, sample_weight=sample_weights)
+        self.gb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
-        print(f"Training RandomForest for O/U ({n} examples)...")
+        print(f"Training RandomForest for O/U ({len(X_train)} examples)...")
         self.rf_model_ou = RandomForestClassifier(
             n_estimators=200, max_depth=10, min_samples_leaf=10,
             class_weight="balanced", random_state=42, n_jobs=-1,
         )
-        self.rf_model_ou.fit(X_scaled, y_ou, sample_weight=sample_weights)
+        self.rf_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
-        print(f"Training GradientBoosting for O/U ({n} examples)...")
+        print(f"Training GradientBoosting for O/U ({len(X_train)} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
             n_estimators=150, max_depth=5, min_samples_leaf=10,
             learning_rate=0.1, subsample=0.8, random_state=42,
         )
-        self.gb_model_ou.fit(X_scaled, y_ou, sample_weight=sample_weights)
+        self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
+
+        # Probability calibration on held-out set
+        if calibration_method and X_calib is not None and len(X_calib) >= 50:
+            print(f"   Calibrating probabilities using {calibration_method}...")
+            self.cal_rf_1x2 = self._calibrate_classifier(
+                self.rf_model_1x2, X_calib, y1_calib, method=calibration_method)
+            self.cal_gb_1x2 = self._calibrate_classifier(
+                self.gb_model_1x2, X_calib, y1_calib, method=calibration_method)
+            self.cal_rf_ou = self._calibrate_classifier(
+                self.rf_model_ou, X_calib, y2_calib, method=calibration_method)
+            self.cal_gb_ou = self._calibrate_classifier(
+                self.gb_model_ou, X_calib, y2_calib, method=calibration_method)
+            n_cal = sum(1 for c in [self.cal_rf_1x2, self.cal_gb_1x2,
+                                    self.cal_rf_ou, self.cal_gb_ou] if c is not None)
+            print(f"   Calibrated {n_cal}/4 classifiers")
+            self.calibration_method = calibration_method
+        else:
+            self.cal_rf_1x2 = None
+            self.cal_gb_1x2 = None
+            self.cal_rf_ou = None
+            self.cal_gb_ou = None
+            self.calibration_method = None
 
         self.is_trained = True
         self.training_examples = n
@@ -302,18 +379,48 @@ class MLPredictor:
         print(f"   In-sample RF O/U: {rf_acc_ou:.3f}, GB O/U: {gb_acc_ou:.3f}")
 
     def predict_proba_1x2(self, X: np.ndarray) -> np.ndarray:
-        """Return ensemble probabilities for [away, draw, home]."""
+        """Return ensemble probabilities for [away, draw, home].
+
+        Uses calibrated models when available for better-calibrated probabilities.
+        """
         X_scaled = self.scaler.transform(X)
-        rf_proba = self.rf_model_1x2.predict_proba(X_scaled)
-        gb_proba = self.gb_model_1x2.predict_proba(X_scaled)
-        # Average ensemble
+
+        # Use calibrated models if available
+        if self.cal_rf_1x2 is not None and self.cal_gb_1x2 is not None:
+            rf_proba = self.cal_rf_1x2.predict_proba(X_scaled)
+            gb_proba = self.cal_gb_1x2.predict_proba(X_scaled)
+        elif self.cal_rf_1x2 is not None:
+            rf_proba = self.cal_rf_1x2.predict_proba(X_scaled)
+            gb_proba = self.gb_model_1x2.predict_proba(X_scaled)
+        elif self.cal_gb_1x2 is not None:
+            rf_proba = self.rf_model_1x2.predict_proba(X_scaled)
+            gb_proba = self.cal_gb_1x2.predict_proba(X_scaled)
+        else:
+            rf_proba = self.rf_model_1x2.predict_proba(X_scaled)
+            gb_proba = self.gb_model_1x2.predict_proba(X_scaled)
+
         return (rf_proba + gb_proba) / 2.0
 
     def predict_proba_ou(self, X: np.ndarray) -> np.ndarray:
-        """Return ensemble probabilities for [under, over]."""
+        """Return ensemble probabilities for [under, over].
+
+        Uses calibrated models when available for better-calibrated probabilities.
+        """
         X_scaled = self.scaler.transform(X)
-        rf_proba = self.rf_model_ou.predict_proba(X_scaled)
-        gb_proba = self.gb_model_ou.predict_proba(X_scaled)
+
+        if self.cal_rf_ou is not None and self.cal_gb_ou is not None:
+            rf_proba = self.cal_rf_ou.predict_proba(X_scaled)
+            gb_proba = self.cal_gb_ou.predict_proba(X_scaled)
+        elif self.cal_rf_ou is not None:
+            rf_proba = self.cal_rf_ou.predict_proba(X_scaled)
+            gb_proba = self.gb_model_ou.predict_proba(X_scaled)
+        elif self.cal_gb_ou is not None:
+            rf_proba = self.rf_model_ou.predict_proba(X_scaled)
+            gb_proba = self.cal_gb_ou.predict_proba(X_scaled)
+        else:
+            rf_proba = self.rf_model_ou.predict_proba(X_scaled)
+            gb_proba = self.gb_model_ou.predict_proba(X_scaled)
+
         return (rf_proba + gb_proba) / 2.0
 
     def predict_from_row(self, row: dict) -> dict:
@@ -334,7 +441,7 @@ class MLPredictor:
         }
 
     def save(self):
-        """Save individual model components to disk."""
+        """Save individual model components to disk, including calibrated versions."""
         import joblib
         path = MODELS_DIR / "ml_predictor"
         path.mkdir(parents=True, exist_ok=True)
@@ -343,6 +450,15 @@ class MLPredictor:
         joblib.dump(self.gb_model_1x2, path / "gb_1x2.joblib")
         joblib.dump(self.rf_model_ou, path / "rf_ou.joblib")
         joblib.dump(self.gb_model_ou, path / "gb_ou.joblib")
+        # Save calibrated models if they exist
+        if self.cal_rf_1x2 is not None:
+            joblib.dump(self.cal_rf_1x2, path / "cal_rf_1x2.joblib")
+        if self.cal_gb_1x2 is not None:
+            joblib.dump(self.cal_gb_1x2, path / "cal_gb_1x2.joblib")
+        if self.cal_rf_ou is not None:
+            joblib.dump(self.cal_rf_ou, path / "cal_rf_ou.joblib")
+        if self.cal_gb_ou is not None:
+            joblib.dump(self.cal_gb_ou, path / "cal_gb_ou.joblib")
         meta = {
             "is_trained": self.is_trained,
             "training_examples": self.training_examples,
@@ -350,6 +466,7 @@ class MLPredictor:
             "accuracy_ou": self.accuracy_ou,
             "cv_accuracy_1x2": getattr(self, 'cv_accuracy_1x2', 0.0),
             "cv_accuracy_ou": getattr(self, 'cv_accuracy_ou', 0.0),
+            "calibration_method": getattr(self, 'calibration_method', None),
         }
         with open(path / "meta.json", "w") as f:
             json.dump(meta, f)
@@ -378,6 +495,22 @@ class MLPredictor:
         ml.gb_model_1x2 = joblib.load(path / "gb_1x2.joblib")
         ml.rf_model_ou = joblib.load(path / "rf_ou.joblib")
         ml.gb_model_ou = joblib.load(path / "gb_ou.joblib")
+        # Load calibrated models if they exist
+        cal_paths = {
+            "cal_rf_1x2": "cal_rf_1x2.joblib",
+            "cal_gb_1x2": "cal_gb_1x2.joblib",
+            "cal_rf_ou": "cal_rf_ou.joblib",
+            "cal_gb_ou": "cal_gb_ou.joblib",
+        }
+        for attr, fname in cal_paths.items():
+            fpath = path / fname
+            if fpath.exists():
+                try:
+                    setattr(ml, attr, joblib.load(fpath))
+                except Exception:
+                    setattr(ml, attr, None)
+            else:
+                setattr(ml, attr, None)
         with open(meta_path) as f:
             meta = json.load(f)
         ml.is_trained = meta["is_trained"]
@@ -386,6 +519,7 @@ class MLPredictor:
         ml.accuracy_ou = meta.get("accuracy_ou", 0.0)
         ml.cv_accuracy_1x2 = meta.get("cv_accuracy_1x2", 0.0)
         ml.cv_accuracy_ou = meta.get("cv_accuracy_ou", 0.0)
+        ml.calibration_method = meta.get("calibration_method", None)
         return ml
 
 
@@ -849,7 +983,10 @@ def analyze_feature_importance(X: np.ndarray, y: np.ndarray):
 
 
 def train(force: bool = True):
-    """Train ML models from available data with time decay (improvement 5)."""
+    """Train ML models from available data with time decay and probability calibration.
+
+    Uses Platt scaling (sigmoid) calibration by default when sufficient data exists.
+    """
     result = load_training_data(with_weights=True)
     if len(result) == 4:
         X, y1, y2, sw = result
@@ -864,12 +1001,16 @@ def train(force: bool = True):
     analyze_feature_importance(X, y1)
 
     ml = MLPredictor()
-    ml.train(X, y1, y2, sample_weights=sw)
+    # Use sigmoid calibration when enough data, fall back otherwise
+    cal_method = "sigmoid" if len(X) >= 200 else None
+    ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method)
     ml.save()
 
     print(f"\nTraining complete: {ml.training_examples} examples, "
           f"1X2 in-sample acc={ml.accuracy_1x2:.3f}, CV acc={getattr(ml, 'cv_accuracy_1x2', 0):.3f}, "
           f"O/U in-sample acc={ml.accuracy_ou:.3f}, CV acc={getattr(ml, 'cv_accuracy_ou', 0):.3f}")
+    if ml.calibration_method:
+        print(f"  Probability calibration: {ml.calibration_method}")
     return ml
 
 

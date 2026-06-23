@@ -31,6 +31,10 @@ from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 _ML_MODEL = None
 _DYNAMIC_WEIGHTS = None  # Cached per-league dynamic weights
 
+# Calibration learning module
+_CALIBRATION_LEARNER = None
+_BIAS_CORRECTIONS_LOADED = False
+
 # ─────────────────────────────────────────────
 # League Profiles
 # ─────────────────────────────────────────────
@@ -727,6 +731,51 @@ def _get_dynamic_weights(league_key: str):
         return None
 
 
+def _load_calibration_biases():
+    """Lazy-load bias corrections from calibration_learner."""
+    global _BIAS_CORRECTIONS_LOADED
+    if not _BIAS_CORRECTIONS_LOADED:
+        _BIAS_CORRECTIONS_LOADED = True
+    return _BIAS_CORRECTIONS_LOADED
+
+
+def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_away: float,
+                             p_over: float, p_under: float) -> tuple:
+    """Apply learned bias corrections to probabilities for a league."""
+    try:
+        from calibration_learner import apply_all_bias_corrections
+        probs_1x2 = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
+        probs_ou = {"Over": p_over, "Under": p_under}
+        corrected_1x2, corrected_ou = apply_all_bias_corrections(
+            league_key, probs_1x2, probs_ou, min_samples=10
+        )
+        return (
+            corrected_1x2["Home win"],
+            corrected_1x2["Draw"],
+            corrected_1x2["Away win"],
+            corrected_ou["Over"],
+            corrected_ou["Under"],
+        )
+    except Exception:
+        return p_home, p_draw, p_away, p_over, p_under
+
+
+def _maybe_auto_calibrate():
+    """Run calibration learning check on startup if enough data exists."""
+    try:
+        from database import get_calibration_data_for_retraining
+        from calibration_learner import analyze_calibration, auto_retrain
+        stats = get_calibration_data_for_retraining()
+        if stats["total_calibration_entries"] >= 50:
+            new_since_last = stats["total_calibration_entries"] - stats["last_retrain_examples"]
+            if new_since_last >= 20:
+                analyze_calibration(min_samples=10)
+            if new_since_last >= 50:
+                auto_retrain()
+    except Exception:
+        pass
+
+
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """Analyze all markets, recommend highest-conviction pick.
     
@@ -817,6 +866,19 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             p_draw /= total_p
             p_away /= total_p
             method_parts.append("simple-poisson")
+
+    # ── Apply learned bias corrections from calibration learning ──
+    _load_calibration_biases()
+    p_home_bias, p_draw_bias, p_away_bias, p_over_bias, p_under_bias = \
+        _apply_bias_corrections(league_key, p_home, p_draw, p_away, p_over, p_under)
+    bias_applied = (
+        abs(p_home - p_home_bias) > 0.005 or
+        abs(p_over - p_over_bias) > 0.005
+    )
+    if bias_applied:
+        method_parts.append("bias-corrected")
+        p_home, p_draw, p_away = p_home_bias, p_draw_bias, p_away_bias
+        p_over, p_under = p_over_bias, p_under_bias
 
     # ── Odds-based value infrastructure ──
     odds_h = data.get("odds_home")
@@ -2179,6 +2241,25 @@ def run_calibration():
     print(f"  O/U: Near Certain needs 45% deviation, High ≥ 35%, MH ≥ 18%, Medium ≥ 10%")
     print(f"  BTTS: Yes requires value > 8% (>58% prob), No requires value > 6% (>56% prob)")
     print(f"  All picks filtered through odds-based value check at recommendation time")
+
+    # Show active bias corrections
+    try:
+        from database import get_calibration_biases
+        biases = get_calibration_biases(min_samples=10)
+        if biases:
+            print(f"\n{'='*55}")
+            print("ACTIVE BIAS CORRECTIONS (from calibration learning)")
+            print(f"  {'League':<20} {'Market':<8} {'Threshold':<12} {'Bucket':<10} {'Bias':<8} {'Samples':<8}")
+            print(f"  {'-'*66}")
+            for b in biases[:15]:
+                direction = "+" if b['bias'] >= 0 else ""
+                print(f"  {b['league'][:18]:<20} {b['market'][:6]:<8} {b['threshold'][:10]:<12} "
+                      f"{b['bucket']:<10} {direction}{b['bias']:.3f}  {int(b['sample_count']):<8}")
+            if len(biases) > 15:
+                print(f"  ... and {len(biases) - 15} more")
+    except Exception:
+        pass
+
     print()
 
 
@@ -2218,6 +2299,9 @@ Modes:
   predict.py --review               Review past predictions vs actual results
   predict.py --learn <url>           Automated learning from results page
   predict.py --calibrate             Show calibration/accuracy stats
+  predict.py --learn-calibration     Analyze bias, store corrections, retrain ML if needed
+  predict.py --calibration-report    Generate detailed calibration quality report
+  predict.py --force-retrain         Force ML model retraining from all data
 
 Options:
   --high-only    Show only High / Near Certain predictions
@@ -2232,6 +2316,9 @@ Options:
     parser.add_argument("--auto", action="store_true", help="Auto-review by re-scraping")
     parser.add_argument("--learn", help="URL of Forebet results page to learn from")
     parser.add_argument("--calibrate", action="store_true", help="Show calibration stats")
+    parser.add_argument("--learn-calibration", action="store_true", help="Run calibration learning: analyze bias and retrain ML model if needed")
+    parser.add_argument("--calibration-report", action="store_true", help="Generate detailed calibration quality report")
+    parser.add_argument("--force-retrain", action="store_true", help="Force ML model retraining from all available data")
     parser.add_argument("--high-only", action="store_true", help="Show only confident picks")
     parser.add_argument("--html", action="store_true", help="Output as HTML file (predictions.html)")
     parser.add_argument("--json", action="store_true", help="Output as JSON")
@@ -2244,8 +2331,28 @@ Options:
     ensure_alias()
     init_db()
 
+    # Auto-run calibration learning on prediction runs (analyze bias + check retrain)
+    if args.file and not args.no_ml:
+        _maybe_auto_calibrate()
+
     if args.learn:
         run_learn(args.learn)
+        return
+
+    if args.learn_calibration:
+        from calibration_learner import run_calibration_learning
+        run_calibration_learning(analyze=True, retrain=True, report=False)
+        return
+
+    if args.calibration_report:
+        from calibration_learner import calibration_report
+        calibration_report(verbose=True)
+        return
+
+    if args.force_retrain:
+        from calibration_learner import auto_retrain
+        did = auto_retrain(force=True)
+        print(f"Retrain {'succeeded' if did else 'failed or not needed'}")
         return
 
     if args.calibrate:

@@ -139,6 +139,32 @@ CREATE TABLE IF NOT EXISTS kelly_log (
     result INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS calibration_bias (
+    id INTEGER PRIMARY KEY,
+    league TEXT,
+    market TEXT,
+    threshold TEXT,
+    bucket TEXT,
+    predicted_mean REAL,
+    actual_mean REAL,
+    bias REAL,
+    sample_count INTEGER DEFAULT 0,
+    last_updated TEXT DEFAULT (datetime('now')),
+    UNIQUE(league, market, threshold, bucket)
+);
+
+CREATE TABLE IF NOT EXISTS model_retrain_log (
+    id INTEGER PRIMARY KEY,
+    triggered_by TEXT,
+    examples_before INTEGER,
+    examples_after INTEGER,
+    accuracy_1x2_before REAL,
+    accuracy_1x2_after REAL,
+    accuracy_ou_before REAL,
+    accuracy_ou_after REAL,
+    created_at TEXT DEFAULT (datetime('now'))
+);
 """
 
 SCHEMA_INDEXES = """
@@ -685,6 +711,97 @@ def import_betting_results(filepath: str) -> int:
     conn.close()
     print(f"Imported {imported} betting results from {filepath}")
     return imported
+
+
+def save_calibration_bias(league: str, market: str, threshold: str, bucket: str,
+                         predicted_mean: float, actual_mean: float, sample_count: int):
+    """Store a bias correction entry for a league/market/bucket."""
+    bias = actual_mean - predicted_mean
+    conn = get_db()
+    conn.execute("""
+        INSERT OR REPLACE INTO calibration_bias
+            (league, market, threshold, bucket,
+             predicted_mean, actual_mean, bias, sample_count, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    """, (league or "unknown", market, threshold, bucket,
+          predicted_mean, actual_mean, bias, sample_count))
+    conn.commit()
+    conn.close()
+    return bias
+
+
+def get_calibration_biases(league: str = None, market: str = None, min_samples: int = 10) -> list:
+    """Get bias corrections, optionally filtered."""
+    conn = get_db()
+    query = """
+        SELECT league, market, threshold, bucket,
+               predicted_mean, actual_mean, bias, sample_count, last_updated
+        FROM calibration_bias
+        WHERE sample_count >= ?
+    """
+    params = [min_samples]
+    if league:
+        query += " AND league = ?"
+        params.append(league)
+    if market:
+        query += " AND market = ?"
+        params.append(market)
+    query += " ORDER BY ABS(bias) DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_calibration_data_for_retraining(min_samples: int = 20) -> dict:
+    """Get aggregated calibration data to decide if retraining is needed."""
+    conn = get_db()
+    total = conn.execute("SELECT COUNT(*) as cnt FROM calibration_log").fetchone()["cnt"]
+    recent = conn.execute("""
+        SELECT COUNT(*) as cnt FROM calibration_log
+        WHERE created_at >= datetime('now', '-30 days')
+    """).fetchone()["cnt"]
+
+    acc_by_market = conn.execute("""
+        SELECT market,
+               COUNT(*) as total,
+               SUM(correct) as correct,
+               ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct
+        FROM calibration_log
+        WHERE market IS NOT NULL
+        GROUP BY market
+    """).fetchall()
+
+    last_retrain = conn.execute("""
+        SELECT MAX(created_at) as last_time, examples_after as last_examples
+        FROM model_retrain_log
+    """).fetchone()
+
+    conn.close()
+    return {
+        "total_calibration_entries": total,
+        "recent_30d": recent,
+        "accuracy_by_market": [dict(r) for r in acc_by_market],
+        "last_retrain_time": last_retrain["last_time"] if last_retrain else None,
+        "last_retrain_examples": last_retrain["last_examples"] if last_retrain else 0,
+    }
+
+
+def log_retrain(triggered_by: str, examples_before: int, examples_after: int,
+                acc_1x2_before: float, acc_1x2_after: float,
+                acc_ou_before: float, acc_ou_after: float):
+    """Log a model retrain event."""
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO model_retrain_log
+            (triggered_by, examples_before, examples_after,
+             accuracy_1x2_before, accuracy_1x2_after,
+             accuracy_ou_before, accuracy_ou_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (triggered_by, examples_before, examples_after,
+          acc_1x2_before, acc_1x2_after,
+          acc_ou_before, acc_ou_after))
+    conn.commit()
+    conn.close()
 
 
 # Auto-initialize on import
