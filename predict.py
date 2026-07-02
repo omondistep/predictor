@@ -761,17 +761,25 @@ def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_awa
 
 
 def _maybe_auto_calibrate():
-    """Run calibration learning check on startup if enough data exists."""
+    """Run automated learning on startup:
+    1. Scrape results for past unreviewed matches
+    2. Analyze calibration bias
+    3. Retrain ML model if enough new data accumulated
+    This enables continuous learning without manual intervention.
+    """
     try:
+        from auto_learn import step_scrape_results, step_calibrate
         from database import get_calibration_data_for_retraining
-        from calibration_learner import analyze_calibration, auto_retrain
         stats = get_calibration_data_for_retraining()
+
+        # Step 1: Scrape results for past predictions
+        scrape = step_scrape_results(days_back=14, delay=0.3, max_matches=50)
+        if scrape["updated"] > 0:
+            print(f"[auto-learn] Updated {scrape['updated']} match results from Forebet")
+
+        # Step 2: Analyze calibration if enough entries
         if stats["total_calibration_entries"] >= 50:
-            new_since_last = stats["total_calibration_entries"] - stats["last_retrain_examples"]
-            if new_since_last >= 20:
-                analyze_calibration(min_samples=10)
-            if new_since_last >= 50:
-                auto_retrain()
+            step_calibrate()
     except Exception:
         pass
 
@@ -2298,6 +2306,7 @@ Modes:
   predict.py links.txt              Scrape Forebet links → predict → save to DB
   predict.py --review               Review past predictions vs actual results
   predict.py --learn <url>           Automated learning from results page
+  predict.py --auto-learn            Run continuous learning pipeline (results + calibrate + retrain)
   predict.py --calibrate             Show calibration/accuracy stats
   predict.py --learn-calibration     Analyze bias, store corrections, retrain ML if needed
   predict.py --calibration-report    Generate detailed calibration quality report
@@ -2315,6 +2324,7 @@ Options:
     parser.add_argument("--review", nargs="?", const=True, default=None, help="Review past predictions, or review URLs from a file")
     parser.add_argument("--auto", action="store_true", help="Auto-review by re-scraping")
     parser.add_argument("--learn", help="URL of Forebet results page to learn from")
+    parser.add_argument("--auto-learn", action="store_true", help="Run continuous learning pipeline (scrape results + calibrate + retrain)")
     parser.add_argument("--calibrate", action="store_true", help="Show calibration stats")
     parser.add_argument("--learn-calibration", action="store_true", help="Run calibration learning: analyze bias and retrain ML model if needed")
     parser.add_argument("--calibration-report", action="store_true", help="Generate detailed calibration quality report")
@@ -2334,6 +2344,15 @@ Options:
     # Auto-run calibration learning on prediction runs (analyze bias + check retrain)
     if args.file and not args.no_ml:
         _maybe_auto_calibrate()
+
+    if args.auto_learn:
+        from auto_learn import run_full_pipeline
+        run_full_pipeline(
+            days_back=14,
+            delay=0.3,
+            max_matches=100,
+        )
+        return
 
     if args.learn:
         run_learn(args.learn)

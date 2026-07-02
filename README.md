@@ -128,3 +128,32 @@ python predict.py links.txt
 | `cnfupdate.py` | Confidence tuning |
 | `merge_game_dataset.py` | Merged 15K game/ records into league profiles |
 | `ml_models/ml_predictor/` | Trained model components (RF, GB, scaler) |
+
+
+File	Change
+auto_learn.py	New — 329-line automated learning pipeline
+predict.py	Added --auto-learn CLI arg, enhanced _maybe_auto_calibrate() to scrape results
+aliases.sh	Added auto-learn, learn-status, learn-daemon aliases
+install_auto_learn	New — systemd/cron scheduling installer
+Here's a summary of what was implemented for continuous automated learning:
+What was built
+auto_learn.py — Continuous Learning Pipeline
+Orchestrates the full learning cycle:
+1. Result scraping — automatically fetches actual scores from Forebet for past unreviewed predictions
+2. DB update — stores results, marks as reviewed, logs calibration entries
+3. Calibration analysis — detects bias per league/market/probability-bucket via calibration_learner.py
+4. Auto-retrain — triggers ML model retraining when sufficient new data accumulates (50+ new examples)
+Integration into predict.py
+- Added --auto-learn flag to the CLI
+- Auto-learn now runs automatically after every prediction run — _maybe_auto_calibrate() scrapes results for past matches, analyzes bias, and retrains if needed
+- So anytime you run pr links.txt, the system silently learns from past outcomes
+Scheduling (for full automation)
+- install_auto_learn.sh — interactive installer for systemd timer (daily) or cron (twice daily)
+- Daemon mode — python auto_learn.py --daemon runs continuously with configurable interval
+- Status command — python auto_learn.py --status shows learning status, data volumes, accuracy
+How it works
+pr links.txt          → predicts matches, then auto-learns from past outcomes
+pr --auto-learn       → explicitly runs the full learning pipeline
+auto_learn.py         → standalone pipeline (for cron/systemd)
+auto_learn.py --status → dashboard of learning progress
+auto_learn.py --daemon → runs continuously as a background process

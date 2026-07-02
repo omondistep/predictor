@@ -30,6 +30,11 @@ alias predict-high="python3 '$PREDICTOR_DIR/predict.py' --high-only"
 # JSON output
 alias predict-json="python3 '$PREDICTOR_DIR/predict.py' --json"
 
+# ── Auto-Learn (continuous learning pipeline) ───────────────────────────────
+alias auto-learn="python3 '$PREDICTOR_DIR/auto_learn.py'"
+alias learn-status="python3 '$PREDICTOR_DIR/auto_learn.py' --status"
+alias learn-daemon="python3 '$PREDICTOR_DIR/auto_learn.py' --daemon"
+
 # ── Confidence updater ──────────────────────────────────────────────────────
 alias cnf="python3 '$PREDICTOR_DIR/cnfupdate.py'"
 alias cnfupdate="python3 '$PREDICTOR_DIR/cnfupdate.py'"
@@ -66,4 +71,5 @@ for name, p in sorted(LEAGUE_PROFILES.items()):
 
 echo "predictor aliases loaded. Available:"
 echo "  predict, predict-calibrate, predict-review, predict-high"
+echo "  auto-learn, learn-status, learn-daemon"
 echo "  cnf / cnfupdate, scrape-results, predict-url"
