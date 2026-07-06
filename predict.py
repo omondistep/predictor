@@ -784,6 +784,284 @@ def _maybe_auto_calibrate():
         pass
 
 
+# ─────────────────────────────────────────────
+# Transitive Common-Opponent Analysis
+# ─────────────────────────────────────────────
+
+def _team_names_match(a: str, b: str) -> bool:
+    """Fuzzy team name matching via substring."""
+    if not a or not b:
+        return False
+    al, bl = a.lower().strip(), b.lower().strip()
+    return al in bl or bl in al
+
+
+def _recency_weight(date_str: str, decay_days: float = 30) -> float:
+    """Weight recent results higher (exponential decay)."""
+    if not date_str:
+        return 0.5
+    try:
+        dt = datetime.strptime(date_str, "%d/%m/%Y")
+        days_ago = (datetime.now() - dt).days
+        return max(0.2, min(1.0, 1.0 - days_ago / decay_days))
+    except (ValueError, TypeError):
+        return 0.5
+
+
+def _get_team_form_details(data: dict, side: str) -> list:
+    """Get form match details for a side, preferring scraped data over DB.
+
+    side: 'home' or 'away'
+    Returns list of dicts with opponent, venue, gf, ga, result, date.
+    """
+    team_name = data.get(f"{side}_team", "")
+    if not team_name:
+        return []
+
+    # Primary source: scraped form details from the Forebet page
+    scraped = data.get(f"{side}_form_details")
+    if scraped and len(scraped) >= 3:
+        return scraped
+
+    # Fallback: query the DB for actual historical results
+    return _get_team_results_from_db(team_name, limit=30)
+
+
+def _get_team_results_from_db(team_name: str, limit: int = 8) -> list:
+    """Get recent match results for a team from the DB (history)."""
+    from database import get_db
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT home_team, away_team, actual_home_goals, actual_away_goals,
+                   match_date
+            FROM matches
+            WHERE (home_team LIKE ? ESCAPE '\\' OR away_team LIKE ? ESCAPE '\\')
+              AND actual_home_goals IS NOT NULL
+              AND actual_away_goals IS NOT NULL
+            ORDER BY id DESC
+            LIMIT ?
+        """, (f'%{team_name}%', f'%{team_name}%', limit))
+        rows = cur.fetchall()
+        conn.close()
+
+        results = []
+        seen = set()
+        for row in rows:
+            home = row["home_team"] or ""
+            away = row["away_team"] or ""
+            hg = row["actual_home_goals"]
+            ag = row["actual_away_goals"]
+            date = row["match_date"] or ""
+
+            # Deduplicate by scoreline
+            key = (home, away, hg, ag)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if team_name.lower() in home.lower():
+                results.append({
+                    "opponent": away,
+                    "venue": "home", "gf": int(hg), "ga": int(ag),
+                    "result": "W" if hg > ag else "D" if hg == ag else "L",
+                    "date": date,
+                })
+            elif team_name.lower() in away.lower():
+                results.append({
+                    "opponent": home,
+                    "venue": "away", "gf": int(ag), "ga": int(hg),
+                    "result": "W" if ag > hg else "D" if ag == hg else "L",
+                    "date": date,
+                })
+        return results[:limit]
+    except Exception:
+        return []
+
+
+def _transitive_common_opponent_analysis(data: dict) -> dict:
+    """
+    Transitive common-opponent analysis.
+
+    Core insight:
+      If Team A (home) lost at home to X, but Team B (away) beat X,
+      then B has a transitive edge over A — "what X did to A, B did to X."
+
+    Also checks the reverse (away team's away losses → home team beat that opponent)
+    and pure common-opponent performance comparison.
+
+    Returns:
+      {"signal": float, "confidence": str, "reasoning": list, "prediction": str|None}
+      signal > 0  → favors away team; signal < 0 → favors home team
+    """
+    home_team = data.get("home_team", "")
+    away_team = data.get("away_team", "")
+    if not home_team or not away_team:
+        return {"signal": 0.0, "confidence": "Low", "reasoning": [], "prediction": None}
+
+    home_form = _get_team_form_details(data, "home")
+    away_form = _get_team_form_details(data, "away")
+
+    if not home_form or not away_form:
+        return {"signal": 0.0, "confidence": "Low", "reasoning": [], "prediction": None}
+
+    reasoning = []
+    signal = 0.0
+    signals_found = 0
+
+    # -- Signal 1: Home team's home losses → away team beat that opponent --
+    home_home_losses = [m for m in home_form if m["venue"] == "home" and m["result"] == "L"]
+
+    for hl in home_home_losses:
+        opponent = hl["opponent"]
+        if not opponent:
+            continue
+        for aw in away_form:
+            if aw["result"] == "W" and _team_names_match(aw["opponent"], opponent):
+                margin = (hl["ga"] - hl["gf"]) + (aw["gf"] - aw["ga"])
+                recency = (_recency_weight(hl["date"]) + _recency_weight(aw["date"])) / 2
+                venue_bonus = 1.2 if aw["venue"] == "away" else 1.0
+                strength = (0.30 + 0.08 * min(margin, 3)) * recency * venue_bonus
+                signal += strength
+                signals_found += 1
+                reasoning.append(
+                    f"[TRANS] {home_team} lost {hl['gf']}-{hl['ga']} at home to {opponent}, "
+                    f"but {away_team} beat them {aw['gf']}-{aw['ga']} ({aw['venue']})"
+                )
+                break
+
+    # -- Signal 2: Away team's away losses → home team beat that opponent --
+    away_away_losses = [m for m in away_form if m["venue"] == "away" and m["result"] == "L"]
+
+    for al in away_away_losses:
+        opponent = al["opponent"]
+        if not opponent:
+            continue
+        for hw in home_form:
+            if hw["result"] == "W" and _team_names_match(hw["opponent"], opponent):
+                margin = (al["ga"] - al["gf"]) + (hw["gf"] - hw["ga"])
+                recency = (_recency_weight(al["date"]) + _recency_weight(hw["date"])) / 2
+                venue_bonus = 1.2 if hw["venue"] == "home" else 1.0
+                strength = -(0.30 + 0.08 * min(margin, 3)) * recency * venue_bonus
+                signal += strength
+                signals_found += 1
+                reasoning.append(
+                    f"[TRANS-R] {away_team} lost {al['gf']}-{al['ga']} away to {opponent}, "
+                    f"but {home_team} beat them {hw['gf']}-{hw['ga']} ({hw['venue']})"
+                )
+                break
+
+    # -- Signal 3: Pure common-opponent performance comparison --
+    home_opp_map = {}
+    for m in home_form:
+        opp = m["opponent"]
+        if opp not in home_opp_map:
+            home_opp_map[opp] = []
+        home_opp_map[opp].append(m)
+
+    away_opp_map = {}
+    for m in away_form:
+        opp = m["opponent"]
+        if opp not in away_opp_map:
+            away_opp_map[opp] = []
+        away_opp_map[opp].append(m)
+
+    home_opp_set = set(home_opp_map.keys())
+    away_opp_set = set(away_opp_map.keys())
+    common_opps = home_opp_set & away_opp_set
+
+    for opp in common_opps:
+        h_results = home_opp_map[opp]
+        a_results = away_opp_map[opp]
+
+        h_score = sum(m["gf"] - m["ga"] for m in h_results)
+        a_score = sum(m["gf"] - m["ga"] for m in a_results)
+
+        diff = a_score - h_score
+        if abs(diff) < 1:
+            continue
+
+        capped = max(-3, min(3, diff))
+        sig = 0.08 * capped
+        signal += sig
+        signals_found += 1
+
+        if diff > 0:
+            reasoning.append(
+                f"[TRANS-C] {away_team} (GD {a_score:+d}) outperforms {home_team} (GD {h_score:+d}) vs {opp}"
+            )
+        else:
+            reasoning.append(
+                f"[TRANS-C] {home_team} (GD {h_score:+d}) outperforms {away_team} (GD {a_score:+d}) vs {opp}"
+            )
+
+    # -- Signal 4: League position advantage (when contradicting form) --
+    hp = data.get("home_pos")
+    ap = data.get("away_pos")
+    if hp is not None and ap is not None:
+        pos_gap = hp - ap  # positive → away is higher ranked
+        if abs(pos_gap) >= 3:
+            capped = max(-5, min(5, pos_gap))
+            pos_sig = capped * 0.03
+            signal += pos_sig
+            signals_found += 1
+            if pos_gap > 0:
+                reasoning.append(
+                    f"[TRANS-P] {away_team} (#{ap}) {abs(pos_gap)} positions above {home_team} (#{hp}) — standing advantage"
+                )
+            else:
+                reasoning.append(
+                    f"[TRANS-P] {home_team} (#{hp}) {abs(pos_gap)} positions above {away_team} (#{ap}) — standing advantage"
+                )
+
+    abs_sig = abs(signal)
+    if abs_sig >= 1.0:
+        confidence = "High"
+    elif abs_sig >= 0.55:
+        confidence = "Medium-High"
+    elif abs_sig >= 0.25:
+        confidence = "Medium"
+    else:
+        confidence = "Low"
+
+    # -- Draw signal 1: weak/no clear edge from common opponents --
+    draw_signal = 0.0
+    if signals_found > 0 and abs_sig < 0.25:
+        draw_signal = 0.12
+        reasoning.append(
+            f"[TRANS-D] Common opponents show no clear edge ({abs_sig:.2f}) — evenly matched"
+        )
+
+    # -- Draw signal 2: H2H draw rate --
+    h2h_m = data.get("h2h_matches", 0) or 0
+    h2h_d = data.get("h2h_draws", 0) or 0
+    h2h_draw_rate = h2h_d / h2h_m if h2h_m >= 5 else 0.0
+    if h2h_draw_rate >= 0.35:
+        draw_signal = max(draw_signal, h2h_draw_rate * 0.15)
+        if signals_found == 0:
+            reasoning.append(
+                f"[TRANS-D] No common opponents found — H2H draw rate {h2h_draw_rate:.0%} ({h2h_d}/{h2h_m} matches)"
+            )
+        else:
+            reasoning.append(
+                f"[TRANS-D] H2H draw rate {h2h_draw_rate:.0%} ({h2h_d}/{h2h_m} matches)"
+            )
+
+    if signal > 0:
+        prediction = "Away win"
+    else:
+        prediction = "Home win"
+
+    return {
+        "signal": signal,
+        "confidence": confidence,
+        "reasoning": reasoning,
+        "prediction": prediction,
+        "draw_signal": draw_signal,
+    }
+
+
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """Analyze all markets, recommend highest-conviction pick.
     
@@ -874,6 +1152,53 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             p_draw /= total_p
             p_away /= total_p
             method_parts.append("simple-poisson")
+
+    # ── Transitive common-opponent analysis: adjust expected goals ──
+    _trans_analysis = _transitive_common_opponent_analysis(data)
+    trans_adjusted = False
+    draw_adjusted = False
+    if _trans_analysis and _trans_analysis["reasoning"]:
+        trans_signal = _trans_analysis.get("signal", 0.0)
+        trans_conf = _trans_analysis.get("confidence", "Low")
+        trans_weight = {"High": 0.30, "Medium-High": 0.20, "Medium": 0.12}.get(trans_conf, 0.0)
+        abs_sig = min(abs(trans_signal), 1.0)
+        if trans_weight > 0 and abs_sig >= 0.15:
+            shift = trans_weight * abs_sig * 0.15
+            if trans_signal < 0:
+                exp_h += shift
+                exp_a = max(exp_a - shift * 0.3, 0.05)
+            else:
+                exp_a += shift
+                exp_h = max(exp_h - shift * 0.3, 0.05)
+            exp_total = exp_h + exp_a
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
+            p_over = prob_over(exp_h, exp_a, 2.5)
+            p_under = 1.0 - p_over
+            method_parts.append("trans")
+            trans_adjusted = True
+
+        # -- Draw tendency: reduce expected-goals gap when teams are evenly matched --
+        draw_signal_val = _trans_analysis.get("draw_signal", 0.0)
+        if draw_signal_val > 0 and trans_conf not in ("High", "Medium-High"):
+            exp_avg = (exp_h + exp_a) / 2
+            gap = abs(exp_h - exp_a)
+            reduction = gap * draw_signal_val * 0.3
+            if exp_h > exp_a:
+                exp_h = max(exp_h - reduction, exp_avg)
+                exp_a = min(exp_a + reduction, exp_avg)
+            else:
+                exp_a = max(exp_a - reduction, exp_avg)
+                exp_h = min(exp_h + reduction, exp_avg)
+            exp_total = exp_h + exp_a
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
+            p_over = prob_over(exp_h, exp_a, 2.5)
+            p_under = 1.0 - p_over
+            method_parts.append("draw")
+            draw_adjusted = True
 
     # ── Apply learned bias corrections from calibration learning ──
     _load_calibration_biases()
@@ -1304,6 +1629,32 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     if h_sot is None:
         warnings.append("No shots data")
 
+    # ── Component availability warnings ──
+    if use_ml and not ml_model:
+        warnings.append("ML model unavailable — using Poisson only")
+    elif not use_ml:
+        warnings.append("ML disabled (--no-ml)")
+    fb_h = data.get("forebet_home_pct")
+    fb_d = data.get("forebet_draw_pct")
+    fb_a = data.get("forebet_away_pct")
+    if not fb_h and not fb_d and not fb_a:
+        warnings.append("No Forebet data for this match")
+
+    # ── Transitive common-opponent display ──
+    if _trans_analysis and _trans_analysis["reasoning"]:
+        for r in _trans_analysis["reasoning"]:
+            reasoning.append(r)
+        if trans_adjusted:
+            tdir = "home" if _trans_analysis["signal"] < 0 else "away"
+            tconf = _trans_analysis["confidence"]
+            tsig = _trans_analysis["signal"]
+            reasoning.append(
+                f"†Trans: {tdir} bias ({tconf}, sig {tsig:+.2f})"
+            )
+        if draw_adjusted:
+            ds = _trans_analysis.get("draw_signal", 0.0)
+            reasoning.append(f"†Trans: draw tendency ({ds:.2f})")
+
     # ── Kelly Criterion stake sizing (improvement 9) ──
     kelly_stake = 0.0
     model_prob = primary.get("model_prob")
@@ -1417,7 +1768,7 @@ def _write_html(results, all_urls, compare_forebet, high_only):
 
         reason_html = ""
         if r.get("reasoning"):
-            for reason in r["reasoning"][:4]:
+            for reason in r["reasoning"]:
                 reason_html += f"<li>{reason}</li>\n"
             reason_html = f"<details><summary>Reasoning</summary><ul>{reason_html}</ul></details>"
 
@@ -1947,7 +2298,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
 
         # ── REASONING ──
         if show_reasoning and r.get('reasoning'):
-            for reason in r['reasoning'][:4]:
+            for reason in r['reasoning']:
                 if " — " in reason:
                     left_part, right_part = reason.split(" — ", 1)
                     styled_reason = f"\033[1m{left_part}\033[0m \033[38;5;244m— {right_part}\033[0m"

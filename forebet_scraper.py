@@ -86,6 +86,8 @@ class ForebetScraper:
             "away_shots_ontarget_pct": None,
             "home_clean_sheets_pct": None,
             "away_clean_sheets_pct": None,
+            "home_form_details": [],
+            "away_form_details": [],
         }
 
     def fetch(self) -> bool:
@@ -111,6 +113,8 @@ class ForebetScraper:
         self._parse_standings()
         self._parse_h2h()
         self._parse_venue_matches()
+        self._parse_form_matches()
+        self._parse_form_matches_from_hidd()
         self._parse_ou_btts()
         self._parse_shots()
         self._parse_probabilities()
@@ -156,6 +160,33 @@ class ForebetScraper:
             if league and len(league) > 2:
                 self.data["league"] = league
 
+        # Fallback: extract team names from URL slug
+        if not self.data.get("home_team") or not self.data.get("away_team"):
+            url = self.url
+            # URL pattern: .../yyyy/ID-team1-vs-team2 or .../dd-mm-yyyy/ID-team1-vs-team2
+            m = re.search(r"-vs-([^/]+)$", url)
+            if m:
+                raw_away = m.group(1).replace("-", " ")
+                # Team1 is everything between the last / and -vs-
+                prefix = url[:m.start()]
+                slash_pos = prefix.rfind("/")
+                after_slash = prefix[slash_pos + 1:]
+                # after_slash = "dd-mm-yyyy/ID-team1" or "ID-team1"
+                id_dash = after_slash.find("-")
+                if id_dash >= 0:
+                    raw_home = after_slash[id_dash + 1:].replace("-", " ")
+                    home_name = " ".join(w.capitalize() for w in raw_home.split())
+                    away_name = " ".join(w.capitalize() for w in raw_away.split())
+                    if home_name and not self.data.get("home_team"):
+                        self.data["home_team"] = home_name
+                    if away_name and not self.data.get("away_team"):
+                        self.data["away_team"] = away_name
+
+        # Fallback: extract league from URL path
+        if not self.data.get("league"):
+            if "football-tips-and-predictions-for-today" in self.url or "football-matches" in self.url:
+                self.data["league"] = "Unknown League"
+
     def _parse_date_time(self):
         """Extract match date and time."""
         date_span = self.soup.find("span", {"class": "date_bah"})
@@ -169,6 +200,16 @@ class ForebetScraper:
                 # Could be just a date
                 if "/" in text:
                     self.data["match_date"] = text
+
+        # Fallback: extract date from URL
+        if not self.data.get("match_date"):
+            m = re.search(
+                r"/(\d{1,2})-(\d{1,2})-(\d{4})/",
+                self.url,
+            )
+            if m:
+                day, month, year = m.group(1), m.group(2), m.group(3)
+                self.data["match_date"] = f"{year}-{int(month):02d}-{int(day):02d}"
 
     def _parse_form(self):
         """Extract form strings (W/D/L) for both teams."""
@@ -631,6 +672,262 @@ class ForebetScraper:
                 if matches > 0:
                     self.data["away_away_avg_goals_for"] = round(goals_for / matches, 2)
                     self.data["away_away_avg_goals_against"] = round(goals_against / matches, 2)
+
+    def _parse_form_matches(self):
+        """Extract individual form match details from non-H2H moduletable sections.
+
+        Forebet uses st_row divs inside moduletable containers for both H2H
+        and team form sections (e.g. 'SBALast 6 matches', 'SBAhome matches').
+        This method collects all matches from non-H2H form/venue modules and
+        stores them in home_form_details / away_form_details.
+        """
+        home_team = (self.data.get("home_team") or "").strip()
+        away_team = (self.data.get("away_team") or "").strip()
+        if not home_team or not away_team:
+            return
+
+        seen = set()
+        home_matches = []
+        away_matches = []
+
+        def _team_participates(match_home_name, match_away_name, team_name):
+            """Check if team_name is one of the participants in the match."""
+            tn = team_name.lower().strip()
+            hn = match_home_name.lower().strip()
+            an = match_away_name.lower().strip()
+            if not tn:
+                return False
+            home_match = hn and (tn in hn or hn in tn)
+            away_match = an and (tn in an or an in tn)
+            return home_match or away_match
+
+        for mt in self.soup.find_all("div", class_="moduletable"):
+            mptlt = mt.find("div", class_="mptlt")
+            if not mptlt:
+                continue
+            label = mptlt.get_text(strip=True).lower()
+            if "head to head" in label:
+                continue
+            rows = mt.find_all("div", class_=lambda c: c and "st_row" in c.split())
+            if not rows:
+                continue
+
+            for row in rows:
+                date_div = row.find("div", class_="st_date")
+                if not date_div:
+                    continue
+                date_parts = date_div.find_all("div")
+                if len(date_parts) < 2:
+                    continue
+                date_str = f"{date_parts[0].get_text(strip=True)}/{date_parts[1].get_text(strip=True)}"
+
+                hteam_div = row.find("div", class_="st_hteam")
+                if not hteam_div:
+                    continue
+                h_name = hteam_div.get_text(strip=True)
+
+                res_span = row.find("span", class_="st_res")
+                if not res_span:
+                    continue
+                score_match = re.search(r"(\d+)\s*-\s*(\d+)", res_span.get_text(strip=True))
+                if not score_match:
+                    continue
+                hg = int(score_match.group(1))
+                ag = int(score_match.group(2))
+
+                a_name = ""
+                comp = ""
+                for ns in row.find_next_siblings():
+                    cls = ns.get("class", [])
+                    if "st_ateam" in cls:
+                        a_name = ns.get_text(strip=True)
+                    elif "st_ltag" in cls:
+                        comp = ns.get_text(strip=True)
+                    if "st_row" in cls or "moduletable" in cls or "st_scrblock" in cls:
+                        break
+                if not a_name:
+                    ateam_div = row.find("div", class_="st_ateam")
+                    if ateam_div:
+                        a_name = ateam_div.get_text(strip=True)
+                if not comp:
+                    ltag_div = row.find("div", class_="st_ltag")
+                    if ltag_div:
+                        comp = ltag_div.get_text(strip=True)
+
+                dedup_key = (date_str, h_name, a_name, hg, ag)
+                if dedup_key in seen:
+                    continue
+                seen.add(dedup_key)
+
+                # Skip H2H matches (both our teams playing each other)
+                home_in = _team_participates(h_name, a_name, home_team)
+                away_in = _team_participates(h_name, a_name, away_team)
+                if home_in and away_in:
+                    continue
+
+                # Determine perspective for each team
+                ht_lower = home_team.lower()
+                at_lower = away_team.lower()
+                h_lower = h_name.lower()
+                a_lower = a_name.lower()
+
+                if home_in:
+                    if ht_lower in h_lower or h_lower in ht_lower:
+                        home_matches.append({
+                            "date": date_str, "opponent": a_name,
+                            "venue": "home", "gf": hg, "ga": ag,
+                            "result": "W" if hg > ag else "D" if hg == ag else "L",
+                            "competition": comp,
+                        })
+                    else:
+                        home_matches.append({
+                            "date": date_str, "opponent": h_name,
+                            "venue": "away", "gf": ag, "ga": hg,
+                            "result": "W" if ag > hg else "D" if ag == hg else "L",
+                            "competition": comp,
+                        })
+                if away_in:
+                    if at_lower in h_lower or h_lower in at_lower:
+                        away_matches.append({
+                            "date": date_str, "opponent": a_name,
+                            "venue": "home", "gf": hg, "ga": ag,
+                            "result": "W" if hg > ag else "D" if hg == ag else "L",
+                            "competition": comp,
+                        })
+                    else:
+                        away_matches.append({
+                            "date": date_str, "opponent": h_name,
+                            "venue": "away", "gf": ag, "ga": hg,
+                            "result": "W" if ag > hg else "D" if ag == hg else "L",
+                            "competition": comp,
+                        })
+
+        self.data["home_form_details"] = home_matches
+        self.data["away_form_details"] = away_matches
+
+    def _parse_form_matches_from_hidd(self):
+        """Extract additional form matches from hidd_stat divs.
+
+        Forebet hides extra matches (beyond the first 3 visible) in
+        hidd_stat divs outside the moduletable structure. These contain
+        st_row elements for the remaining matches in each section.
+        """
+        home_team = (self.data.get("home_team") or "").strip()
+        away_team = (self.data.get("away_team") or "").strip()
+        if not home_team or not away_team:
+            return
+
+        existing_home = {(m["date"], m["opponent"], m["gf"], m["ga"]) for m in self.data.get("home_form_details", [])}
+        existing_away = {(m["date"], m["opponent"], m["gf"], m["ga"]) for m in self.data.get("away_form_details", [])}
+        home_matches = list(self.data.get("home_form_details", []))
+        away_matches = list(self.data.get("away_form_details", []))
+
+        for hidd in self.soup.find_all("div", class_="hidd_stat"):
+            # Skip hidd_stat inside moduletable (already processed)
+            if hidd.find_parent("div", class_="moduletable"):
+                continue
+            prev = hidd.find_previous("div", class_="mptlt")
+            if not prev:
+                continue
+            label = prev.get_text(" ", strip=True).lower()
+            # Skip H2H and next-matches sections
+            if "head to head" in label or "next matches" in label:
+                continue
+            # Skip empty hidd_stat (e.g. difficulty blocks)
+            rows = hidd.find_all("div", class_=lambda c: c and "st_row" in c.split())
+            if not rows:
+                continue
+
+            for row in rows:
+                date_div = row.find("div", class_="st_date")
+                if not date_div:
+                    continue
+                date_parts = date_div.find_all("div")
+                if len(date_parts) < 2:
+                    continue
+                date_str = f"{date_parts[0].get_text(strip=True)}/{date_parts[1].get_text(strip=True)}"
+
+                hteam_div = row.find("div", class_="st_hteam")
+                if not hteam_div:
+                    continue
+                h_name = hteam_div.get_text(strip=True)
+
+                # Score is inside a stat_link > st_rescnt > st_res
+                res_span = row.find("span", class_="st_res")
+                if not res_span:
+                    continue
+                score_match = re.search(r"(\d+)\s*-\s*(\d+)", res_span.get_text(strip=True))
+                if not score_match:
+                    continue
+                hg = int(score_match.group(1))
+                ag = int(score_match.group(2))
+
+                # st_ateam and st_ltag are siblings of st_row within hidd_stat
+                a_name = ""
+                comp = ""
+                for ns in row.find_next_siblings():
+                    cls = ns.get("class", [])
+                    if "st_ateam" in cls:
+                        a_name = ns.get_text(strip=True)
+                    elif "st_ltag" in cls:
+                        comp = ns.get_text(strip=True)
+                if not a_name:
+                    ateam_div = row.find("div", class_="st_ateam")
+                    if ateam_div:
+                        a_name = ateam_div.get_text(strip=True)
+                if not comp:
+                    ltag_div = row.find("div", class_="st_ltag")
+                    if ltag_div:
+                        comp = ltag_div.get_text(strip=True)
+
+                dedup_key = (date_str, h_name, a_name, hg, ag)
+
+                # Skip H2H matches (both our teams playing each other)
+                def _tp(mhn, man, tn):
+                    t = tn.lower().strip()
+                    h = mhn.lower().strip()
+                    a = man.lower().strip()
+                    if not t:
+                        return False
+                    return (h and (t in h or h in t)) or (a and (t in a or a in t))
+
+                home_in = _tp(h_name, a_name, home_team)
+                away_in = _tp(h_name, a_name, away_team)
+                if home_in and away_in:
+                    continue
+
+                ht_lower = home_team.lower()
+                at_lower = away_team.lower()
+                h_lower = h_name.lower()
+                a_lower = a_name.lower()
+
+                if home_in:
+                    if ht_lower in h_lower or h_lower in ht_lower:
+                        m = {"date": date_str, "opponent": a_name, "venue": "home", "gf": hg, "ga": ag,
+                             "result": "W" if hg > ag else "D" if hg == ag else "L", "competition": comp}
+                    else:
+                        m = {"date": date_str, "opponent": h_name, "venue": "away", "gf": ag, "ga": hg,
+                             "result": "W" if ag > hg else "D" if ag == hg else "L", "competition": comp}
+                    key = (m["date"], m["opponent"], m["gf"], m["ga"])
+                    if key not in existing_home:
+                        existing_home.add(key)
+                        home_matches.append(m)
+                if away_in:
+                    if at_lower in h_lower or h_lower in at_lower:
+                        m = {"date": date_str, "opponent": a_name, "venue": "home", "gf": hg, "ga": ag,
+                             "result": "W" if hg > ag else "D" if hg == ag else "L", "competition": comp}
+                    else:
+                        m = {"date": date_str, "opponent": h_name, "venue": "away", "gf": ag, "ga": hg,
+                             "result": "W" if ag > hg else "D" if ag == hg else "L", "competition": comp}
+                    key = (m["date"], m["opponent"], m["gf"], m["ga"])
+                    if key not in existing_away:
+                        existing_away.add(key)
+                        away_matches.append(m)
+
+        if home_matches:
+            self.data["home_form_details"] = home_matches
+        if away_matches:
+            self.data["away_form_details"] = away_matches
 
     def _parse_ou_btts(self):
         """Parse O/U 1.5/2.5/3.5 and BTTS percentages from stats section.
