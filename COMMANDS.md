@@ -79,3 +79,5 @@ learn-status
 # 5. Check calibration after enough data
 predict-calibrate
 ```
+pr links.txt && auto_learn.py --days-back 365 --max-matches 2000
+ ./run_pipeline.sh 
