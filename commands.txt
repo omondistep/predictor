@@ -15,6 +15,7 @@
 | `pr --auto-learn` | Full pipeline: scrape results → calibrate → retrain |
 | `pr links.txt` | Also runs auto-learn silently after predictions |
 | `auto_learn.py` | Same as `pr --auto-learn` (standalone) |
+| `auto_learn.py --days-back 365 --max-matches 2000` | Bulk learn: scrape all past results (for initial backlog) |
 | `auto_learn.py --scrape-only` | Just scrape results, skip calibration |
 | `auto_learn.py --calibrate-only` | Just bias analysis + ML retrain |
 | `auto_learn.py --daemon --daemon-interval 43200` | Run as daemon every 12h |
@@ -66,12 +67,17 @@
 # 1. Predict upcoming matches
 pr links.txt
 
-# 2. Check learning status
+# 2. Initial bulk learning (after many predictions have actual results)
+auto_learn.py --days-back 365 --max-matches 2000
+
+# 3. Check learning status
 learn-status
 
-# 3. Set up automated daily learning
+# 4. Set up automated daily learning
 ./install_auto_learn.sh --systemd
 
-# 4. Check calibration after enough data
+# 5. Check calibration after enough data
 predict-calibrate
 ```
+pr links.txt && auto_learn.py --days-back 365 --max-matches 2000
+ ./run_pipeline.sh 
