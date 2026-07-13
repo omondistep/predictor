@@ -341,15 +341,19 @@ def get_unreviewed_matches(limit: int = 50) -> list:
     """Get unreviewed matches that have already been played (past dates only)."""
     from datetime import datetime
     today = datetime.now().strftime("%d/%m/%Y")
+    today_parts = today.split("/")
+    today_int = int(today_parts[2]) * 10000 + int(today_parts[1]) * 100 + int(today_parts[0])
     conn = get_db()
     rows = conn.execute("""
         SELECT id, forebet_url, home_team, away_team, match_date, league
         FROM matches
         WHERE reviewed = 0
           AND match_date IS NOT NULL
-          AND match_date < ?
+          AND CAST(SUBSTR(match_date, 7, 4) AS INTEGER) * 10000
+              + CAST(SUBSTR(match_date, 4, 2) AS INTEGER) * 100
+              + CAST(SUBSTR(match_date, 1, 2) AS INTEGER) < ?
         ORDER BY match_date DESC LIMIT ?
-    """, (today, limit)).fetchall()
+    """, (today_int, limit)).fetchall()
     conn.close()
     return [dict(r) for r in rows]
 

@@ -40,67 +40,67 @@ _BIAS_CORRECTIONS_LOADED = False
 # ─────────────────────────────────────────────
 
 LEAGUE_PROFILES = {
-    "brazil-serie-a":      {"avg_goals": 2.6, "u25_rate": 0.54, "btts_no_rate": 0.46, "draw_rate": 0.3, "home_win_rate": 0.39, "home_adv": 1.15, "volatility": 0.05},
+    "brazil-serie-a":      {"avg_goals": 2.46, "u25_rate": 0.56, "btts_no_rate": 0.53, "draw_rate": 0.28, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.05},
     "brazil-serie-b":      {"avg_goals": 2.61, "u25_rate": 0.54, "btts_no_rate": 0.5, "draw_rate": 0.27, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.05},
     "brazil-serie-c":      {"avg_goals": 2.27, "u25_rate": 0.61, "btts_no_rate": 0.57, "draw_rate": 0.31, "home_win_rate": 0.42, "home_adv": 1.20, "volatility": 0.10},
     "brazil-serie-d":      {"avg_goals": 2.49, "u25_rate": 0.54, "btts_no_rate": 0.56, "draw_rate": 0.26, "home_win_rate": 0.45, "home_adv": 1.25, "volatility": 0.15},
-    "brazil-u20":          {"avg_goals": 4.0, "u25_rate": 0.2, "btts_no_rate": 0.4, "draw_rate": 0.4, "home_win_rate": 0.6, "home_adv": 1.10, "volatility": 0.30},
-    "argentina-b-nacional": {"avg_goals": 2.0, "u25_rate": 0.69, "btts_no_rate": 0.59, "draw_rate": 0.31, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.10},
-    "argentina-primera-b":  {"avg_goals": 1.97, "u25_rate": 0.69, "btts_no_rate": 0.56, "draw_rate": 0.44, "home_win_rate": 0.39, "home_adv": 1.15, "volatility": 0.10},
-    "argentina-primera-c":  {"avg_goals": 2.03, "u25_rate": 0.74, "btts_no_rate": 0.68, "draw_rate": 0.24, "home_win_rate": 0.35, "home_adv": 1.15, "volatility": 0.15},
-    "argentina-federal-a":  {"avg_goals": 1.55, "u25_rate": 0.91, "btts_no_rate": 0.91, "draw_rate": 0.18, "home_win_rate": 0.73, "home_adv": 1.20, "volatility": 0.15},
-    "chile-primera":        {"avg_goals": 2.31, "u25_rate": 0.57, "btts_no_rate": 0.57, "draw_rate": 0.27, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.05},
-    "chile-primera-b":      {"avg_goals": 2.51, "u25_rate": 0.6, "btts_no_rate": 0.49, "draw_rate": 0.26, "home_win_rate": 0.54, "home_adv": 1.15, "volatility": 0.10},
-    "usl-championship":     {"avg_goals": 2.71, "u25_rate": 0.71, "btts_no_rate": 0.57, "draw_rate": 0.36, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.10},
-    "usl-league-one":       {"avg_goals": 3.35, "u25_rate": 0.35, "btts_no_rate": 0.47, "draw_rate": 0.12, "home_win_rate": 0.65, "home_adv": 1.15, "volatility": 0.15},
-    "usl-league-two":       {"avg_goals": 3.67, "u25_rate": 0.26, "btts_no_rate": 0.39, "draw_rate": 0.14, "home_win_rate": 0.47, "home_adv": 1.15, "volatility": 0.30},
+    "brazil-u20":          {"avg_goals": 2.9, "u25_rate": 0.45, "btts_no_rate": 0.48, "draw_rate": 0.24, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.30},
+    "argentina-b-nacional": {"avg_goals": 2.4, "u25_rate": 0.59, "btts_no_rate": 0.55, "draw_rate": 0.28, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.10},
+    "argentina-primera-b":  {"avg_goals": 2.02, "u25_rate": 0.68, "btts_no_rate": 0.58, "draw_rate": 0.34, "home_win_rate": 0.35, "home_adv": 1.15, "volatility": 0.10},
+    "argentina-primera-c":  {"avg_goals": 1.88, "u25_rate": 0.73, "btts_no_rate": 0.64, "draw_rate": 0.38, "home_win_rate": 0.33, "home_adv": 1.15, "volatility": 0.15},
+    "argentina-federal-a":  {"avg_goals": 1.87, "u25_rate": 0.69, "btts_no_rate": 0.67, "draw_rate": 0.32, "home_win_rate": 0.51, "home_adv": 1.20, "volatility": 0.15},
+    "chile-primera":        {"avg_goals": 2.77, "u25_rate": 0.47, "btts_no_rate": 0.51, "draw_rate": 0.22, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.05},
+    "chile-primera-b":      {"avg_goals": 2.79, "u25_rate": 0.53, "btts_no_rate": 0.41, "draw_rate": 0.32, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.10},
+    "usl-championship":     {"avg_goals": 2.79, "u25_rate": 0.48, "btts_no_rate": 0.43, "draw_rate": 0.31, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.10},
+    "usl-league-one":       {"avg_goals": 2.83, "u25_rate": 0.42, "btts_no_rate": 0.44, "draw_rate": 0.21, "home_win_rate": 0.56, "home_adv": 1.15, "volatility": 0.15},
+    "usl-league-two":       {"avg_goals": 3.76, "u25_rate": 0.27, "btts_no_rate": 0.38, "draw_rate": 0.17, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.30},
     "mls-next-pro":         {"avg_goals": 3.1, "u25_rate": 0.38, "btts_no_rate": 0.38, "draw_rate": 0.20, "home_win_rate": 0.50, "home_adv": 1.10, "volatility": 0.25},
     "nwsl":                {"avg_goals": 2.4, "u25_rate": 0.50, "btts_no_rate": 0.48, "draw_rate": 0.25, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-primera":      {"avg_goals": 2.96, "u25_rate": 0.4, "btts_no_rate": 0.47, "draw_rate": 0.23, "home_win_rate": 0.39, "home_adv": 1.10, "volatility": 0.10},
-    "uruguay-segunda":      {"avg_goals": 2.0, "u25_rate": 0.83, "btts_no_rate": 0.33, "draw_rate": 0.67, "home_win_rate": 0.0, "home_adv": 1.15, "volatility": 0.15},
-    "ecuador-serie-a":      {"avg_goals": 2.36, "u25_rate": 0.57, "btts_no_rate": 0.43, "draw_rate": 0.21, "home_win_rate": 0.64, "home_adv": 1.25, "volatility": 0.10},
-    "ecuador-serie-b":      {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.25, "volatility": 0.15},
-    "peru-primera":         {"avg_goals": 2.67, "u25_rate": 0.42, "btts_no_rate": 0.42, "draw_rate": 0.25, "home_win_rate": 0.67, "home_adv": 1.30, "volatility": 0.10},
+    "uruguay-primera":      {"avg_goals": 2.41, "u25_rate": 0.54, "btts_no_rate": 0.48, "draw_rate": 0.26, "home_win_rate": 0.4, "home_adv": 1.10, "volatility": 0.10},
+    "uruguay-segunda":      {"avg_goals": 2.38, "u25_rate": 0.6, "btts_no_rate": 0.45, "draw_rate": 0.32, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.15},
+    "ecuador-serie-a":      {"avg_goals": 2.17, "u25_rate": 0.63, "btts_no_rate": 0.57, "draw_rate": 0.24, "home_win_rate": 0.47, "home_adv": 1.25, "volatility": 0.10},
+    "ecuador-serie-b":      {"avg_goals": 1.95, "u25_rate": 0.67, "btts_no_rate": 0.59, "draw_rate": 0.36, "home_win_rate": 0.48, "home_adv": 1.25, "volatility": 0.15},
+    "peru-primera":         {"avg_goals": 2.44, "u25_rate": 0.53, "btts_no_rate": 0.49, "draw_rate": 0.28, "home_win_rate": 0.49, "home_adv": 1.30, "volatility": 0.10},
     "paraguay-primera":     {"avg_goals": 2.2, "u25_rate": 0.69, "btts_no_rate": 0.51, "draw_rate": 0.36, "home_win_rate": 0.29, "home_adv": 1.15, "volatility": 0.10},
     "paraguay-segunda":     {"avg_goals": 1.9, "u25_rate": 0.62, "btts_no_rate": 0.58, "draw_rate": 0.32, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.15},
-    "spain-segunda":        {"avg_goals": 2.58, "u25_rate": 0.53, "btts_no_rate": 0.56, "draw_rate": 0.19, "home_win_rate": 0.5, "home_adv": 1.15, "volatility": 0.05},
-    "austria-landesliga":   {"avg_goals": 2.95, "u25_rate": 0.45, "btts_no_rate": 0.45, "draw_rate": 0.23, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.25},
+    "spain-segunda":        {"avg_goals": 2.6, "u25_rate": 0.5, "btts_no_rate": 0.47, "draw_rate": 0.26, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.05},
+    "austria-landesliga":   {"avg_goals": 3.37, "u25_rate": 0.35, "btts_no_rate": 0.42, "draw_rate": 0.19, "home_win_rate": 0.47, "home_adv": 1.15, "volatility": 0.25},
     "reserve-leagues":      {"avg_goals": 3.0, "u25_rate": 0.35, "btts_no_rate": 0.35, "draw_rate": 0.24, "home_win_rate": 0.42, "home_adv": 1.05, "volatility": 0.35},
-    "sweden-allsvenskan":   {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.08},
-    "sweden-superettan":    {"avg_goals": 3.6, "u25_rate": 0.2, "btts_no_rate": 0.2, "draw_rate": 0.4, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.12},
-    "sweden-ettan":         {"avg_goals": 2.8, "u25_rate": 0.40, "btts_no_rate": 0.38, "draw_rate": 0.23, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.20},
-    "sweden-division-2":    {"avg_goals": 3.48, "u25_rate": 0.33, "btts_no_rate": 0.59, "draw_rate": 0.13, "home_win_rate": 0.57, "home_adv": 1.10, "volatility": 0.25},
+    "sweden-allsvenskan":   {"avg_goals": 3.01, "u25_rate": 0.42, "btts_no_rate": 0.42, "draw_rate": 0.24, "home_win_rate": 0.43, "home_adv": 1.15, "volatility": 0.08},
+    "sweden-superettan":    {"avg_goals": 3.05, "u25_rate": 0.41, "btts_no_rate": 0.39, "draw_rate": 0.25, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.12},
+    "sweden-ettan":         {"avg_goals": 2.86, "u25_rate": 0.43, "btts_no_rate": 0.49, "draw_rate": 0.19, "home_win_rate": 0.41, "home_adv": 1.12, "volatility": 0.20},
+    "sweden-division-2":    {"avg_goals": 2.94, "u25_rate": 0.45, "btts_no_rate": 0.47, "draw_rate": 0.27, "home_win_rate": 0.41, "home_adv": 1.10, "volatility": 0.25},
     "finland-veikkausliiga":{"avg_goals": 2.5, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.25, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.12},
     "finland-ykkonen":      {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.18},
-    "finland-kakkonen":     {"avg_goals": 2.82, "u25_rate": 0.55, "btts_no_rate": 0.55, "draw_rate": 0.36, "home_win_rate": 0.18, "home_adv": 1.10, "volatility": 0.25},
-    "morocco-botola":       {"avg_goals": 2.0, "u25_rate": 0.63, "btts_no_rate": 0.57, "draw_rate": 0.3, "home_win_rate": 0.41, "home_adv": 1.12, "volatility": 0.08},
-    "iceland":              {"avg_goals": 3.83, "u25_rate": 0.5, "btts_no_rate": 0.67, "draw_rate": 0.17, "home_win_rate": 0.83, "home_adv": 1.10, "volatility": 0.15},
+    "finland-kakkonen":     {"avg_goals": 3.47, "u25_rate": 0.36, "btts_no_rate": 0.43, "draw_rate": 0.21, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.25},
+    "morocco-botola":       {"avg_goals": 2.7, "u25_rate": 0.53, "btts_no_rate": 0.53, "draw_rate": 0.28, "home_win_rate": 0.41, "home_adv": 1.12, "volatility": 0.08},
+    "iceland":              {"avg_goals": 3.96, "u25_rate": 0.29, "btts_no_rate": 0.34, "draw_rate": 0.19, "home_win_rate": 0.5, "home_adv": 1.10, "volatility": 0.15},
     "iceland-women":        {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.20},
-    "estonia":              {"avg_goals": 2.2, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
-    "georgia":              {"avg_goals": 2.3, "u25_rate": 0.55, "btts_no_rate": 0.50, "draw_rate": 0.28, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.20},
-    "lithuania":            {"avg_goals": 2.1, "u25_rate": 0.60, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
-    "women-football":       {"avg_goals": 3.03, "u25_rate": 0.42, "btts_no_rate": 0.45, "draw_rate": 0.23, "home_win_rate": 0.44, "home_adv": 1.05, "volatility": 0.20},
-    "algeria-ligue-2": {"avg_goals": 2.06, "u25_rate": 0.68, "btts_no_rate": 0.68, "draw_rate": 0.29, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.12},  # Algeria - Ligue 2
-    "colombia-a": {"avg_goals": 2.46, "u25_rate": 0.55, "btts_no_rate": 0.39, "draw_rate": 0.39, "home_win_rate": 0.4, "home_adv": 1.15, "volatility": 0.12},  # Colombia - Primera A
+    "estonia":              {"avg_goals": 3.73, "u25_rate": 0.29, "btts_no_rate": 0.4, "draw_rate": 0.16, "home_win_rate": 0.47, "home_adv": 1.10, "volatility": 0.20},
+    "georgia":              {"avg_goals": 2.51, "u25_rate": 0.52, "btts_no_rate": 0.46, "draw_rate": 0.29, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.20},
+    "lithuania":            {"avg_goals": 2.94, "u25_rate": 0.41, "btts_no_rate": 0.55, "draw_rate": 0.22, "home_win_rate": 0.41, "home_adv": 1.10, "volatility": 0.20},
+    "women-football":       {"avg_goals": 3.29, "u25_rate": 0.39, "btts_no_rate": 0.49, "draw_rate": 0.19, "home_win_rate": 0.43, "home_adv": 1.05, "volatility": 0.20},
+    "algeria-ligue-2": {"avg_goals": 2.36, "u25_rate": 0.57, "btts_no_rate": 0.6, "draw_rate": 0.22, "home_win_rate": 0.51, "home_adv": 1.15, "volatility": 0.12},  # Algeria - Ligue 2
+    "colombia-a": {"avg_goals": 2.52, "u25_rate": 0.54, "btts_no_rate": 0.48, "draw_rate": 0.3, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.12},  # Colombia - Primera A
     "colombia-b": {"avg_goals": 2.18, "u25_rate": 0.67, "btts_no_rate": 0.56, "draw_rate": 0.31, "home_win_rate": 0.38, "home_adv": 1.1, "volatility": 0.12},  # Colombia - Primera B
-    "costa-rica-liga-de-ascenso": {"avg_goals": 2.75, "u25_rate": 0.56, "btts_no_rate": 0.47, "draw_rate": 0.25, "home_win_rate": 0.5, "home_adv": 1.15, "volatility": 0.12},  # Costa Rica - Liga de Ascenso
-    "dr-congo-ligue-1": {"avg_goals": 1.79, "u25_rate": 0.76, "btts_no_rate": 0.61, "draw_rate": 0.36, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.08},  # DR Congo - Ligue 1
-    "el-salvador-primera": {"avg_goals": 2.68, "u25_rate": 0.46, "btts_no_rate": 0.44, "draw_rate": 0.26, "home_win_rate": 0.36, "home_adv": 1.1, "volatility": 0.12},  # El Salvador - Primera Division
-    "guatemala-liga-nacional": {"avg_goals": 2.22, "u25_rate": 0.63, "btts_no_rate": 0.48, "draw_rate": 0.26, "home_win_rate": 0.52, "home_adv": 1.15, "volatility": 0.12},  # Guatemala - Liga Nacional
-    "guatemala-primera": {"avg_goals": 2.3, "u25_rate": 0.52, "btts_no_rate": 0.45, "draw_rate": 0.26, "home_win_rate": 0.61, "home_adv": 1.2, "volatility": 0.12},  # Guatemala - Primera Division
-    "honduras-liga-nacional": {"avg_goals": 2.5, "u25_rate": 0.58, "btts_no_rate": 0.39, "draw_rate": 0.45, "home_win_rate": 0.32, "home_adv": 1.1, "volatility": 0.12},  # Honduras - Liga Nacional
-    "libya-premier": {"avg_goals": 2.38, "u25_rate": 0.59, "btts_no_rate": 0.59, "draw_rate": 0.28, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.12},  # Libya - Premier League
-    "mexico-liga-de-expansion-mx": {"avg_goals": 3.03, "u25_rate": 0.47, "btts_no_rate": 0.47, "draw_rate": 0.27, "home_win_rate": 0.53, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga de Expansion MX
-    "mexico-liga-mx": {"avg_goals": 2.74, "u25_rate": 0.45, "btts_no_rate": 0.52, "draw_rate": 0.19, "home_win_rate": 0.55, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga MX
-    "mexico-liga-serie-a": {"avg_goals": 2.73, "u25_rate": 0.47, "btts_no_rate": 0.5, "draw_rate": 0.23, "home_win_rate": 0.54, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga Premier Serie A
-    "nicaragua-primera": {"avg_goals": 2.66, "u25_rate": 0.57, "btts_no_rate": 0.52, "draw_rate": 0.27, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.12},  # Nicaragua - Primera Division
-    "panama-football": {"avg_goals": 2.3, "u25_rate": 0.6, "btts_no_rate": 0.5, "draw_rate": 0.43, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Panama - Football League
-    "saudi-arabia-1st": {"avg_goals": 3.44, "u25_rate": 0.28, "btts_no_rate": 0.28, "draw_rate": 0.22, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.12},  # Saudi Arabia - 1st Division
-    "sudan-premier": {"avg_goals": 1.96, "u25_rate": 0.68, "btts_no_rate": 0.57, "draw_rate": 0.4, "home_win_rate": 0.23, "home_adv": 1.1, "volatility": 0.08},  # Sudan - Premier League
-    "syria-premier": {"avg_goals": 2.77, "u25_rate": 0.49, "btts_no_rate": 0.46, "draw_rate": 0.2, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Syria - Premier League
-    "thailand-thai-3": {"avg_goals": 2.31, "u25_rate": 0.63, "btts_no_rate": 0.64, "draw_rate": 0.22, "home_win_rate": 0.49, "home_adv": 1.15, "volatility": 0.12},  # Thailand - Thai League 3
-    "turkiye-tff-3-lig": {"avg_goals": 2.39, "u25_rate": 0.57, "btts_no_rate": 0.63, "draw_rate": 0.22, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.12},  # Türkiye - TFF 3. Lig
-    "venezuela-primera": {"avg_goals": 2.34, "u25_rate": 0.57, "btts_no_rate": 0.54, "draw_rate": 0.37, "home_win_rate": 0.37, "home_adv": 1.1, "volatility": 0.12},  # Venezuela - Primera Division
+    "costa-rica-liga-de-ascenso": {"avg_goals": 2.98, "u25_rate": 0.43, "btts_no_rate": 0.49, "draw_rate": 0.21, "home_win_rate": 0.5, "home_adv": 1.15, "volatility": 0.12},  # Costa Rica - Liga de Ascenso
+    "dr-congo-ligue-1": {"avg_goals": 1.98, "u25_rate": 0.69, "btts_no_rate": 0.6, "draw_rate": 0.35, "home_win_rate": 0.41, "home_adv": 1.15, "volatility": 0.08},  # DR Congo - Ligue 1
+    "el-salvador-primera": {"avg_goals": 2.58, "u25_rate": 0.55, "btts_no_rate": 0.49, "draw_rate": 0.28, "home_win_rate": 0.39, "home_adv": 1.1, "volatility": 0.12},  # El Salvador - Primera Division
+    "guatemala-liga-nacional": {"avg_goals": 2.43, "u25_rate": 0.59, "btts_no_rate": 0.53, "draw_rate": 0.24, "home_win_rate": 0.6, "home_adv": 1.15, "volatility": 0.12},  # Guatemala - Liga Nacional
+    "guatemala-primera": {"avg_goals": 2.44, "u25_rate": 0.55, "btts_no_rate": 0.51, "draw_rate": 0.24, "home_win_rate": 0.66, "home_adv": 1.2, "volatility": 0.12},  # Guatemala - Primera Division
+    "honduras-liga-nacional": {"avg_goals": 2.63, "u25_rate": 0.52, "btts_no_rate": 0.41, "draw_rate": 0.3, "home_win_rate": 0.43, "home_adv": 1.1, "volatility": 0.12},  # Honduras - Liga Nacional
+    "libya-premier": {"avg_goals": 2.35, "u25_rate": 0.57, "btts_no_rate": 0.56, "draw_rate": 0.26, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.12},  # Libya - Premier League
+    "mexico-liga-de-expansion-mx": {"avg_goals": 2.77, "u25_rate": 0.49, "btts_no_rate": 0.43, "draw_rate": 0.28, "home_win_rate": 0.56, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga de Expansion MX
+    "mexico-liga-mx": {"avg_goals": 2.74, "u25_rate": 0.45, "btts_no_rate": 0.41, "draw_rate": 0.26, "home_win_rate": 0.45, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga MX
+    "mexico-liga-serie-a": {"avg_goals": 2.78, "u25_rate": 0.5, "btts_no_rate": 0.51, "draw_rate": 0.26, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.12},  # Mexico - Liga Premier Serie A
+    "nicaragua-primera": {"avg_goals": 2.43, "u25_rate": 0.56, "btts_no_rate": 0.57, "draw_rate": 0.24, "home_win_rate": 0.59, "home_adv": 1.15, "volatility": 0.12},  # Nicaragua - Primera Division
+    "panama-football": {"avg_goals": 2.62, "u25_rate": 0.55, "btts_no_rate": 0.47, "draw_rate": 0.32, "home_win_rate": 0.39, "home_adv": 1.1, "volatility": 0.12},  # Panama - Football League
+    "saudi-arabia-1st": {"avg_goals": 3.01, "u25_rate": 0.41, "btts_no_rate": 0.42, "draw_rate": 0.22, "home_win_rate": 0.44, "home_adv": 1.15, "volatility": 0.12},  # Saudi Arabia - 1st Division
+    "sudan-premier": {"avg_goals": 2.38, "u25_rate": 0.55, "btts_no_rate": 0.56, "draw_rate": 0.3, "home_win_rate": 0.38, "home_adv": 1.1, "volatility": 0.08},  # Sudan - Premier League
+    "syria-premier": {"avg_goals": 2.55, "u25_rate": 0.55, "btts_no_rate": 0.52, "draw_rate": 0.23, "home_win_rate": 0.44, "home_adv": 1.1, "volatility": 0.12},  # Syria - Premier League
+    "thailand-thai-3": {"avg_goals": 2.68, "u25_rate": 0.5, "btts_no_rate": 0.49, "draw_rate": 0.27, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.12},  # Thailand - Thai League 3
+    "turkiye-tff-3-lig": {"avg_goals": 2.78, "u25_rate": 0.48, "btts_no_rate": 0.51, "draw_rate": 0.23, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.12},  # Türkiye - TFF 3. Lig
+    "venezuela-primera": {"avg_goals": 2.43, "u25_rate": 0.56, "btts_no_rate": 0.46, "draw_rate": 0.3, "home_win_rate": 0.41, "home_adv": 1.1, "volatility": 0.12},  # Venezuela - Primera Division
     "default":              {"avg_goals": 2.8, "u25_rate": 0.45, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.20},
 }
 
@@ -773,7 +773,7 @@ def _maybe_auto_calibrate():
         stats = get_calibration_data_for_retraining()
 
         # Step 1: Scrape results for past predictions
-        scrape = step_scrape_results(days_back=14, delay=0.3, max_matches=50)
+        scrape = step_scrape_results(days_back=14, delay=0.3, max_matches=200)
         if scrape["updated"] > 0:
             print(f"[auto-learn] Updated {scrape['updated']} match results from Forebet")
 
@@ -1457,6 +1457,14 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         elif vol >= 0.15 and ou_conf == "Near Certain":
             ou_conf = "High"
 
+        # Under 3.5 expected-goals gate — prevent overconfident picks when exp goals are marginal
+        if thresh == 3.5 and "Under" in ou_pick:
+            if exp_total > 3.5:
+                ou_conf = "Low"  # Too many expected goals for Under 3.5
+            elif exp_total > 3.2:
+                if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium-High"]:
+                    ou_conf = "Medium-High"
+
         # Cap O/U 1.5 — too many 1-0/0-0 results even with high exp goals
         if thresh == 1.5:
             if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium-High"]:
@@ -1508,7 +1516,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if "Over" in ou_pick and combined_ou_avg < 40:
                 if CONF_RANK.get(ou_conf, 99) > CONF_RANK["Medium"]:
                     ou_conf = "Medium"
-            elif "Under" in ou_pick and combined_ou_avg > 60:
+            elif "Under" in ou_pick and combined_ou_avg > (50 if thresh == 3.5 else 60):
                 if CONF_RANK.get(ou_conf, 99) > CONF_RANK["Medium"]:
                     ou_conf = "Medium"
 
@@ -1550,10 +1558,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         btss_conf = conv_label(50 + int(value_no * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
+        # Forebet BTTS cross-check for NO (mirrors YES logic)
+        if fb_btts_no is not None and fb_btts_no < 40 and btss_conf in ("Near Certain", "High"):
+            btss_conf = "Medium-High"
+        # High-scoring league cap — BTTS NO less reliable when avg_goals > 3.0
+        if profile.get("avg_goals", 2.8) > 3.0 and btss_conf in ("Near Certain", "High"):
+            btss_conf = "Medium-High"
         btss_reason = f"model {p_btss:.0%}y/{p_btn:.0%}n"
         if fb_btts_no:
             btss_reason += f" fb{fb_btts_no}%"
         add("BTTS", "No", btss_conf, btss_reason, model_prob=p_btn)
+
+    # ── Suppress combined picks (e.g. "1 and NO") when favorite odds are low ──
+    for c in candidates:
+        pick_str = c.get("pick", "")
+        if " and " in pick_str:
+            c_odds = _pick_odds(c["market"], pick_str)
+            if c_odds and c_odds < 1.30:
+                c["confidence"] = "Low"
 
     # ── Rank candidates and pick primary ──
     candidates.sort(key=lambda c: (
@@ -2699,9 +2721,9 @@ Options:
     if args.auto_learn:
         from auto_learn import run_full_pipeline
         run_full_pipeline(
-            days_back=14,
+            days_back=30,
             delay=0.3,
-            max_matches=100,
+            max_matches=500,
         )
         return
 

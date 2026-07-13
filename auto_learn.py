@@ -76,10 +76,13 @@ def _extract_result_from_forebet(soup) -> tuple | None:
 
 
 def step_scrape_results(days_back: int = 14, delay: float = 0.3,
-                         max_matches: int = 100) -> dict:
+                         max_matches: int = 500) -> dict:
     """Scrape actual scores for unreviewed predictions from Forebet."""
     init_db()
     cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%d/%m/%Y")
+    # Convert DD/MM/YYYY cutoff to YYYYMMDD integer for proper numeric comparison
+    cutoff_parts = cutoff.split("/")
+    cutoff_int = int(cutoff_parts[2]) * 10000 + int(cutoff_parts[1]) * 100 + int(cutoff_parts[0])
     conn = get_db()
     rows = conn.execute("""
         SELECT id, forebet_url, home_team, away_team, match_date
@@ -87,10 +90,12 @@ def step_scrape_results(days_back: int = 14, delay: float = 0.3,
         WHERE reviewed = 0
           AND forebet_url IS NOT NULL
           AND match_date IS NOT NULL
-          AND match_date < ?
+          AND CAST(SUBSTR(match_date, 7, 4) AS INTEGER) * 10000
+              + CAST(SUBSTR(match_date, 4, 2) AS INTEGER) * 100
+              + CAST(SUBSTR(match_date, 1, 2) AS INTEGER) < ?
         ORDER BY match_date DESC
         LIMIT ?
-    """, (cutoff, max_matches)).fetchall()
+    """, (cutoff_int, max_matches)).fetchall()
     conn.close()
 
     pending = [dict(r) for r in rows]
@@ -125,6 +130,54 @@ def step_scrape_results(days_back: int = 14, delay: float = 0.3,
         "no_score": no_score,
         "errors": errors,
         "total": len(pending),
+    }
+
+
+def step_scrape_date_pages(days_back: int = 14, delay: float = 1.0,
+                           min_matches: int = 5, dry_run: bool = False) -> dict:
+    """Scrape ALL matches from Forebet date pages using AJAX endpoint.
+
+    Unlike step_scrape_results() which only scrapes individual match pages
+    for matches already in our DB, this scrapes entire date pages to discover
+    ALL played matches and update league profiles.
+    """
+    try:
+        from historical_calibrate import scrape_date_page, aggregate, update_profiles
+    except ImportError:
+        return {"status": "no_historical_calibrate_module", "updated": False}
+
+    from datetime import timedelta
+
+    dates = []
+    d = datetime.now() - timedelta(days=days_back)
+    end = datetime.now() - timedelta(days=1)  # yesterday
+    while d <= end:
+        dates.append(d.strftime("%Y-%m-%d"))
+        d += timedelta(days=1)
+
+    print(f"  Scraping {len(dates)} date pages ({dates[0]} to {dates[-1]})")
+
+    all_results = []
+    for i, date_str in enumerate(dates):
+        matches = scrape_date_page(date_str)
+        all_results.extend(matches)
+        if i < len(dates) - 1:
+            time.sleep(delay)
+
+    print(f"  Total matches scraped: {len(all_results)}")
+
+    if not all_results:
+        return {"status": "no_matches", "updated": False, "total_matches": 0}
+
+    aggregated = aggregate(all_results)
+    update_profiles(aggregated, min_matches, dry_run=dry_run)
+
+    return {
+        "status": "done",
+        "updated": not dry_run,
+        "total_matches": len(all_results),
+        "leagues": len(aggregated),
+        "dry_run": dry_run,
     }
 
 
@@ -166,8 +219,10 @@ def show_status():
         SELECT COUNT(*) as cnt FROM matches
         WHERE reviewed = 0
           AND match_date IS NOT NULL
-          AND match_date < ?
-    """, (datetime.now().strftime("%d/%m/%Y"),)).fetchone()["cnt"]
+          AND CAST(SUBSTR(match_date, 7, 4) AS INTEGER) * 10000
+              + CAST(SUBSTR(match_date, 4, 2) AS INTEGER) * 100
+              + CAST(SUBSTR(match_date, 1, 2) AS INTEGER) < ?
+    """, (int(datetime.now().strftime("%Y")) * 10000 + int(datetime.now().strftime("%m")) * 100 + int(datetime.now().strftime("%d")),)).fetchone()["cnt"]
 
     total_preds = conn.execute("SELECT COUNT(*) as cnt FROM matches").fetchone()["cnt"]
     conn.close()
@@ -203,7 +258,7 @@ def show_status():
 
 def run_full_pipeline(scrape_only: bool = False, calibrate_only: bool = False,
                       days_back: int = 14, delay: float = 0.3,
-                      max_matches: int = 100, verbose: bool = True):
+                      max_matches: int = 500, verbose: bool = True):
     """Run the complete automated learning pipeline."""
     print("=" * 55)
     print("AUTO-LEARN PIPELINE")
@@ -220,7 +275,7 @@ def run_full_pipeline(scrape_only: bool = False, calibrate_only: bool = False,
             status = "warning"
         print(f"  Analyzed bias: {cal['analyzed']}, Retrained: {cal['retrained']}")
     else:
-        print(f"\n[1/2] Scraping results for past {days_back} days...")
+        print(f"\n[1/3] Scraping individual match results for past {days_back} days...")
         scrape = step_scrape_results(days_back=days_back, delay=delay, max_matches=max_matches)
         results["scrape"] = scrape
         if scrape["updated"] > 0:
@@ -229,7 +284,15 @@ def run_full_pipeline(scrape_only: bool = False, calibrate_only: bool = False,
         else:
             print(f"  No results to update ({scrape['status']})")
 
-        print("\n[2/2] Calibration analysis & model retraining...")
+        print(f"\n[2/3] Scraping ALL matches from Forebet date pages (league profiles)...")
+        dp = step_scrape_date_pages(days_back=days_back, delay=delay, dry_run=False)
+        results["date_pages"] = dp
+        if dp["updated"]:
+            print(f"  Scraped {dp['total_matches']} matches across {dp['leagues']} leagues")
+        else:
+            print(f"  Date page scraping: {dp['status']}")
+
+        print("\n[3/3] Calibration analysis & model retraining...")
         cal = step_calibrate()
         results["calibration"] = cal
         if not cal["analyzed"]:
@@ -249,7 +312,7 @@ def run_full_pipeline(scrape_only: bool = False, calibrate_only: bool = False,
 
 
 def run_daemon(interval_seconds: int = 3600, days_back: int = 14,
-               delay: float = 0.3, max_matches: int = 100):
+               delay: float = 0.3, max_matches: int = 500):
     """Run the learning pipeline in a loop at the specified interval."""
     print(f"Auto-Learn Daemon starting (interval={interval_seconds}s)")
     print(f"Press Ctrl+C to stop.\n")
@@ -298,8 +361,8 @@ Examples:
                         help="How many days back to look for results (default: 14)")
     parser.add_argument("--delay", type=float, default=0.3,
                         help="Delay between scrape requests (default: 0.3s)")
-    parser.add_argument("--max-matches", type=int, default=100,
-                        help="Max matches to scrape per cycle (default: 100)")
+    parser.add_argument("--max-matches", type=int, default=500,
+                        help="Max matches to scrape per cycle (default: 500)")
 
     args = parser.parse_args()
 

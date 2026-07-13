@@ -283,10 +283,97 @@ def resolve_league_from_onclick(onclick: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Scrape a single date page
+# Scrape a single date page (HTML initial + AJAX "More" button matches)
 # ---------------------------------------------------------------------------
 
+def _scrape_ajax_matches(date_str: str) -> list:
+    """Fetch additional matches via Forebet's getrs.php AJAX endpoint.
+
+    The HTML page only shows ~40 matches. The 'More' button calls getrs.php
+    to load the rest (often 200+ extra matches per day).
+    """
+    ajax_url = (
+        "https://www.forebet.com/scripts/getrs.php"
+        f"?ln=en&tp=1x2&in={date_str}&ord=0&tz=%2B180&tzs=0&tze=0"
+    )
+    try:
+        r = requests.get(ajax_url, headers=HEADERS, timeout=30)
+        if r.status_code != 200:
+            return []
+    except Exception:
+        return []
+
+    try:
+        data = r.json()
+    except (json.JSONDecodeError, ValueError):
+        return []
+
+    if not isinstance(data, list) or len(data) < 2:
+        return []
+
+    raw_matches = data[0]   # list of match dicts
+    league_meta = data[1]   # league_id -> [country, league, alias, ...]
+
+    # Build league_id -> league_key mapping
+    league_key_map = {}
+    for lid, meta in league_meta.items():
+        if isinstance(meta, list) and len(meta) >= 2:
+            country = meta[0] or ""
+            league = meta[1] or ""
+            league_key_map[str(lid)] = detect_league(f"{country} {league}")
+
+    matches = []
+    for m in raw_matches:
+        # Skip matches without scores or not finished
+        comment = m.get("comment", "")
+        if comment not in ("FT", "AET", "Pen."):
+            continue
+
+        home_goals = m.get("Host_SC")
+        away_goals = m.get("Guest_SC")
+        if home_goals is None or away_goals is None:
+            continue
+        try:
+            home_goals = int(home_goals)
+            away_goals = int(away_goals)
+        except (ValueError, TypeError):
+            continue
+
+        # Build URL from match data
+        short_tag = m.get("short_tag", "")
+        host_name = m.get("HOST_NAME", "")
+        guest_name = m.get("GUEST_NAME", "")
+        match_id = m.get("id", "")
+
+        # Use league_id to get league key
+        lid = str(m.get("league_id", ""))
+        league_key = league_key_map.get(lid, "default")
+
+        # Build match URL (Forebet pattern: /en/football-predictions/...)
+        match_url = f"https://www.forebet.com/en/football-predictions/{short_tag.lower()}/{match_id}"
+
+        matches.append({
+            "url": match_url,
+            "league_key": league_key,
+            "date": date_str,
+            "home_goals": home_goals,
+            "away_goals": away_goals,
+        })
+
+    return matches
+
+
 def scrape_date_page(date_str: str) -> list:
+    """Scrape all played matches for a given date from Forebet.
+
+    Uses the AJAX getrs.php endpoint which returns ALL matches (typically
+    200-300+ per day) versus the HTML page which only shows ~40.
+    """
+    ajax_matches = _scrape_ajax_matches(date_str)
+    if ajax_matches:
+        return ajax_matches
+
+    # Fallback to HTML scraping if AJAX fails
     url = f"https://www.forebet.com/en/football-predictions/predictions-1x2/{date_str}"
     try:
         r = requests.get(url, headers=HEADERS, timeout=30)

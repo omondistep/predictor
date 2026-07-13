@@ -80,4 +80,9 @@ learn-status
 predict-calibrate
 ```
 pr links.txt && auto_learn.py --days-back 365 --max-matches 2000
+ python3 auto_learn.py --days-back 14
+
+
+
+
  ./run_pipeline.sh 

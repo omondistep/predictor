@@ -695,6 +695,15 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
     p_ov = 1.0 - sum(poisson_prob(expected_total, i) for i in range(3))
     p_un = 1.0 - p_ov
 
+    # Overdispersion adjustment for O/U — real football scores have variance > mean
+    vol = profile.get("volatility", 0.10)
+    overdisp_factor = 1.0 + vol * 2.0
+    adjusted_total = expected_total * overdisp_factor
+    p_ov_adj = 1.0 - sum(poisson_prob(adjusted_total, i) for i in range(3))
+    # Blend: 70% original Poisson, 30% overdispersed
+    p_ov = 0.7 * p_ov + 0.3 * p_ov_adj
+    p_un = 1.0 - p_ov
+
     # BTTS (with Dixon-Coles correlation adjustment)
     p_home_scores = 1.0 - poisson_prob(exp_h, 0)
     p_away_scores = 1.0 - poisson_prob(exp_a, 0)
