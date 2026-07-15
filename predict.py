@@ -23,8 +23,10 @@ from pathlib import Path
 # Local modules
 from database import (
     get_db, init_db, save_prediction, get_unreviewed_matches, update_result,
-    get_calibration_summary, get_predictions_for_review, get_league_accuracy
+    get_calibration_summary, get_predictions_for_review, get_league_accuracy,
+    store_market_results, get_market_accuracy, get_market_accuracy_history
 )
+from calibration_learner import retrain_from_results, apply_calibration
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 
 # ML-enhanced modules (optional)
@@ -34,6 +36,42 @@ _DYNAMIC_WEIGHTS = None  # Cached per-league dynamic weights
 # Calibration learning module
 _CALIBRATION_LEARNER = None
 _BIAS_CORRECTIONS_LOADED = False
+
+
+def schedule_retrain(delay_hours: float = 18.0):
+    """Schedule isotonic regression retrain after games finish.
+    
+    Args:
+        delay_hours: Hours to wait before retraining (default 18h)
+    """
+    import subprocess
+    from datetime import timedelta
+    
+    retrain_time = datetime.now() + timedelta(hours=delay_hours)
+    time_str = retrain_time.strftime("%H:%M %Y-%m-%d")
+    
+    # Create a script to run retraining
+    script_content = f"""#!/bin/bash
+cd {Path(__file__).parent}
+.venv/bin/python3 -c "from calibration_learner import retrain_from_results; retrain_from_results(force=True)"
+"""
+    script_path = Path(__file__).parent / "retrain_now.sh"
+    script_path.write_text(script_content)
+    script_path.chmod(0o755)
+    
+    # Schedule with at command
+    try:
+        cmd = f'echo "{script_path}" | at {time_str}'
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            log(f"Retrain scheduled for {time_str}")
+        else:
+            log(f"Failed to schedule retrain: {result.stderr}")
+    except Exception as e:
+        log(f"Failed to schedule retrain: {e}")
+        # Fallback: run immediately if at is not available
+        log("Running retrain immediately instead...")
+        retrain_from_results(force=True)
 
 # ─────────────────────────────────────────────
 # League Profiles
@@ -717,8 +755,12 @@ def _load_ml_model():
     """Lazy-load the trained ML model (auto-trains if needed)."""
     global _ML_MODEL
     if _ML_MODEL is None:
-        from ml_model import MLPredictor
-        _ML_MODEL = MLPredictor.load(auto_train=True)
+        try:
+            from ml_model import MLPredictor
+            _ML_MODEL = MLPredictor.load(auto_train=True)
+        except Exception as e:
+            print(f"[ml] Failed to load ML model: {e}")
+            _ML_MODEL = None
     return _ML_MODEL if _ML_MODEL and _ML_MODEL.is_trained else None
 
 
@@ -768,7 +810,10 @@ def _maybe_auto_calibrate():
     This enables continuous learning without manual intervention.
     """
     try:
-        from auto_learn import step_scrape_results, step_calibrate
+        try:
+            from auto_learn import step_scrape_results, step_calibrate
+        except ImportError:
+            from scripts.auto_learn import step_scrape_results, step_calibrate
         from database import get_calibration_data_for_retraining
         stats = get_calibration_data_for_retraining()
 
@@ -1108,7 +1153,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         dynamic_weights = _get_dynamic_weights(league_key)
 
         # Blend with ML model using dynamic weights
-        ensemble = ensemble_predict(data, profile, ml_model, dynamic_weights=dynamic_weights)
+        ensemble = ensemble_predict(data, profile, ml_model, dynamic_weights=dynamic_weights, league=league_key)
         p_home = ensemble["prob_home"]
         p_draw = ensemble["prob_draw"]
         p_away = ensemble["prob_away"]
@@ -1171,11 +1216,17 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 exp_a += shift
                 exp_h = max(exp_h - shift * 0.3, 0.05)
             exp_total = exp_h + exp_a
-            p_home = prob_home_win(exp_h, exp_a)
-            p_draw = prob_draw(exp_h, exp_a)
-            p_away = prob_away_win(exp_h, exp_a)
-            p_over = prob_over(exp_h, exp_a, 2.5)
-            p_under = 1.0 - p_over
+            trans_p_home = prob_home_win(exp_h, exp_a)
+            trans_p_draw = prob_draw(exp_h, exp_a)
+            trans_p_away = prob_away_win(exp_h, exp_a)
+            trans_p_over = prob_over(exp_h, exp_a, 2.5)
+            trans_p_under = 1.0 - trans_p_over
+            blend_w = min(0.6, trans_weight * abs_sig)
+            p_home = p_home * (1 - blend_w) + trans_p_home * blend_w
+            p_draw = p_draw * (1 - blend_w) + trans_p_draw * blend_w
+            p_away = p_away * (1 - blend_w) + trans_p_away * blend_w
+            p_over = p_over * (1 - blend_w) + trans_p_over * blend_w
+            p_under = p_under * (1 - blend_w) + trans_p_under * blend_w
             method_parts.append("trans")
             trans_adjusted = True
 
@@ -1192,11 +1243,17 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 exp_a = max(exp_a - reduction, exp_avg)
                 exp_h = min(exp_h + reduction, exp_avg)
             exp_total = exp_h + exp_a
-            p_home = prob_home_win(exp_h, exp_a)
-            p_draw = prob_draw(exp_h, exp_a)
-            p_away = prob_away_win(exp_h, exp_a)
-            p_over = prob_over(exp_h, exp_a, 2.5)
-            p_under = 1.0 - p_over
+            draw_p_home = prob_home_win(exp_h, exp_a)
+            draw_p_draw = prob_draw(exp_h, exp_a)
+            draw_p_away = prob_away_win(exp_h, exp_a)
+            draw_p_over = prob_over(exp_h, exp_a, 2.5)
+            draw_p_under = 1.0 - draw_p_over
+            blend_w = min(0.5, draw_signal_val * 0.3)
+            p_home = p_home * (1 - blend_w) + draw_p_home * blend_w
+            p_draw = p_draw * (1 - blend_w) + draw_p_draw * blend_w
+            p_away = p_away * (1 - blend_w) + draw_p_away * blend_w
+            p_over = p_over * (1 - blend_w) + draw_p_over * blend_w
+            p_under = p_under * (1 - blend_w) + draw_p_under * blend_w
             method_parts.append("draw")
             draw_adjusted = True
 
@@ -1212,6 +1269,20 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         method_parts.append("bias-corrected")
         p_home, p_draw, p_away = p_home_bias, p_draw_bias, p_away_bias
         p_over, p_under = p_over_bias, p_under_bias
+
+    # ── Apply isotonic regression calibration (improvement 13) ──
+    p_home = apply_calibration("1X2", p_home)
+    p_draw = apply_calibration("1X2", p_draw)
+    p_away = apply_calibration("1X2", p_away)
+    p_over = apply_calibration("O/U", p_over)
+    p_under = apply_calibration("O/U", p_under)
+
+    # Re-normalize 1X2 after calibration
+    total_1x2 = p_home + p_draw + p_away
+    if total_1x2 > 0:
+        p_home /= total_1x2
+        p_draw /= total_1x2
+        p_away /= total_1x2
 
     # ── Odds-based value infrastructure ──
     odds_h = data.get("odds_home")
@@ -1719,9 +1790,20 @@ def log(msg, end="\n"):
 
 
 def _write_html(results, all_urls, compare_forebet, high_only):
-    """Generate an HTML report of predictions."""
+    """Generate an HTML report of predictions and update index."""
+    import webbrowser
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
+    now_file = datetime.now().strftime("%Y%m%d_%H%M%S")
     filtered = [r for r in results if r["confidence"] in ("Near Certain", "High")] if high_only else results
+
+    # ── Calculate per-report accuracy ──
+    report_correct = 0
+    report_total = 0
+    for r in filtered:
+        if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
+            if r.get("correct_pick") is True:
+                report_correct += 1
+            report_total += 1
 
     conf_counts = {}
     for r in filtered:
@@ -1739,12 +1821,22 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                     agreements += 1
                 total_fb += 1
 
+    EXP_COLOR = "#c4b5fd"  # violet — distinct from result(blue)/correct(green)/incorrect(red)
+
     def _c(val):
         m = {"Near Certain": "#22c55e", "High": "#3b82f6", "Medium-High": "#eab308", "Medium": "#f97316", "Low": "#ef4444"}
         return m.get(val, "#888")
 
     def _star(conf):
         return {3: "★★★", 2: "★★☆", 1: "★☆☆"}.get({"Near Certain": 3, "High": 2, "Medium-High": 1}.get(conf, 0), "")
+
+    def _highlight_exp(text: str) -> str:
+        """Colorize expected-goals mentions so they aren't confused with real scores."""
+        text = re.sub(r'exp goals (\d+\.\d+)',
+                      rf'<span style="color:{EXP_COLOR};font-weight:700">exp goals \1</span>', text)
+        text = re.sub(r'exp (\d+\.\d+-\d+\.\d+)',
+                      rf'<span style="color:{EXP_COLOR};font-weight:700">exp \1</span>', text)
+        return text
 
     def _venue_stats_html(r):
         parts = []
@@ -1781,21 +1873,69 @@ def _write_html(results, all_urls, compare_forebet, high_only):
         hf = r.get("home_form", "")
         af = r.get("away_form", "")
         picks_rows = ""
+        has_result_h = r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None
         for p in r.get("all_picks") or []:
             mp = p.get("model_prob")
             mp_s = f"{mp:.0%}" if mp else ""
             vr = p.get("value_ratio")
             vr_s = f" ({vr:.2f})" if vr else ""
-            picks_rows += f"<tr><td>{p['market']}</td><td>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td></tr>\n"
+
+            result_cell = ""
+            if has_result_h:
+                hg_h, ag_h = r["actual_home_goals"], r["actual_away_goals"]
+                total_g = hg_h + ag_h
+                actual_out = r.get("actual_outcome", "")
+                pmk, ppk = p["market"], p["pick"]
+                pc = None
+                if pmk == "1X2":
+                    pc = (ppk == actual_out)
+                elif pmk == "O/U":
+                    if "Over" in ppk:
+                        pc = (total_g > float(ppk.split()[-1]))
+                    elif "Under" in ppk:
+                        pc = (total_g <= float(ppk.split()[-1]))
+                elif pmk == "BTTS":
+                    both = hg_h > 0 and ag_h > 0
+                    pc = (ppk == "Yes" and both) or (ppk == "No" and not both)
+                elif pmk == "DNB":
+                    pc = (ppk == "Home" and actual_out == "Home win") or (ppk == "Away" and actual_out == "Away win")
+                elif pmk == "DC":
+                    if ppk == "1X": pc = actual_out in ("Home win", "Draw")
+                    elif ppk == "X2": pc = actual_out in ("Away win", "Draw")
+                    elif ppk == "12": pc = actual_out in ("Home win", "Away win")
+                if pc is True:
+                    result_cell = '<td style="color:#22c55e;font-weight:700">✓</td>'
+                elif pc is False:
+                    result_cell = '<td style="color:#ef4444;font-weight:700">✗</td>'
+                else:
+                    result_cell = '<td style="color:#64748b">—</td>'
+
+            picks_rows += f"<tr><td>{p['market']}</td><td>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td>{result_cell}</tr>\n"
 
         reason_html = ""
         if r.get("reasoning"):
             for reason in r["reasoning"]:
-                reason_html += f"<li>{reason}</li>\n"
-            reason_html = f"<details><summary>Reasoning</summary><ul>{reason_html}</ul></details>"
+                reason_html += f"<li>{_highlight_exp(reason)}</li>\n"
+            reason_html = f'<div class="reasoning"><strong>Reasoning</strong><ul>{reason_html}</ul></div>'
 
         kelly_tag = f" &middot; Kelly: {r.get('kelly_stake', 0)*100:.1f}%" if r.get('kelly_stake', 0) > 0 else ""
         method_tag = f" &middot; {r.get('method', '')}" if r.get('method') else ""
+
+        result_html = ""
+        if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
+            hg, ag = r["actual_home_goals"], r["actual_away_goals"]
+            outcome = r.get("actual_outcome", "")
+            ht_h, ht_a = r.get("ht_home_goals"), r.get("ht_away_goals")
+            ht_tag = f"  HT: {ht_h}-{ht_a}" if ht_h is not None and ht_a is not None else ""
+            if r.get("correct_pick") is True:
+                verdict = '<span style="color:#22c55e;font-weight:700">Correct!</span>'
+            elif r.get("correct_pick") is False:
+                our_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
+                our_main = our_12[0]["pick"] if our_12 else r["pick"]
+                verdict = f'<span style="color:#ef4444;font-weight:700">Incorrect</span> (picked {our_main})'
+            else:
+                verdict = ""
+            result_html = f'<div class="pick-line" style="color:#60a5fa;font-weight:700">RESULT: {hg} - {ag} ({outcome}){ht_tag}  {verdict}</div>'
 
         rows.append(f"""<div class="card" style="border-left: 4px solid {_c(r['confidence'])};">
 <div class="card-header">
@@ -1804,7 +1944,8 @@ def _write_html(results, all_urls, compare_forebet, high_only):
 </div>
 <div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
 <div class="card-body">
-  <div class="pick-line"><strong>{r['pick']}</strong> ({r['market']}) &middot; Score lean: {r['score_lean'] or '—'} &middot; Exp: {exp_str}{kelly_tag}</div>
+  {result_html}
+  <div class="pick-line"><strong>{r['pick']}</strong> ({r['market']}) &middot; Score lean: {r['score_lean'] or '—'} &middot; Exp: <span style="color:{EXP_COLOR};font-weight:700">{exp_str}</span>{kelly_tag}</div>
   <table>
     <tr><th>Home</th><td>Pos {r.get('home_pos', '—')}</td><td>Form {hf or '—'}</td><td>{r.get('odds_home', '—')}</td></tr>
     <tr><th>Draw</th><td></td><td></td><td>{r.get('odds_draw', '—')}</td></tr>
@@ -1814,9 +1955,26 @@ def _write_html(results, all_urls, compare_forebet, high_only):
   {"<p>H2H: " + str(r.get('h2h_home_wins', 0)) + "W-" + str(r.get('h2h_draws', 0)) + "D-" + str(r.get('h2h_away_wins', 0)) + "L &ndash; GF/GA: " + str(r.get('h2h_goals_for', 0)) + "/" + str(r.get('h2h_goals_against', 0)) + " &ndash; avg " + str(r.get('h2h_avg_total_goals', 0)) + " goals (" + str(r.get('h2h_matches', 0)) + " matches)</p>" if r.get('h2h_matches', 0) >= 3 else ""}
   {_venue_stats_html(r)}
   {reason_html}
-  {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th></tr>" + picks_rows + "</table>") if picks_rows else ""}
+  {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
 </div>
 </div>""")
+
+    # ── Get market accuracy data for charts ──
+    market_accuracy_data = get_market_accuracy()
+    market_labels = json.dumps([m["market"] for m in market_accuracy_data if m["market"]])
+    market_totals = json.dumps([m["total"] for m in market_accuracy_data if m["market"]])
+    market_correct = json.dumps([m["correct"] for m in market_accuracy_data if m["market"]])
+    market_accuracy = json.dumps([m["accuracy"] for m in market_accuracy_data if m["market"]])
+
+    # ── Get accuracy trend data for charts ──
+    trend_data = {}
+    for market in ["1X2", "O/U", "BTTS"]:
+        history = get_market_accuracy_history(market, window=20)
+        if history:
+            trend_data[market] = {
+                "dates": [h["date"][:10] for h in history[-30:]],
+                "accuracy": [h["accuracy"] for h in history[-30:]]
+            }
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -1824,10 +1982,12 @@ def _write_html(results, all_urls, compare_forebet, high_only):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Predictions — {now}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; padding:20px; }}
 h1 {{ font-size:1.4rem; margin-bottom:4px; }}
+h2 {{ font-size:1.1rem; margin:16px 0 8px; color:#94a3b8; }}
 .sub {{ color:#94a3b8; font-size:0.85rem; margin-bottom:20px; }}
 .stats {{ display:flex; gap:16px; flex-wrap:wrap; margin-bottom:24px; }}
 .stat {{ background:#1e293b; padding:10px 16px; border-radius:8px; font-size:0.85rem; }}
@@ -1842,10 +2002,14 @@ h1 {{ font-size:1.4rem; margin-bottom:4px; }}
 table {{ width:100%; border-collapse:collapse; margin:6px 0; }}
 th, td {{ text-align:left; padding:2px 8px 2px 0; }}
 th {{ color:#94a3b8; font-weight:500; width:60px; }}
-details {{ margin-top:6px; }}
-summary {{ cursor:pointer; color:#60a5fa; font-weight:500; }}
+ details {{ margin-top:6px; }}
+ .reasoning {{ margin-top:6px; }}
+ .reasoning strong {{ color:#94a3b8; font-weight:500; }}
+ summary {{ cursor:pointer; color:#60a5fa; font-weight:500; }}
 ul {{ margin:4px 0 0 18px; color:#94a3b8; }}
 a {{ color:#60a5fa; }}
+.chart-container {{ background:#1e293b; border-radius:8px; padding:16px; margin-bottom:12px; }}
+canvas {{ max-height:300px; }}
 </style>
 </head>
 <body>
@@ -1856,12 +2020,222 @@ a {{ color:#60a5fa; }}
 {"".join(f'<div class="stat" style="border-left:3px solid {_c(c)}">{c} <span style="color:{_c(c)}">{n}</span></div>' for c, n in conf_counts.items())}
 {f'<div class="stat">Forebet 1X2 agreement <span>{agreements}/{total_fb} ({100*agreements//total_fb if total_fb else 0}%)</span></div>' if compare_forebet and total_fb else ""}
 </div>
+
+<h2>Model Accuracy</h2>
+<div class="chart-container">
+  <canvas id="marketChart"></canvas>
+</div>
+
+<div class="chart-container">
+  <canvas id="trendChart"></canvas>
+</div>
+
+<h2>Predictions</h2>
 {"".join(rows)}
+
+<script>
+const marketCtx = document.getElementById('marketChart').getContext('2d');
+new Chart(marketCtx, {{
+  type: 'bar',
+  data: {{
+    labels: {market_labels},
+    datasets: [{{
+      label: 'Total Picks',
+      data: {market_totals},
+      backgroundColor: 'rgba(59, 130, 246, 0.5)',
+      borderColor: 'rgba(59, 130, 246, 1)',
+      borderWidth: 1
+    }}, {{
+      label: 'Correct',
+      data: {market_correct},
+      backgroundColor: 'rgba(34, 197, 94, 0.5)',
+      borderColor: 'rgba(34, 197, 94, 1)',
+      borderWidth: 1
+    }}]
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{
+      title: {{ display: true, text: 'Market Accuracy', color: '#e2e8f0' }},
+      legend: {{ labels: {{ color: '#94a3b8' }} }}
+    }},
+    scales: {{
+      x: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }} }},
+      y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }} }}
+    }}
+  }}
+}});
+
+const trendCtx = document.getElementById('trendChart').getContext('2d');
+const trendDatasets = [];
+{"".join(f'''
+trendDatasets.push({{
+  label: '{m}',
+  data: {json.dumps(trend_data[m]["accuracy"]) if m in trend_data else "[]"},
+  borderColor: '{"#22c55e" if m == "1X2" else "#3b82f6" if m == "O/U" else "#eab308"}',
+  tension: 0.1,
+  fill: false
+}});''' for m in ["1X2", "O/U", "BTTS"] if m in trend_data)}
+
+new Chart(trendCtx, {{
+  type: 'line',
+  data: {{
+    labels: {json.dumps(trend_data["1X2"]["dates"]) if "1X2" in trend_data else "[]"},
+    datasets: trendDatasets
+  }},
+  options: {{
+    responsive: true,
+    plugins: {{
+      title: {{ display: true, text: 'Accuracy Trend (Rolling 20)', color: '#e2e8f0' }},
+      legend: {{ labels: {{ color: '#94a3b8' }} }}
+    }},
+    scales: {{
+      x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 10 }}, grid: {{ color: '#334155' }} }},
+      y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }}, min: 0, max: 100 }}
+    }}
+  }}
+}});
+</script>
 </body>
 </html>"""
-    path = Path("predictions.html")
-    path.write_text(html)
-    log(f"HTML report: {path.resolve()}")
+
+    # ── Save numbered report ──
+    pred_dir = Path("predictions")
+    pred_dir.mkdir(exist_ok=True)
+
+    # Find next available number
+    existing = sorted(pred_dir.glob("*.html"))
+    existing_nums = []
+    for f in existing:
+        if f.name == "index.html":
+            continue
+        try:
+            existing_nums.append(int(f.stem))
+        except ValueError:
+            pass
+    next_num = max(existing_nums, default=0) + 1
+
+    report_path = pred_dir / f"{next_num:03d}.html"
+    report_path.write_text(html)
+    log(f"HTML report: {report_path.resolve()}")
+
+    # ── Update index.html ──
+    _update_index(pred_dir, now)
+
+    # ── Auto-open in browser ──
+    index_path = pred_dir / "index.html"
+    webbrowser.open(str(index_path.resolve()))
+
+
+def _update_index(pred_dir: Path, current_time: str):
+    """Generate/update index.html with links to all reports."""
+    reports = []
+    for f in sorted(pred_dir.glob("*.html"), reverse=True):
+        if f.name == "index.html":
+            continue
+        try:
+            num = int(f.stem)
+        except ValueError:
+            continue
+
+        # Extract basic info from the HTML file
+        content = f.read_text()
+        # Extract title (match names)
+        title_match = re.search(r'<title>(.*?)</title>', content)
+        title = title_match.group(1) if title_match else f"Report {num}"
+
+        # Extract match info from first card
+        teams_match = re.search(r'class="teams">(.*?) vs (.*?)</span>', content)
+        home = teams_match.group(1) if teams_match else "?"
+        away = teams_match.group(2) if teams_match else "?"
+
+        # Extract date from card-meta
+        meta_match = re.search(r'class="card-meta">(.*?)</div>', content)
+        meta = meta_match.group(1) if meta_match else ""
+        date_str = ""
+        if " · " in meta:
+            parts = meta.split(" · ")
+            date_str = parts[1] if len(parts) > 1 else ""
+
+        # Extract result if present
+        result_match = re.search(r'RESULT: (\d+) - (\d+) \((.*?)\)', content)
+        score = f"{result_match.group(1)}-{result_match.group(2)}" if result_match else "—"
+        outcome = result_match.group(3) if result_match else ""
+
+        # Extract verdict
+        verdict_match = re.search(r'(Correct!|Incorrect)', content)
+        verdict = verdict_match.group(1) if verdict_match else "—"
+
+        # Extract accuracy from picks table (only if match has result)
+        if result_match:
+            correct_count = content.count('color:#22c55e;font-weight:700">✓</td>')
+            incorrect_count = content.count('color:#ef4444;font-weight:700">✗</td>')
+            total_evaluated = correct_count + incorrect_count
+            accuracy = f"{correct_count}/{total_evaluated}" if total_evaluated > 0 else "—"
+        else:
+            accuracy = "Pending"
+
+        reports.append({
+            'num': num,
+            'home': home,
+            'away': away,
+            'date': date_str,
+            'score': score,
+            'verdict': verdict,
+            'accuracy': accuracy,
+            'filename': f.name,
+        })
+
+    # Keep only last 100
+    reports = reports[:100]
+
+    # Generate index HTML
+    index_html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Predictions Index</title>
+<style>
+* {{ margin:0; padding:0; box-sizing:border-box; }}
+body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; padding:20px; }}
+h1 {{ font-size:1.4rem; margin-bottom:4px; }}
+.sub {{ color:#94a3b8; font-size:0.85rem; margin-bottom:20px; }}
+table {{ width:100%; border-collapse:collapse; margin:6px 0; }}
+th, td {{ text-align:left; padding:8px 12px; }}
+th {{ color:#94a3b8; font-weight:500; border-bottom:1px solid #334155; }}
+tr:hover {{ background:#1e293b; }}
+a {{ color:#60a5fa; text-decoration:none; }}
+a:hover {{ text-decoration:underline; }}
+.correct {{ color:#22c55e; }}
+.incorrect {{ color:#ef4444; }}
+</style>
+</head>
+<body>
+<h1>⚽ Predictions Index</h1>
+<p class="sub">Last updated: {current_time} &middot; {len(reports)} reports</p>
+<table>
+<tr><th>#</th><th>Match</th><th>Date</th><th>Score</th><th>Accuracy</th><th>Result</th><th>Link</th></tr>
+"""
+    for r in reports:
+        verdict_class = "correct" if r['verdict'] == "Correct!" else "incorrect" if r['verdict'] == "Incorrect" else ""
+        index_html += f"""<tr>
+<td>{r['num']}</td>
+<td>{r['home']} vs {r['away']}</td>
+<td>{r['date']}</td>
+<td>{r['score']}</td>
+<td>{r['accuracy']}</td>
+<td class="{verdict_class}">{r['verdict']}</td>
+<td><a href="{r['filename']}">View</a></td>
+</tr>
+"""
+    index_html += """</table>
+</body>
+</html>"""
+
+    index_path = pred_dir / "index.html"
+    index_path.write_text(index_html)
+    log(f"Index updated: {index_path.resolve()}")
 
 
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
@@ -1925,6 +2299,23 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 pred["confidence"] = "Medium-High"
                 log(f"  [odds] Downgraded {pick} (odds {pick_odds_val:.2f} < min {min_odds:.2f})")
 
+        # Detect finished match result
+        actual_hg = data.get("actual_home_goals")
+        actual_ag = data.get("actual_away_goals")
+        actual_outcome = None
+        correct_pick = None
+        if actual_hg is not None and actual_ag is not None:
+            if actual_hg > actual_ag:
+                actual_outcome = "Home win"
+            elif actual_hg < actual_ag:
+                actual_outcome = "Away win"
+            else:
+                actual_outcome = "Draw"
+            # Check if our primary pick matches
+            our_12 = [p for p in (pred.get("all_picks") or []) if p["market"] == "1X2"]
+            our_main_12 = our_12[0]["pick"] if our_12 else pred["pick"]
+            correct_pick = (our_main_12 == actual_outcome)
+
         # Store in DB (map analysis keys to DB column names)
         poisson_probs = pred.get("_poisson_probs", (None, None, None))
         db_data = {
@@ -1941,6 +2332,45 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         }
         match_id = save_prediction(db_data)
 
+        # Update DB with result if match is finished
+        if actual_hg is not None and actual_ag is not None and match_id:
+            update_result(match_id, actual_hg, actual_ag)
+            # Store all market picks for accuracy tracking
+            store_market_results(match_id, pred.get("all_picks", []),
+                                actual_hg, actual_ag, actual_outcome, data)
+            
+            # Record ML vs Poisson accuracy for per-league tracking
+            if use_ml:
+                try:
+                    from database import record_ml_league_result
+                    from predict import detect_league
+                    league_key = detect_league(data.get("league", ""))
+                    
+                    # Get pure Poisson 1X2 pick from stored Poisson probs
+                    poisson_probs = pred.get("_poisson_probs", (None, None, None))
+                    if poisson_probs and all(p is not None for p in poisson_probs):
+                        p_h, p_d, p_a = poisson_probs
+                        poisson_top = max(p_h, p_d, p_a)
+                        if poisson_top == p_h:
+                            poisson_12_pick = "Home win"
+                        elif poisson_top == p_d:
+                            poisson_12_pick = "Draw"
+                        else:
+                            poisson_12_pick = "Away win"
+                    else:
+                        poisson_12_pick = pred.get("pick", "")
+                    
+                    # Check 1X2 accuracy for both
+                    ml_12 = [p for p in pred.get("all_picks", []) if p["market"] == "1X2"]
+                    ml_12_pick = ml_12[0]["pick"] if ml_12 else pred.get("pick", "")
+                    
+                    ml_correct = (ml_12_pick == actual_outcome)
+                    poisson_correct = (poisson_12_pick == actual_outcome)
+                    
+                    record_ml_league_result(league_key, "1X2", ml_correct, poisson_correct)
+                except Exception:
+                    pass
+
         results.append({
             "url": url,
             "home": data.get("home_team", "?"),
@@ -1954,6 +2384,13 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                            data.get("forebet_away_pct")),
             "forebet_over25_pct": data.get("forebet_over25_pct"),
             "forebet_btts_yes_pct": data.get("forebet_btts_yes_pct"),
+            # Match result (finished games)
+            "actual_home_goals": actual_hg,
+            "actual_away_goals": actual_ag,
+            "actual_outcome": actual_outcome,
+            "correct_pick": correct_pick,
+            "ht_home_goals": data.get("ht_home_goals"),
+            "ht_away_goals": data.get("ht_away_goals"),
             # Raw data for table display
             "home_form": data.get("home_form", ""),
             "away_form": data.get("away_form", ""),
@@ -2015,16 +2452,14 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         json.dump(results, indent=2, ensure_ascii=False, fp=sys.stdout)
         return
 
-    # ── HTML output ──
-    if html_out:
-        _write_html(results, match_urls, compare_forebet, high_only)
-        return
+    # ── Always generate HTML ──
+    _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
         results = [r for r in results if r["confidence"] in ("Near Certain", "High")]
 
-    # Print
+    # ── Minimal text summary ──
     preds_made = 0
 
     ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -2038,354 +2473,66 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 extra_width += 1
         return len(clean) + extra_width
 
-    def pad_visible(text: str, width: int, char: str = " ") -> str:
-        """Pad a string to a given visible width, taking ANSI escapes into account."""
-        v_len = visible_len(text)
-        needed = max(0, width - v_len)
-        return text + (char * needed)
-
-    def color_form(form_str: str) -> str:
-        """Color form string: W=green, D=yellow, L=red."""
-        if not form_str or form_str == "—":
-            return "\033[38;5;244m—\033[0m"
-        res = []
-        for char in form_str:
-            if char == 'W':
-                res.append("\033[1;32mW\033[0m")
-            elif char == 'D':
-                res.append("\033[1;33mD\033[0m")
-            elif char == 'L':
-                res.append("\033[1;31mL\033[0m")
-            else:
-                res.append(char)
-        return "".join(res)
-
     for r in results:
         preds_made += 1
-        print()
 
-        W = 80
-        C = W - 4  # content width between borders
-
-        # Color setup
+        # ── Minimal summary line ──
+        home = r['home']
+        away = r['away']
+        league = r.get('league', '')
+        date = r.get('date', '')
+        pick = r['pick']
+        market = r.get('market', '')
         conf = r['confidence']
-        color = {"Near Certain": "\033[92m", "High": "\033[94m",
-                 "Medium-High": "\033[93m", "Medium": "\033[93m", "Low": "\033[91m"}.get(conf, "")
-        reset = "\033[0m"
 
-        def box(content):
-            padded = pad_visible(content, C)
-            return f"\033[38;5;244m│\033[0m {padded} \033[38;5;244m│\033[0m"
-        def hline(char="─"):
-            return f"\033[38;5;244m├{char * C}┤\033[0m"
-        def top():
-            return f"\033[38;5;244m╭{'─' * C}╮\033[0m"
-        def bottom():
-            return f"\033[38;5;244m╰{'─' * C}╯\033[0m"
+        # Line 1: Match info
+        match_info = f"{home} vs {away}"
+        if league:
+            match_info += f"  •  {league}"
+        if date:
+            match_info += f"  •  {date}"
+        print(f"\033[1m{match_info}\033[0m")
 
-        # ── HEADER ──
-        print(top())
+        # Line 2: Result (if finished)
+        if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
+            hg = r["actual_home_goals"]
+            ag = r["actual_away_goals"]
+            outcome = r.get("actual_outcome", "")
+            ht_h = r.get("ht_home_goals")
+            ht_a = r.get("ht_away_goals")
+            ht_str = f"  HT: {ht_h}-{ht_a}" if ht_h is not None and ht_a is not None else ""
 
-        # Volatility badge
-        vol_val = r.get('_volatility', 0)
-        if vol_val >= 0.25:
-            vol_tag = f"\033[1;31m⚡VOL\033[0m"
-        elif vol_val >= 0.15:
-            vol_tag = f"\033[1;33m⚡vol\033[0m"
-        else:
-            vol_tag = f"\033[38;5;244m⚡std\033[0m"
+            if r.get("correct_pick") is True:
+                verdict = "\033[1;32m✓ Correct\033[0m"
+            elif r.get("correct_pick") is False:
+                our_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
+                our_main = our_12[0]["pick"] if our_12 else r["pick"]
+                verdict = f"\033[1;31m✗ Incorrect\033[0m (picked {our_main})"
+            else:
+                verdict = ""
 
-        print(box(f" \033[1m⚽ {r['home']} vs {r['away']}\033[0m "))
-        print(box(f" \033[38;5;248m{r.get('league', '')}\033[0m  •  {vol_tag}  •  \033[38;5;248m{r.get('date', '')}\033[0m "))
-        print(hline())
+            print(f"RESULT: \033[1m{hg} - {ag}\033[0m ({outcome}){ht_str}  {verdict}")
 
-        # ── FORM + STANDINGS ──
-        fmt_pos = lambda p: (f"{p}" if p else "—") + "th" if p else "—"
-        hf = r.get('home_form', '')
-        af = r.get('away_form', '')
-        h_ppg = _ppg(hf) if sum(1 for c in hf if c in 'WDL') >= 3 else None
-        a_ppg = _ppg(af) if sum(1 for c in af if c in 'WDL') >= 3 else None
+        # Line 3: Pick info
+        pick_line = f"Pick: \033[1m{pick}\033[0m ({market}) • {conf}"
+        if r.get("score_lean"):
+            pick_line += f" • Score: {r['score_lean']}"
+        eh, ea = r.get("_exp_goals", (None, None))
+        if eh is not None and ea is not None:
+            pick_line += f" • \033[35mExp: {eh:.1f}-{ea:.1f}\033[0m"
+        fb = r.get("forebet")
+        if fb:
+            pick_line += f" • Forebet: {fb}"
+        print(pick_line)
 
-        h_pos = r.get('home_pos', '—')
-        a_pos = r.get('away_pos', '—')
-        h_pos_str = f"#{h_pos}" if h_pos and h_pos != '—' else "—"
-        a_pos_str = f"#{a_pos}" if a_pos and a_pos != '—' else "—"
-
-        home_line = f" \033[38;5;248mHome:\033[0m \033[1m{h_pos_str:<3s}\033[0m  \033[38;5;248mForm:\033[0m {color_form(hf)}"
-        if h_ppg:
-            home_line += f"  \033[38;5;244m({h_ppg:.1f} ppg)\033[0m"
-        away_line = f" \033[38;5;248mAway:\033[0m \033[1m{a_pos_str:<3s}\033[0m  \033[38;5;248mForm:\033[0m {color_form(af)}"
-        if a_ppg:
-            away_line += f"  \033[38;5;244m({a_ppg:.1f} ppg)\033[0m"
-        print(box(home_line))
-        print(box(away_line))
-        print(hline())
-
-        # ── PRIMARY PICK ──
-        market_tag = f" ({r['market']})" if r['market'] else ""
-        score_str = f"  •  \033[38;5;248mScore:\033[0m \033[1m{r['score_lean']}\033[0m" if r['score_lean'] else ""
-        exp_str = ""
-        if '_exp_goals' in r and r['_exp_goals']:
-            eh, ea = r['_exp_goals']
-            exp_str = f"  •  \033[38;5;248mExp:\033[0m \033[1m{eh:.1f}-{ea:.1f}\033[0m"
-        method_str = f"  •  \033[38;5;244m[{r.get('method', '')}]\033[0m" if r.get('method') else ""
-        kelly_str = f"  •  \033[1;32mKelly: {r.get('kelly_stake', 0)*100:.1f}%\033[0m" if r.get('kelly_stake', 0) > 0 else ""
-        
-        pick_part = f"\033[1;33m★\033[0m {color}\033[1m{r['pick']}{market_tag}\033[0m"
-        conf_part = f"\033[1m{color}{conf}\033[0m"
-        
-        pick_line = f" {pick_part}  •  {conf_part}{score_str}{exp_str}{kelly_str}"
-        print(box(pick_line))
-
-        # Method line (separate to avoid overflow)
-        if r.get('method'):
-            method_line = f" \033[38;5;244mMethod:\033[0m \033[1m[{r.get('method', '')}]\033[0m"
-            print(box(method_line))
-
-        # ── ODDS ──
-        nl = lambda v: f"{v:.2f}" if isinstance(v, (int, float)) else str(v) if v else "—"
-        odds_12 = f"{nl(r.get('odds_home'))}/{nl(r.get('odds_draw'))}/{nl(r.get('odds_away'))}"
-        odds_ou = f"{nl(r.get('odds_over25'))}/{nl(r.get('odds_under25'))}"
-        odds_bt = f"{nl(r.get('odds_btts_yes'))}/{nl(r.get('odds_btts_no'))}"
-        
-        odds_line = (
-            f" \033[38;5;248m1X2:\033[0m \033[1m{odds_12}\033[0m  •  "
-            f"\033[38;5;248mO/U 2.5:\033[0m \033[1m{odds_ou}\033[0m  •  "
-            f"\033[38;5;248mBTTS:\033[0m \033[1m{odds_bt}\033[0m"
-        )
-        print(box(odds_line))
-
-        # ── Venue stats ──
-        _vs_parts = []
-        hh_gf = r.get("home_home_avg_goals_for")
-        hh_ga = r.get("home_home_avg_goals_against")
-        if hh_gf is not None:
-            _vs_parts.append(f"H(H): {hh_gf:.1f}/{hh_ga:.1f}")
-        aa_gf = r.get("away_away_avg_goals_for")
-        aa_ga = r.get("away_away_avg_goals_against")
-        if aa_gf is not None:
-            _vs_parts.append(f"A(A): {aa_gf:.1f}/{aa_ga:.1f}")
-        ou15 = r.get("home_over15_pct")
-        if ou15 is not None:
-            _vs_parts.append(f"O15: {ou15}%")
-        btts_h = r.get("home_btts_yes_pct")
-        if btts_h is not None:
-            _vs_parts.append(f"BTTS: {btts_h}%")
-        sot_h = r.get("home_shots_ontarget_pct")
-        ts_h = r.get("home_total_shots_pg")
-        if sot_h is not None and ts_h is not None:
-            _vs_parts.append(f"SoT: {sot_h}%")
-        cs_h = r.get("home_clean_sheets_pct")
-        if cs_h is not None:
-            _vs_parts.append(f"CS: {cs_h}%")
-        if _vs_parts:
-            vs_line = " \033[38;5;248mVenue:\033[0m " + "  ".join(_vs_parts)
-            print(box(vs_line))
-
-        # ── H2H ──
-        hm = r.get('h2h_matches', 0)
-        if hm >= 3:
-            hw = r.get('h2h_home_wins', 0)
-            hd = r.get('h2h_draws', 0)
-            ha = r.get('h2h_away_wins', 0)
-            h2h_gf = r.get('h2h_goals_for', 0)
-            h2h_ga = r.get('h2h_goals_against', 0)
-            h2h_avg = r.get('h2h_avg_total_goals', 0)
-            h2h_line = (
-                f" \033[38;5;248mH2H:\033[0m \033[1m{hw}W-{hd}D-{ha}L\033[0m  "
-                f"\033[38;5;244m({hm} matches, GF/GA: {h2h_gf}/{h2h_ga}, avg {h2h_avg:.1f})\033[0m"
-            )
-            print(box(h2h_line))
-        print(hline())
-
-        # ── MODEL vs FOREBET (ranked by probability) ──
-        all_picks = r.get('all_picks') or []
-        if all_picks:
-            fb_pred = r.get('forebet')
-            fb_pcts = r.get('forebet_pct', (None, None, None))
-            fb_o25 = r.get('forebet_over25_pct')
-            fb_btts = r.get('forebet_btts_yes_pct')
-            green = "\033[92m"
-            reset = "\033[0m"
-
-            oh = r.get('odds_home')
-            od = r.get('odds_draw')
-            oa = r.get('odds_away')
-            oo25 = r.get('odds_over25')
-            ou25 = r.get('odds_under25')
-            ob_y = r.get('odds_btts_yes')
-            ob_n = r.get('odds_btts_no')
-
-            def _implied(odds_dict):
-                """Return (pick_name, pct) from odds implied probabilities."""
-                imp = {}
-                total = 0.0
-                for name, odd_val in odds_dict.items():
-                    if odd_val and odd_val > 1.0:
-                        imp[name] = 1.0 / odd_val
-                        total += imp[name]
-                if not imp or total <= 0:
-                    return None, None
-                for k in imp:
-                    imp[k] = imp[k] / total
-                best = max(imp, key=imp.get)
-                return best, imp[best] * 100
-
-            def _fb_for(market: str):
-                if market == "1X2" and fb_pred and fb_pcts[0] is not None:
-                    pick = {"1": "Home win", "X": "Draw", "2": "Away win"}.get(fb_pred, fb_pred)
-                    pct = {"1": fb_pcts[0], "X": fb_pcts[1], "2": fb_pcts[2]}.get(fb_pred, 0)
-                    return pick, pct
-                if market == "O/U" and fb_o25 is not None:
-                    pick = "Over" if fb_o25 > 50 else "Under"
-                    pct = fb_o25 if fb_o25 > 50 else 100 - fb_o25
-                    return pick, pct
-                if market == "BTTS" and fb_btts is not None:
-                    pick = "Yes" if fb_btts > 50 else "No"
-                    pct = fb_btts if fb_btts > 50 else 100 - fb_btts
-                    return pick, pct
-                # Fallback to odds-implied probabilities
-                if market == "1X2":
-                    return _implied({"Home win": oh, "Draw": od, "Away win": oa})
-                if market == "O/U":
-                    return _implied({"Over 2.5": oo25, "Under 2.5": ou25})
-                if market == "BTTS":
-                    return _implied({"Yes": ob_y, "No": ob_n})
-                return None, None
-
-            def _short(pick: str, n: int = 11) -> str:
-                """Truncate long pick names."""
-                return pick[:n] if len(pick) > n else pick
-
-            conf_colors = {
-                'NC': '\033[1;32mNC\033[0m',
-                'Hi': '\033[1;34mHi\033[0m',
-                'MH': '\033[1;33mMH\033[0m',
-                'Me': '\033[33mMe\033[0m',
-                'Lo': '\033[31mLo\033[0m'
-            }
-
-            header_left = "\033[1;36mModel Pick\033[0m          \033[1;36mProb\033[0m \033[1;36mCn\033[0m  "
-            header_right = "\033[1;35mForebet Pick\033[0m      \033[1;35mProb\033[0m"
-            header_left_padded = pad_visible(header_left, 29)
-            print(box(f" {header_left_padded} │ {header_right}"))
-            
-            divider_line = "\033[38;5;244m─────────────────────────────┼─────────────────────\033[0m"
-            print(box(divider_line))
-
-            for idx, p in enumerate(all_picks):
-                if p.get('_always_show'):
-                    star = " "
-                else:
-                    star = "★" if idx == 0 else " "
-                pm = p['market']
-                pp = _short(p['pick'], 11)
-                mp = p.get('model_prob')
-                mp_str = f"{mp:.0%}" if mp else ""
-                pc = {'Near Certain': 'NC', 'High': 'Hi', 'Medium-High': 'MH', 'Medium': 'Me', 'Low': 'Lo'}.get(p['confidence'], '')
-                vr = p.get('value_ratio')
-                vr_str = f" ({vr:.2f})" if vr else ""
-
-                star_styled = f"\033[1;33m★\033[0m" if star == "★" else " "
-                pm_styled = f"\033[38;5;248m{pm:5s}\033[0m"
-                mp_styled = f"\033[1m{mp_str:>4s}\033[0m" if mp_str else "    "
-                pc_styled = conf_colors.get(pc, f"{pc:2s}")
-                vr_styled = f"\033[38;5;244m{vr_str}\033[0m" if vr_str else ""
-
-                # Forebet column
-                fb_pick, fb_pct = _fb_for(pm)
-                if fb_pick:
-                    if pm == "O/U":
-                        agree = pp.split()[0] == fb_pick
-                    else:
-                        agree = pp == fb_pick
-                    
-                    fb_pick_short = _short(fb_pick, 18)
-                    fb_pct_str = f"{fb_pct:3.0f}%"
-                    
-                    if agree:
-                        right = f"\033[1;32m{fb_pick_short:18s} {fb_pct_str} ✓\033[0m"
-                        pp_styled = f"\033[1;32m{pp:11s}\033[0m"
-                    else:
-                        right = f"\033[38;5;248m{fb_pick_short:18s}\033[0m \033[1m{fb_pct_str}\033[0m"
-                        pp_styled = f"\033[1m{pp:11s}\033[0m"
-                else:
-                    right = "\033[38;5;244m—\033[0m"
-                    agree = False
-                    pp_styled = f"\033[1m{pp:11s}\033[0m"
-
-                left = f"{star_styled} {pm_styled} {pp_styled} {mp_styled} {pc_styled}{vr_styled}"
-                left_padded = pad_visible(left, 29)
-                print(box(f" {left_padded} │ {right}"))
-
-        # ── REASONING ──
-        if show_reasoning and r.get('reasoning'):
-            for reason in r['reasoning']:
-                if " — " in reason:
-                    left_part, right_part = reason.split(" — ", 1)
-                    styled_reason = f"\033[1m{left_part}\033[0m \033[38;5;244m— {right_part}\033[0m"
-                else:
-                    styled_reason = f"\033[38;5;244m{reason}\033[0m"
-                print(box(f"  • {styled_reason}"))
-
-        # ── DATA QUALITY WARNINGS ──
-        warnings = r.get('_warnings', [])
-        if warnings:
-            print(box(f" \033[1;33m⚠\033[0m \033[33m{'  •  '.join(warnings)}\033[0m"))
-
-        # ── FOOTER ──
-        short_url = r['url'][:45] + "..." if len(r['url']) > 48 else r['url']
-        tag = f"\033[38;5;244mID: {r['match_id']}  •  {short_url}\033[0m"
-        print(box(tag))
-        print(bottom())
-
-    # Summary
-    print()
-    Ws = 80
-    Cs = Ws - 4
-    
-    def s_box(content):
-        v_len = visible_len(content)
-        padding = max(0, Cs - v_len)
-        return f"\033[38;5;244m│\033[0m {content}{' ' * padding} \033[38;5;244m│\033[0m"
-
-    print(f"\033[38;5;244m╭{'─' * Cs}╮\033[0m")
-    print(s_box(f"\033[1mSUMMARY STATISTICS\033[0m"))
-    print(f"\033[38;5;244m├{'─' * Cs}┤\033[0m")
-    
-    conf_counts = {}
-    for r in results:
-        conf_counts[r['confidence']] = conf_counts.get(r['confidence'], 0) + 1
-
-    pick_rate = (len(results)/len(match_urls)*100) if preds_made else 0
-    print(s_box(f"Predictions made: \033[1m{preds_made}\033[0m ({pick_rate:.0f}% pick rate)"))
-    
-    for c in ["Near Certain", "High", "Medium-High", "Medium", "Low"]:
-        if c in conf_counts:
-            count = conf_counts[c]
-            suffix = "match" if count == 1 else "matches"
-            c_color = {"Near Certain": "\033[92m", "High": "\033[94m",
-                       "Medium-High": "\033[93m", "Medium": "\033[93m", "Low": "\033[91m"}.get(c, "")
-            print(s_box(f"  • {c_color}{c}\033[0m: \033[1m{count}\033[0m {suffix}"))
-            
-    if compare_forebet:
-        agreements = 0
-        total_fb = 0
-        for r in results:
-            if r.get('forebet'):
-                picks_12 = [p for p in (r.get('all_picks') or []) if p['market'] == '1X2']
-                our_12 = picks_12[0]['pick'] if picks_12 else r['pick']
-                fb_val = {"Home win": "1", "Draw": "X", "Away win": "2"}.get(our_12, "")
-                if fb_val and r['forebet'] == fb_val:
-                    agreements += 1
-                total_fb += 1
-        if total_fb:
-            pct = 100 * agreements // total_fb
-            agree_str = f"\033[1;32m✓ {agreements}/{total_fb} ({pct}%)\033[0m" if pct >= 50 else f"\033[1;31m✗ {agreements}/{total_fb} ({pct}%)\033[0m"
-            print(s_box(f"Forebet 1X2 agreement: {agree_str}"))
-            
-    print(f"\033[38;5;244m╰{'─' * Cs}╯\033[0m")
+        # Line 4: HTML path
+        # Find the report number from results
+        print(f"→ predictions/{preds_made:03d}.html")
     print(f"\nSaved to database: history.db")
+
+    # Schedule retrain ~18h after games finish
+    if preds_made > 0:
+        schedule_retrain(delay_hours=18.0)
 
 
 # ─────────────────────────────────────────────
@@ -2715,7 +2862,9 @@ Options:
     init_db()
 
     # Auto-run calibration learning on prediction runs (analyze bias + check retrain)
-    if args.file and not args.no_ml:
+    # Disabled by default: step_scrape_results is slow and blocks predictions.
+    # Run explicit modes instead: --auto-learn, --learn-calibration, --calibration-report
+    if args.file and not args.no_ml and False:
         _maybe_auto_calibrate()
 
     if args.auto_learn:

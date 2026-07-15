@@ -1,5 +1,46 @@
 __pycache__/
 *.pyc
-raw_sample.txt
-learn_output.log
-predict_output.log
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Database
+history.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Data files (large/generated)
+data/
+predictions/
+ml_models/
+backups/
+
+# Logs
+*.log
+/tmp/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+*.pyc
+__pycache__/

@@ -9,7 +9,7 @@ import sqlite3
 import os
 import re
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 DB_DIR = Path(__file__).parent
@@ -165,6 +165,17 @@ CREATE TABLE IF NOT EXISTS model_retrain_log (
     accuracy_ou_after REAL,
     created_at TEXT DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS ml_league_accuracy (
+    league TEXT,
+    market TEXT,
+    ml_correct INTEGER DEFAULT 0,
+    ml_total INTEGER DEFAULT 0,
+    poisson_correct INTEGER DEFAULT 0,
+    poisson_total INTEGER DEFAULT 0,
+    last_updated TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (league, market)
+);
 """
 
 SCHEMA_INDEXES = """
@@ -245,6 +256,7 @@ _MIGRATIONS = [
     ("calibration_log", "market", "TEXT"),
     ("calibration_log", "stake", "REAL"),
     ("calibration_log", "odds", "REAL"),
+    ("calibration_log", "model_prob", "REAL"),
 ]
 
 
@@ -339,7 +351,6 @@ def save_prediction(data: dict) -> int:
 
 def get_unreviewed_matches(limit: int = 50) -> list:
     """Get unreviewed matches that have already been played (past dates only)."""
-    from datetime import datetime
     today = datetime.now().strftime("%d/%m/%Y")
     today_parts = today.split("/")
     today_int = int(today_parts[2]) * 10000 + int(today_parts[1]) * 100 + int(today_parts[0])
@@ -592,6 +603,177 @@ def get_league_accuracy(league: str) -> float:
     return row["pct"] if row and row["pct"] else 0
 
 
+def store_market_results(match_id: int, all_picks: list, actual_home_goals: int, actual_away_goals: int, actual_outcome: str, match_data: dict = None):
+    """Store accuracy results for all market picks from a match."""
+    if not all_picks:
+        return
+
+    conn = get_db()
+    match = conn.execute("SELECT league, method_used FROM matches WHERE id = ?", (match_id,)).fetchone()
+    if not match:
+        conn.close()
+        return
+
+    total_goals = actual_home_goals + actual_away_goals
+    league = match["league"] or "unknown"
+    method = match["method_used"] or "unknown"
+
+    odds_map = {}
+    if match_data:
+        odds_map = {
+            "Home win": match_data.get("odds_home"),
+            "Draw": match_data.get("odds_draw"),
+            "Away win": match_data.get("odds_away"),
+            "Over 2.5": match_data.get("odds_over25"),
+            "Under 2.5": match_data.get("odds_under25"),
+            "Yes": match_data.get("odds_btts_yes"),
+            "No": match_data.get("odds_btts_no"),
+        }
+
+    for p in all_picks:
+        market = p.get("market", "")
+        pick = p.get("pick", "")
+        model_prob = p.get("model_prob")
+        confidence = p.get("confidence", "")
+
+        correct = None
+        if market == "1X2":
+            correct = 1 if pick == actual_outcome else 0
+        elif market == "O/U":
+            if "Over" in pick:
+                thresh = float(pick.split()[-1])
+                correct = 1 if total_goals > thresh else 0
+            elif "Under" in pick:
+                thresh = float(pick.split()[-1])
+                correct = 1 if total_goals <= thresh else 0
+        elif market == "BTTS":
+            both_scored = actual_home_goals > 0 and actual_away_goals > 0
+            if pick == "Yes":
+                correct = 1 if both_scored else 0
+            elif pick == "No":
+                correct = 1 if not both_scored else 0
+        elif market == "DNB":
+            if pick == "Home":
+                correct = 1 if actual_outcome == "Home win" else 0
+            elif pick == "Away":
+                correct = 1 if actual_outcome == "Away win" else 0
+        elif market == "DC":
+            if pick == "1X":
+                correct = 1 if actual_outcome in ("Home win", "Draw") else 0
+            elif pick == "X2":
+                correct = 1 if actual_outcome in ("Away win", "Draw") else 0
+            elif pick == "12":
+                correct = 1 if actual_outcome in ("Home win", "Away win") else 0
+
+        if correct is None:
+            continue
+
+        odds = odds_map.get(pick)
+
+        conn.execute("""
+            INSERT INTO calibration_log
+                (league, match_id, our_prediction, actual_result,
+                 correct, confidence, forebet_pred, forebet_correct,
+                 method_used, market, stake, odds, model_prob)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            league, match_id, pick, actual_outcome,
+            correct, confidence, None, None,
+            method, market, 0, odds, model_prob
+        ))
+
+    conn.commit()
+    conn.close()
+
+
+def get_market_accuracy(market: str = None, league: str = None, days_back: int = 365) -> list:
+    """Get per-market accuracy stats from calibration_log."""
+    conn = get_db()
+    cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+    query = """
+        SELECT market,
+               COUNT(*) as total,
+               SUM(correct) as correct,
+               ROUND(100.0 * SUM(correct) / COUNT(*), 1) as accuracy
+        FROM calibration_log
+        WHERE created_at >= ?
+    """
+    params = [cutoff]
+
+    if market:
+        query += " AND market = ?"
+        params.append(market)
+    if league:
+        query += " AND league = ?"
+        params.append(league)
+
+    query += " GROUP BY market ORDER BY total DESC"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
+
+
+def get_market_accuracy_history(market: str, days_back: int = 365, window: int = 50) -> list:
+    """Get rolling accuracy history for a market (for trend charts)."""
+    conn = get_db()
+    cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+
+    rows = conn.execute("""
+        SELECT created_at, correct
+        FROM calibration_log
+        WHERE market = ? AND created_at >= ?
+        ORDER BY created_at ASC
+    """, (market, cutoff)).fetchall()
+    conn.close()
+
+    if not rows:
+        return []
+
+    # Calculate rolling accuracy
+    results = []
+    for i in range(len(rows)):
+        start = max(0, i - window + 1)
+        window_data = rows[start:i+1]
+        total = len(window_data)
+        correct = sum(1 for r in window_data if r["correct"])
+        accuracy = round(100.0 * correct / total, 1) if total > 0 else 0
+        results.append({
+            "date": rows[i]["created_at"],
+            "accuracy": accuracy,
+            "total": total,
+            "correct": correct
+        })
+
+    return results
+
+
+def get_calibration_data_for_market(market: str, min_samples: int = 10) -> list:
+    """Get calibration data for isotonic regression (predicted prob vs actual outcome)."""
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT odds, correct
+        FROM calibration_log
+        WHERE market = ? AND odds IS NOT NULL AND odds > 1.0
+        ORDER BY created_at ASC
+    """, (market,)).fetchall()
+    conn.close()
+
+    if len(rows) < min_samples:
+        return []
+
+    # Convert odds to implied probability
+    results = []
+    for r in rows:
+        implied_prob = 1.0 / r["odds"]
+        results.append({
+            "predicted_prob": implied_prob,
+            "actual": r["correct"]
+        })
+
+    return results
+
+
 def get_dynamic_weights(league: str = None, market: str = None, min_samples: int = 5) -> dict:
     """Compute dynamic ensemble weights based on tracked component accuracy."""
     conn = get_db()
@@ -632,6 +814,73 @@ def get_dynamic_weights(league: str = None, market: str = None, min_samples: int
                 weights[k] /= tw
 
     return weights
+
+
+def record_ml_league_result(league: str, market: str, ml_correct: bool, poisson_correct: bool):
+    """Record ML vs Poisson accuracy for a specific league and market."""
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO ml_league_accuracy (league, market, ml_correct, ml_total, poisson_correct, poisson_total, last_updated)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+        ON CONFLICT(league, market) DO UPDATE SET
+            ml_correct = ml_correct + excluded.ml_correct,
+            ml_total = ml_total + excluded.ml_total,
+            poisson_correct = poisson_correct + excluded.poisson_correct,
+            poisson_total = poisson_total + excluded.poisson_total,
+            last_updated = datetime('now')
+    """, (league, market, int(ml_correct), 1, int(poisson_correct), 1))
+    conn.commit()
+    conn.close()
+
+
+def get_ml_league_accuracy(league: str, market: str, min_samples: int = 5) -> dict:
+    """Get ML vs Poisson accuracy for a league/market.
+    
+    Returns dict with:
+        ml_accuracy: float or None
+        poisson_accuracy: float or None
+        ml_total: int
+        poisson_total: int
+        use_ml: bool (True if ML is more accurate and has enough samples)
+    """
+    conn = get_db()
+    row = conn.execute("""
+        SELECT ml_correct, ml_total, poisson_correct, poisson_total
+        FROM ml_league_accuracy
+        WHERE league = ? AND market = ?
+    """, (league, market)).fetchone()
+    conn.close()
+    
+    result = {
+        "ml_accuracy": None,
+        "poisson_accuracy": None,
+        "ml_total": 0,
+        "poisson_total": 0,
+        "use_ml": False,
+    }
+    
+    if not row:
+        return result
+    
+    ml_total = row["ml_total"] or 0
+    poisson_total = row["poisson_total"] or 0
+    ml_correct = row["ml_correct"] or 0
+    poisson_correct = row["poisson_correct"] or 0
+    
+    result["ml_total"] = ml_total
+    result["poisson_total"] = poisson_total
+    
+    if ml_total >= min_samples:
+        result["ml_accuracy"] = ml_correct / ml_total
+    if poisson_total >= min_samples:
+        result["poisson_accuracy"] = poisson_correct / poisson_total
+    
+    if ml_total >= min_samples and poisson_total >= min_samples:
+        result["use_ml"] = result["ml_accuracy"] >= result["poisson_accuracy"]
+    elif ml_total >= min_samples:
+        result["use_ml"] = result["ml_accuracy"] > 0.45
+    
+    return result
 
 
 def get_predictions_for_review() -> list:

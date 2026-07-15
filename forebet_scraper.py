@@ -6,7 +6,7 @@ from forebet.com match pages for analysis.
 """
 
 import re
-import requests
+import cloudscraper
 from bs4 import BeautifulSoup, Tag
 from typing import Optional
 from datetime import datetime
@@ -86,14 +86,37 @@ class ForebetScraper:
             "away_shots_ontarget_pct": None,
             "home_clean_sheets_pct": None,
             "away_clean_sheets_pct": None,
+            "home_possession_pct": None,
+            "away_possession_pct": None,
+            "home_passes_per_game": None,
+            "away_passes_per_game": None,
+            "home_pass_accuracy_pct": None,
+            "away_pass_accuracy_pct": None,
+            "home_total_attacks_pg": None,
+            "away_total_attacks_pg": None,
+            "home_dangerous_attacks_pg": None,
+            "away_dangerous_attacks_pg": None,
+            "home_corners_avg": None,
+            "away_corners_avg": None,
+            "home_fouls_avg": None,
+            "away_fouls_avg": None,
+            "home_yellow_cards_avg": None,
+            "away_yellow_cards_avg": None,
+            "home_clean_sheets": None,
+            "away_clean_sheets": None,
             "home_form_details": [],
             "away_form_details": [],
+            "actual_home_goals": None,
+            "actual_away_goals": None,
+            "ht_home_goals": None,
+            "ht_away_goals": None,
         }
 
     def fetch(self) -> bool:
         """Fetch and parse the Forebet page. Returns True on success."""
         try:
-            resp = requests.get(self.url, headers=HEADERS, timeout=self.timeout)
+            scraper = cloudscraper.create_scraper()
+            resp = scraper.get(self.url, timeout=self.timeout)
             if resp.status_code != 200:
                 return False
             self.soup = BeautifulSoup(resp.text, "html.parser")
@@ -109,6 +132,7 @@ class ForebetScraper:
 
         self._parse_header()
         self._parse_date_time()
+        self._parse_score()
         self._parse_form()
         self._parse_standings()
         self._parse_h2h()
@@ -117,6 +141,10 @@ class ForebetScraper:
         self._parse_form_matches_from_hidd()
         self._parse_ou_btts()
         self._parse_shots()
+        self._parse_possession_passes()
+        self._parse_attacks()
+        self._parse_corners_cards()
+        self._parse_others_stats()
         self._parse_probabilities()
         self._parse_odds()
         return self.data
@@ -210,6 +238,30 @@ class ForebetScraper:
             if m:
                 day, month, year = m.group(1), m.group(2), m.group(3)
                 self.data["match_date"] = f"{year}-{int(month):02d}-{int(day):02d}"
+
+    def _parse_score(self):
+        """Extract actual match score for finished games.
+
+        Forebet displays the final score in <b class="l_scr">X - Y</b> and
+        half-time score in <span class="ht_scr">(X - Y)</span>.
+        Only set when the match is finished (score present on page).
+        """
+        score_tag = self.soup.find("b", {"class": "l_scr"})
+        if not score_tag:
+            return
+        text = score_tag.get_text(strip=True)
+        m = re.search(r"(\d+)\s*[-–]\s*(\d+)", text)
+        if m:
+            self.data["actual_home_goals"] = int(m.group(1))
+            self.data["actual_away_goals"] = int(m.group(2))
+
+        ht_tag = self.soup.find("span", {"class": "ht_scr"})
+        if ht_tag:
+            ht_text = ht_tag.get_text(strip=True)
+            hm = re.search(r"(\d+)\s*[-–]\s*(\d+)", ht_text)
+            if hm:
+                self.data["ht_home_goals"] = int(hm.group(1))
+                self.data["ht_away_goals"] = int(hm.group(2))
 
     def _parse_form(self):
         """Extract form strings (W/D/L) for both teams."""
@@ -1095,6 +1147,106 @@ class ForebetScraper:
                     self.data["home_clean_sheets_pct"] = round(home_cs / home_gp * 100, 1)
                 if away_gp > 0:
                     self.data["away_clean_sheets_pct"] = round(away_cs / away_gp * 100, 1)
+            # Also extract raw clean sheets count
+            if cs_m:
+                self.data["home_clean_sheets"] = int(cs_m.group(1))
+                self.data["away_clean_sheets"] = int(cs_m.group(2))
+
+    def _parse_possession_passes(self):
+        """Parse possession %, passes per game, and pass accuracy."""
+        container = self.soup.find("div", class_="os_passes_container")
+        if not container:
+            return
+        child_divs = container.find_all("div", class_="os_passes_child_container", recursive=False)
+        for i, child in enumerate(child_divs):
+            txt = child.get_text(" ", strip=True)
+            prefix = "home" if i == 0 else "away"
+            # Possession %
+            poss_m = re.search(r"Ball Possession\s+(\d+)%", txt)
+            if poss_m:
+                self.data[f"{prefix}_possession_pct"] = int(poss_m.group(1))
+            # Passes per game
+            ppg_m = re.search(r"Avg\.\s*per game\s+([\d.]+)", txt)
+            if ppg_m:
+                self.data[f"{prefix}_passes_per_game"] = float(ppg_m.group(1))
+            # Pass accuracy %
+            acc_m = re.search(r"Accurate\s+\d+\s+(\d+)%", txt)
+            if acc_m:
+                self.data[f"{prefix}_pass_accuracy_pct"] = int(acc_m.group(1))
+
+    def _parse_attacks(self):
+        """Parse total attacks and dangerous attacks per game."""
+        section = self.soup.find("div", class_="os_attacks_section")
+        if not section:
+            return
+        flex_divs = section.find_all("div", class_="os_flex_sb", recursive=False)
+        # Pattern: header div, data div, header div, data div
+        # Header: "CUN Total attacks ENQ"
+        # Data: "Cuniburo 1180 Avg. 73.75 El Nacional Quito 1410 Avg. 88.13"
+        current_type = None
+        for div in flex_divs:
+            cls = div.get("class", [])
+            txt = div.get_text(" ", strip=True)
+            if "__header" in cls:
+                if "Dangerous" in txt:
+                    current_type = "dangerous"
+                elif "Total" in txt:
+                    current_type = "total"
+            elif current_type:
+                # Extract two "Team Name NNN Avg. NN.NN" patterns
+                avgs = re.findall(r"Avg\.\s*([\d.]+)", txt)
+                if len(avgs) >= 2:
+                    if current_type == "total":
+                        self.data["home_total_attacks_pg"] = float(avgs[0])
+                        self.data["away_total_attacks_pg"] = float(avgs[1])
+                    elif current_type == "dangerous":
+                        self.data["home_dangerous_attacks_pg"] = float(avgs[0])
+                        self.data["away_dangerous_attacks_pg"] = float(avgs[1])
+                current_type = None
+
+    def _parse_corners_cards(self):
+        """Parse average corners and cards from the tbcorner/tbcard market divs."""
+        # Corners: "Avg. corners ... 4" or "4 - 4 4"
+        corner_div = self.soup.find("div", class_="tbcorner")
+        if corner_div:
+            txt = corner_div.get_text(" ", strip=True)
+            # Pattern: "Avg. corners ... N" or "N - N N"
+            corner_m = re.search(r"Avg\.\s*corners\s+\d+\s*-\s*\d+\s+(\d+)", txt)
+            if corner_m:
+                self.data["home_corners_avg"] = float(corner_m.group(1))
+                self.data["away_corners_avg"] = float(corner_m.group(1))
+            else:
+                # Fallback: look for single number after "Avg. corners"
+                corner_m2 = re.search(r"Avg\.\s*corners\s+(\d+)", txt)
+                if corner_m2:
+                    self.data["home_corners_avg"] = float(corner_m2.group(1))
+                    self.data["away_corners_avg"] = float(corner_m2.group(1))
+
+        # Cards: "Avg. cards ... N" or "N - N N"
+        card_div = self.soup.find("div", class_="tbcard")
+        if card_div:
+            txt = card_div.get_text(" ", strip=True)
+            card_m = re.search(r"Avg\.\s*cards\s+\d+\s*-\s*\d+\s+(\d+)", txt)
+            if card_m:
+                self.data["home_yellow_cards_avg"] = float(card_m.group(1))
+                self.data["away_yellow_cards_avg"] = float(card_m.group(1))
+            else:
+                card_m2 = re.search(r"Avg\.\s*cards\s+(\d+)", txt)
+                if card_m2:
+                    self.data["home_yellow_cards_avg"] = float(card_m2.group(1))
+                    self.data["away_yellow_cards_avg"] = float(card_m2.group(1))
+
+    def _parse_others_stats(self):
+        """Parse fouls from the Others stats section."""
+        others_div = self.soup.find("div", class_="os_others_container")
+        if not others_div:
+            return
+        txt = others_div.get_text(" ", strip=True)
+        # Fouls: "N.NN N Fouls NNN N.NN"
+        fouls_m = re.search(r"([\d.]+)\s+(\d+)\s+Fouls\s+(\d+)\s+([\d.]+)", txt)
+        if fouls_m:
+            self.data["home_fouls_avg"] = float(fouls_m.group(1))
+            self.data["away_fouls_avg"] = float(fouls_m.group(4))
 
     def _parse_probabilities(self):
         """Extract Forebet's probability percentages and prediction.
@@ -1235,7 +1387,8 @@ def scrape_results_list(url: str) -> list:
     Returns list of dicts: {"url": str, "home_goals": int, "away_goals": int}
     """
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=20)
+        scraper = cloudscraper.create_scraper()
+        resp = scraper.get(url, timeout=20)
         if resp.status_code != 200:
             return []
         soup = BeautifulSoup(resp.text, "html.parser")

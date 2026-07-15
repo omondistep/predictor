@@ -73,6 +73,10 @@ FEATURE_NAMES = [
     "odds_home", "odds_draw", "odds_away",
     # League volatility
     "league_volatility",
+    # League encoding
+    "league_hash",
+    # Derived features
+    "prob_diff_home_away", "implied_home_prob",
 ]
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
@@ -158,41 +162,102 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     # Volatility
     f.append(0.15)
 
+    # League encoding
+    league_code = row.get("league", "default")
+    f.append(float(hash(league_code) % 1000) / 1000.0)
+
+    # Derived features
+    fb_h = (row.get("forebet_home_pct") or 33) / 100.0
+    fb_a = (row.get("forebet_away_pct") or 33) / 100.0
+    f.append(fb_h - fb_a)
+    odds_h = row.get("odds_home") or 2.5
+    f.append(1.0 / odds_h if odds_h > 1 else 0.5)
+
     return np.array(f, dtype=np.float32)
 
 
 def extract_features_from_game_record(r: dict) -> np.ndarray:
     """Build feature vector from a game/ historical record."""
     f = np.zeros(len(FEATURE_NAMES), dtype=np.float32)
-    f[0] = 1.2  # home_form_pts (default)
+    
+    # Get available data from game record
+    predicted_avg_goals = r.get("predicted_avg_goals")
+    prob_home = r.get("prob_home")
+    prob_draw = r.get("prob_draw")
+    prob_away = r.get("prob_away")
+    odds = r.get("odds")
+    league_code = r.get("league_code") or r.get("short_code") or r.get("league", "default")
+    
+    # Form features - not available in game data, use neutral defaults
+    f[0] = 1.2  # home_form_pts
     f[1] = 1.2  # away_form_pts
     f[2] = 0.0  # form_diff
+    
+    # Position features - not available, use neutral defaults
     f[3] = 0.5  # home_pos_score
     f[4] = 0.5  # away_pos_score
     f[5] = 0.0  # pos_diff
+    
+    # Goal averages - not available, use league-typical defaults
     f[6] = 1.3  # home_gf_avg
     f[7] = 1.0  # home_ga_avg
     f[8] = 1.1  # away_gf_avg
     f[9] = 1.2  # away_ga_avg
     f[10] = 0.3  # home_gd_per_game
     f[11] = -0.1  # away_gd_per_game
-    f[12] = 1.2  # exp_home_goals
-    f[13] = 1.1  # exp_away_goals
-    f[14] = 2.3  # exp_total
-    f[15] = 0  # h2h_home_wins
-    f[16] = 0  # h2h_draws
-    f[17] = 0  # h2h_away_wins
-    f[18] = 5  # h2h_total
+    
+    # Expected goals from predicted_avg_goals
+    if predicted_avg_goals is not None and predicted_avg_goals > 0:
+        avg = float(predicted_avg_goals)
+        f[12] = avg * 0.55  # exp_home_goals
+        f[13] = avg * 0.45  # exp_away_goals
+        f[14] = avg  # exp_total_goals
+    else:
+        f[12] = 1.2
+        f[13] = 1.1
+        f[14] = 2.3
+    
+    # H2H - not available
+    f[15] = 0
+    f[16] = 0
+    f[17] = 0
+    f[18] = 5
+    
+    # League profile
     f[19] = 2.8  # league_avg_goals
     f[20] = 0.25  # league_draw_rate
     f[21] = 0.45  # league_home_win_rate
-    f[22] = (r.get("prob_home") or 33) / 100.0
-    f[23] = (r.get("prob_draw") or 33) / 100.0
-    f[24] = (r.get("prob_away") or 33) / 100.0
-    f[25] = 1 / ((r.get("prob_home") or 33) / 100.0) if (r.get("prob_home") or 33) > 0 else 2.5
-    f[26] = 1 / ((r.get("prob_draw") or 33) / 100.0) if (r.get("prob_draw") or 33) > 0 else 3.2
-    f[27] = 1 / ((r.get("prob_away") or 33) / 100.0) if (r.get("prob_away") or 33) > 0 else 3.0
-    f[28] = 0.15  # volatility
+    
+    # Forebet probabilities from game data
+    if prob_home is not None:
+        f[22] = float(prob_home) / 100.0
+    if prob_draw is not None:
+        f[23] = float(prob_draw) / 100.0
+    if prob_away is not None:
+        f[24] = float(prob_away) / 100.0
+    
+    # Odds
+    if odds is not None and odds > 1:
+        f[25] = float(odds)  # odds_home (using main odds as proxy)
+        f[26] = float(odds) * 1.4  # odds_draw (typical ratio)
+        f[27] = float(odds) * 1.3  # odds_away (typical ratio)
+    else:
+        f[25] = 2.5
+        f[26] = 3.2
+        f[27] = 3.0
+    
+    # Volatility
+    f[28] = 0.15
+    
+    # League encoding
+    f[29] = float(hash(league_code) % 1000) / 1000.0
+    
+    # Derived features
+    fb_h = f[22]
+    fb_a = f[24]
+    f[30] = fb_h - fb_a  # prob_diff_home_away
+    f[31] = 1.0 / f[25] if f[25] > 1 else 0.5  # implied_home_prob
+    
     return f
 
 
@@ -297,29 +362,33 @@ class MLPredictor:
 
         print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
         self.rf_model_1x2 = RandomForestClassifier(
-            n_estimators=200, max_depth=12, min_samples_leaf=10,
-            class_weight="balanced", random_state=42, n_jobs=-1,
+            n_estimators=400, max_depth=15, min_samples_leaf=8,
+            min_samples_split=20, class_weight="balanced_subsample",
+            random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for 1X2 ({len(X_train)} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
-            n_estimators=150, max_depth=6, min_samples_leaf=10,
-            learning_rate=0.1, subsample=0.8, random_state=42,
+            n_estimators=300, max_depth=6, min_samples_leaf=8,
+            learning_rate=0.05, subsample=0.85, random_state=42,
+            max_features="sqrt",
         )
         self.gb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training RandomForest for O/U ({len(X_train)} examples)...")
         self.rf_model_ou = RandomForestClassifier(
-            n_estimators=200, max_depth=10, min_samples_leaf=10,
-            class_weight="balanced", random_state=42, n_jobs=-1,
+            n_estimators=300, max_depth=12, min_samples_leaf=10,
+            class_weight="balanced_subsample", random_state=42, n_jobs=-1,
+            max_features="sqrt",
         )
         self.rf_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for O/U ({len(X_train)} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
-            n_estimators=150, max_depth=5, min_samples_leaf=10,
-            learning_rate=0.1, subsample=0.8, random_state=42,
+            n_estimators=200, max_depth=5, min_samples_leaf=10,
+            learning_rate=0.08, subsample=0.85, random_state=42,
+            max_features="sqrt",
         )
         self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
@@ -478,7 +547,7 @@ class MLPredictor:
         Load trained model. If none exists and auto_train=True, train one.
         (improvement 1: auto-train on startup)
         """
-        import joblib
+        import joblib, shutil
         path = MODELS_DIR / "ml_predictor"
         meta_path = path / "meta.json"
         if not meta_path.exists():
@@ -490,11 +559,20 @@ class MLPredictor:
                     print(f"[ML] Auto-training failed: {e}")
             return None
         ml = MLPredictor()
-        ml.scaler = joblib.load(path / "scaler.joblib")
-        ml.rf_model_1x2 = joblib.load(path / "rf_1x2.joblib")
-        ml.gb_model_1x2 = joblib.load(path / "gb_1x2.joblib")
-        ml.rf_model_ou = joblib.load(path / "rf_ou.joblib")
-        ml.gb_model_ou = joblib.load(path / "gb_ou.joblib")
+        try:
+            ml.scaler = joblib.load(path / "scaler.joblib")
+            ml.rf_model_1x2 = joblib.load(path / "rf_1x2.joblib")
+            ml.gb_model_1x2 = joblib.load(path / "gb_1x2.joblib")
+            ml.rf_model_ou = joblib.load(path / "rf_ou.joblib")
+            ml.gb_model_ou = joblib.load(path / "gb_ou.joblib")
+        except Exception as e:
+            print(f"[ML] Model files incompatible with current environment ({e}). Retraining...")
+            try:
+                shutil.rmtree(path, ignore_errors=True)
+                return train()
+            except Exception as e2:
+                print(f"[ML] Retraining failed: {e2}")
+                return None
         # Load calibrated models if they exist
         cal_paths = {
             "cal_rf_1x2": "cal_rf_1x2.joblib",
@@ -738,13 +816,14 @@ def ensemble_predict(
     profile: dict,
     ml_model: Optional[MLPredictor] = None,
     dynamic_weights: Optional[dict] = None,
+    league: Optional[str] = None,
 ) -> dict:
     """
     Combine Poisson, ML, and Forebet predictions into a single ensemble.
 
     Weighting strategy (improvement 3):
       - When dynamic_weights provided from DB tracking: use those
-      - Otherwise: 40% ML, 35% Poisson, 25% Forebet (or fallback based on availability)
+      - Otherwise: conservative defaults that favor proven Poisson over unproven ML
     """
     # Poisson prediction (always use Dixon-Coles)
     poisson = poisson_predict(data, profile, use_dixon_coles=True)
@@ -772,7 +851,6 @@ def ensemble_predict(
         w_poisson = dynamic_weights.get("poisson", 0.35)
         w_ml = dynamic_weights.get("ml", 0.25)
         w_fb = dynamic_weights.get("forebet", 0.25)
-        w_default = dynamic_weights.get("default", 0.15)
         # Renormalize if a source is missing
         if not ml_pred:
             w_poisson += w_ml
@@ -785,14 +863,60 @@ def ensemble_predict(
             w_poisson /= total_w
             w_ml /= total_w
             w_fb /= total_w
-    elif ml_pred and has_forebet:
-        w_ml, w_poisson, w_fb = 0.40, 0.35, 0.25
-    elif ml_pred:
-        w_ml, w_poisson, w_fb = 0.50, 0.50, 0.0
-    elif has_forebet:
-        w_ml, w_poisson, w_fb = 0.0, 0.60, 0.40
     else:
-        w_ml, w_poisson, w_fb = 0.0, 1.0, 0.0
+        # Conservative defaults when no dynamic weights from DB
+        if ml_pred and has_forebet:
+            w_ml, w_poisson, w_fb = 0.20, 0.50, 0.30
+        elif ml_pred:
+            w_ml, w_poisson, w_fb = 0.25, 0.75, 0.0
+        elif has_forebet:
+            w_ml, w_poisson, w_fb = 0.0, 0.60, 0.40
+        else:
+            w_ml, w_poisson, w_fb = 0.0, 1.0, 0.0
+
+    # Cap ML weight based on per-league accuracy (improvement 14)
+    ml_effective_weight = w_ml
+    if ml_pred and w_ml > 0 and ml_model is not None:
+        league_key = league or data.get("league", "default")
+        try:
+            from database import get_ml_league_accuracy
+            ml_acc = get_ml_league_accuracy(league_key, "1X2", min_samples=5)
+            ml_total = ml_acc.get("ml_total", 0)
+            if ml_total >= 5 and ml_acc.get("use_ml"):
+                ml_effective_weight = w_ml
+            elif ml_total >= 5 and not ml_acc.get("use_ml"):
+                ml_effective_weight = 0.0
+            else:
+                # Unknown league - only use ML if global CV accuracy is proven strong
+                cv_acc = getattr(ml_model, "cv_accuracy_1x2", 0.0)
+                if cv_acc >= 0.55:
+                    ml_effective_weight = min(w_ml, 0.15)
+                else:
+                    ml_effective_weight = 0.0
+        except Exception:
+            ml_effective_weight = w_ml
+
+    # Disagreement penalty: if ML and Poisson disagree on top pick, reduce ML weight
+    if ml_pred and ml_effective_weight > 0.01:
+        p_h_poisson = poisson["prob_home"]
+        p_a_poisson = poisson["prob_away"]
+        p_h_ml = ml_pred["ml_prob_home"]
+        p_a_ml = ml_pred["ml_prob_away"]
+
+        poisson_top = "Home" if p_h_poisson >= p_a_poisson else "Away"
+        ml_top = "Home" if p_h_ml >= p_a_ml else "Away"
+
+        if poisson_top != ml_top:
+            poisson_top_prob = p_h_poisson if poisson_top == "Home" else p_a_poisson
+            ml_top_prob = p_h_ml if ml_top == "Home" else p_a_ml
+            # If both are reasonably confident and disagree, trust Poisson more
+            if poisson_top_prob >= 0.35 and ml_top_prob >= 0.40:
+                ml_effective_weight *= 0.5
+                eff_total = w_poisson + ml_effective_weight + w_fb
+                if eff_total > 0:
+                    w_poisson = w_poisson / eff_total
+                    ml_effective_weight = ml_effective_weight / eff_total
+                    w_fb = w_fb / eff_total
 
     # Blend probabilities
     p_h = poisson["prob_home"] * w_poisson
@@ -800,9 +924,9 @@ def ensemble_predict(
     p_a = poisson["prob_away"] * w_poisson
 
     if ml_pred:
-        p_h += ml_pred["ml_prob_home"] * w_ml
-        p_d += ml_pred["ml_prob_draw"] * w_ml
-        p_a += ml_pred["ml_prob_away"] * w_ml
+        p_h += ml_pred["ml_prob_home"] * ml_effective_weight
+        p_d += ml_pred["ml_prob_draw"] * ml_effective_weight
+        p_a += ml_pred["ml_prob_away"] * ml_effective_weight
 
     if has_forebet:
         p_h += fb_h * w_fb
@@ -819,8 +943,8 @@ def ensemble_predict(
     p_over = poisson["prob_over"] * w_poisson
     p_under = poisson["prob_under"] * w_poisson
     if ml_pred:
-        p_over += ml_pred["ml_prob_over"] * w_ml
-        p_under += ml_pred["ml_prob_under"] * w_ml
+        p_over += ml_pred["ml_prob_over"] * ml_effective_weight
+        p_under += ml_pred["ml_prob_under"] * ml_effective_weight
     if has_forebet:
         fb_ou_pct = data.get("forebet_over25_pct") or 50
         fb_ou = fb_ou_pct / 100.0
@@ -876,12 +1000,13 @@ def load_training_data(with_weights: bool = False) -> Tuple:
     
     When with_weights=True, returns (X, y1, y2, sample_weights) with
     time decay weights (improvement 5: recent matches weighted more).
+    DB records get higher base weight since they have richer features.
     """
     X_list, y1_list, y2_list = [], [], []
     weight_list = []
     cutoff = datetime.now() - timedelta(days=365)
 
-    # 1. Game dataset (primary)
+    # 1. Game dataset (primary - large but sparse features)
     if GAME_DATA.exists():
         with open(GAME_DATA) as f:
             game_data = json.load(f)
@@ -897,7 +1022,7 @@ def load_training_data(with_weights: bool = False) -> Tuple:
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
-                # Time decay weight
+                # Time decay weight - game data gets base weight 1.0
                 if with_weights:
                     match_date = r.get("date", "")
                     w = _time_decay_weight(match_date, cutoff)
@@ -907,7 +1032,8 @@ def load_training_data(with_weights: bool = False) -> Tuple:
     else:
         print(f"Game dataset not found at {GAME_DATA}")
 
-    # 2. History.db (reviewed predictions)
+    # 2. History.db (reviewed predictions - fewer records but rich features)
+    db_count = 0
     if DB_PATH.exists():
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
@@ -935,8 +1061,10 @@ def load_training_data(with_weights: bool = False) -> Tuple:
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                db_count += 1
+                # DB records get higher weight (2.5x) due to richer features
                 if with_weights:
-                    w = _time_decay_weight(r.get("match_date", ""), cutoff)
+                    w = _time_decay_weight(r.get("match_date", ""), cutoff) * 2.5
                     weight_list.append(w)
             except Exception:
                 continue
@@ -944,7 +1072,7 @@ def load_training_data(with_weights: bool = False) -> Tuple:
     X = np.array(X_list, dtype=np.float32)
     y1 = np.array(y1_list, dtype=np.int32)
     y2 = np.array(y2_list, dtype=np.int32)
-    print(f"Total training examples: {len(X)}")
+    print(f"Total training examples: {len(X)} (game: {len(X)-db_count}, db: {db_count})")
     
     if with_weights and weight_list:
         sw = np.array(weight_list, dtype=np.float32)

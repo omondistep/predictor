@@ -388,6 +388,145 @@ def auto_retrain(force: bool = False):
     return False
 
 
+def retrain_from_results(force: bool = False):
+    """Retrain calibration using isotonic regression on historical results.
+    
+    This function:
+    1. Fetches all historical predictions with results
+    2. For each market (1X2, O/U, BTTS, DNB, DC), fits isotonic regression
+    3. Saves calibration parameters to calibration_params.json
+    
+    Returns True if retrained successfully.
+    """
+    from sklearn.isotonic import IsotonicRegression
+    import json
+    
+    print("[calibrate] Starting isotonic regression retraining...")
+    
+    # Get calibration data for each market
+    markets = ["1X2", "O/U", "BTTS", "DNB", "DC"]
+    calibration_data = {}
+    
+    for market in markets:
+        conn = get_db()
+        rows = conn.execute("""
+            SELECT model_prob, odds, correct
+            FROM calibration_log
+            WHERE market = ? AND correct IS NOT NULL
+            ORDER BY created_at ASC
+        """, (market,)).fetchall()
+        conn.close()
+        
+        if len(rows) < 200:  # Need sufficient samples for reliable isotonic regression
+            print(f"  [SKIP] {market}: insufficient data ({len(rows)} samples)")
+            continue
+        
+        # Use model_prob when available, fall back to implied probability from odds
+        X_list = []
+        y_list = []
+        for r in rows:
+            if r["model_prob"] is not None:
+                X_list.append(r["model_prob"])
+            elif r["odds"] is not None and r["odds"] > 1.0:
+                X_list.append(1.0 / r["odds"])
+            else:
+                continue  # Skip rows with neither model_prob nor odds
+            y_list.append(r["correct"])
+        
+        if len(X_list) < 10:
+            print(f"  [SKIP] {market}: insufficient usable data ({len(X_list)} samples with prob/odds)")
+            continue
+        
+        X = np.array(X_list)
+        y = np.array(y_list)
+        
+        # Fit isotonic regression
+        try:
+            ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
+            ir.fit(X, y)
+            
+            calibration_data[market] = {
+                "X_train": X.tolist(),
+                "y_train": y.tolist(),
+                "n_samples": len(X_list),
+            }
+            
+            # Calculate accuracy improvement
+            raw_accuracy = np.mean(y)
+            calibrated_predictions = ir.predict(X)
+            calibrated_accuracy = np.mean((calibrated_predictions > 0.5) == y)
+            
+            print(f"  [OK] {market}: {len(X_list)} samples, "
+                  f"raw acc: {raw_accuracy:.1%}, calibrated acc: {calibrated_accuracy:.1%}")
+            
+        except Exception as e:
+            print(f"  [ERR] {market}: {e}")
+            continue
+    
+    if not calibration_data:
+        print("[calibrate] No markets with sufficient data for retraining")
+        return False
+    
+    # Save calibration parameters
+    params_path = BASE / "calibration_params.json"
+    params = {
+        "last_retrained": datetime.now().isoformat(),
+        "markets": calibration_data,
+    }
+    
+    with open(params_path, 'w') as f:
+        json.dump(params, f, indent=2)
+    
+    print(f"[calibrate] Saved calibration parameters to {params_path}")
+    print(f"[calibrate] Retrained {len(calibration_data)} markets")
+    
+    return True
+
+
+def apply_calibration(market: str, raw_prob: float) -> float:
+    """Apply isotonic regression calibration to a raw probability.
+    
+    Args:
+        market: Market type (1X2, O/U, BTTS, DNB, DC)
+        raw_prob: Raw model probability (0-1)
+    
+    Returns:
+        Calibrated probability (0-1)
+    """
+    import json
+    
+    params_path = BASE / "calibration_params.json"
+    if not params_path.exists():
+        return raw_prob
+    
+    try:
+        with open(params_path) as f:
+            params = json.load(f)
+    except:
+        return raw_prob
+    
+    if market not in params.get("markets", {}):
+        return raw_prob
+    
+    market_data = params["markets"][market]
+    
+    # Re-fit isotonic regression from saved data
+    from sklearn.isotonic import IsotonicRegression
+    
+    X = np.array(market_data["X_train"])
+    y = np.array(market_data["y_train"])
+    
+    try:
+        ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
+        ir.fit(X, y)
+        
+        # Apply calibration
+        calibrated = ir.predict(np.array([raw_prob]))[0]
+        return float(np.clip(calibrated, 0.01, 0.99))
+    except:
+        return raw_prob
+
+
 # ---------------------------------------------------------------------------
 # Calibration quality metrics
 # ---------------------------------------------------------------------------
