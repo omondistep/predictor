@@ -39,37 +39,44 @@ _BIAS_CORRECTIONS_LOADED = False
 
 
 def schedule_retrain(delay_hours: float = 18.0):
-    """Schedule isotonic regression retrain after games finish.
-    
+    """Schedule isotonic regression retrain via cron.
+
     Args:
         delay_hours: Hours to wait before retraining (default 18h)
     """
     import subprocess
     from datetime import timedelta
-    
+
     retrain_time = datetime.now() + timedelta(hours=delay_hours)
-    time_str = retrain_time.strftime("%H:%M %Y-%m-%d")
-    
-    # Create a script to run retraining
-    script_content = f"""#!/bin/bash
-cd {Path(__file__).parent}
-.venv/bin/python3 -c "from calibration_learner import retrain_from_results; retrain_from_results(force=True)"
-"""
-    script_path = Path(__file__).parent / "retrain_now.sh"
-    script_path.write_text(script_content)
-    script_path.chmod(0o755)
-    
-    # Schedule with at command
+    hour = retrain_time.hour
+    minute = retrain_time.minute
+    parent = Path(__file__).parent
+
+    cron_line = (
+        f"{minute} {hour} * * * cd {parent} && "
+        f".venv/bin/python3 -c "
+        f"\"from calibration_learner import retrain_from_results; retrain_from_results(force=True)\" "
+        f">> /tmp/retrain.log 2>&1"
+    )
+
     try:
-        cmd = f'echo "{script_path}" | at {time_str}'
-        result = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            log(f"Retrain scheduled for {time_str}")
+        result = subprocess.run("crontab -l 2>/dev/null", shell=True,
+                                capture_output=True, text=True, timeout=10)
+        existing = result.stdout if result.returncode == 0 else ""
+
+        lines = [l for l in existing.splitlines()
+                 if "retrain_from_results" not in l]
+        lines.append(cron_line)
+        new_crontab = "\n".join(lines) + "\n"
+
+        proc = subprocess.run("crontab -", shell=True, input=new_crontab,
+                              capture_output=True, text=True, timeout=10)
+        if proc.returncode == 0:
+            log(f"Retrain cron scheduled for {retrain_time.strftime('%H:%M %Y-%m-%d')}")
         else:
-            log(f"Failed to schedule retrain: {result.stderr}")
+            log(f"Failed to set cron: {proc.stderr}")
     except Exception as e:
         log(f"Failed to schedule retrain: {e}")
-        # Fallback: run immediately if at is not available
         log("Running retrain immediately instead...")
         retrain_from_results(force=True)
 
@@ -540,6 +547,187 @@ def _ppg(form_str: str) -> float:
     return pts / n if n >= 3 else 1.2
 
 
+def _form_rates(matches: list) -> dict:
+    """Compute W/D/L rates from a list of form match dicts."""
+    n = len(matches)
+    if n == 0:
+        return {"w": 0, "d": 0, "l": 0, "gf_avg": 0, "ga_avg": 0, "pts_avg": 0, "n": 0}
+    w = sum(1 for m in matches if m.get("result") == "W")
+    d = sum(1 for m in matches if m.get("result") == "D")
+    l = n - w - d
+    gf = sum(m.get("gf", 0) for m in matches)
+    ga = sum(m.get("ga", 0) for m in matches)
+    pts = w * 3 + d
+    return {
+        "w": w, "d": d, "l": l,
+        "gf_avg": gf / n, "ga_avg": ga / n,
+        "pts_avg": pts / n, "n": n,
+        "wins": w, "draws": d, "losses": l,
+        "gf_total": gf, "ga_total": ga, "gd": gf - ga,
+    }
+
+
+def build_form_analysis(data: dict) -> dict:
+    """Build comprehensive form analysis from scraped match details.
+
+    Analyzes:
+      1. Last 6 overall matches for H and A teams
+      2. Venue-specific: last 6 home for H, last 6 away for A
+      3. Common opponents: compare goals vs shared opponents
+      4. League standing differential (pos, GF, GA)
+      5. Returns reasoning strings + signal for probability adjustment
+    """
+    hd = data.get("home_form_details", [])
+    ad = data.get("away_form_details", [])
+
+    result = {
+        "reasoning": [],
+        "signal": 0.0,
+        "signal_parts": [],
+    }
+
+    if not hd and not ad:
+        return result
+
+    # ── Step 1: Overall form (last 6) ──
+    h_last6 = hd[:6]
+    a_last6 = ad[:6]
+    h_overall = _form_rates(h_last6)
+    a_overall = _form_rates(a_last6)
+
+    if h_last6:
+        result["reasoning"].append(
+            f"H last 6: {h_overall['w']}W-{h_overall['d']}D-{h_overall['l']}L "
+            f"({h_overall['gf_avg']:.1f}gf {h_overall['ga_avg']:.1f}ga, "
+            f"{h_overall['pts_avg']:.1f} ppg)"
+        )
+    if a_last6:
+        result["reasoning"].append(
+            f"A last 6: {a_overall['w']}W-{a_overall['d']}D-{a_overall['l']}L "
+            f"({a_overall['gf_avg']:.1f}gf {a_overall['ga_avg']:.1f}ga, "
+            f"{a_overall['pts_avg']:.1f} ppg)"
+        )
+
+    # ── Step 2: Venue-specific form ──
+    h_home_matches = [m for m in hd if m.get("venue") == "home"][:6]
+    a_away_matches = [m for m in ad if m.get("venue") == "away"][:6]
+    h_home = _form_rates(h_home_matches)
+    a_away = _form_rates(a_away_matches)
+
+    if h_home_matches:
+        result["reasoning"].append(
+            f"H at home: {h_home['w']}W-{h_home['d']}D-{h_home['l']}L "
+            f"({h_home['gf_avg']:.1f}gf {h_home['ga_avg']:.1f}ga)"
+        )
+    if a_away_matches:
+        result["reasoning"].append(
+            f"A away: {a_away['w']}W-{a_away['d']}D-{a_away['l']}L "
+            f"({a_away['gf_avg']:.1f}gf {a_away['ga_avg']:.1f}ga)"
+        )
+
+    # ── Step 3: Common opponents analysis ──
+    h_opps = {m.get("opponent", "").lower().strip(): m for m in h_last6 if m.get("opponent")}
+    a_opps = {m.get("opponent", "").lower().strip(): m for m in a_last6 if m.get("opponent")}
+    common = set(h_opps.keys()) & set(a_opps.keys())
+
+    if common:
+        h_gd_common = 0
+        a_gd_common = 0
+        h_gf_common = 0
+        a_gf_common = 0
+        details = []
+        for opp in sorted(common):
+            hm = h_opps[opp]
+            am = a_opps[opp]
+            h_gd_common += hm.get("gf", 0) - hm.get("ga", 0)
+            a_gd_common += am.get("gf", 0) - am.get("ga", 0)
+            h_gf_common += hm.get("gf", 0)
+            a_gf_common += am.get("gf", 0)
+            details.append(
+                f"  vs {opp[:25]}: H {hm['gf']}-{hm['ga']}({hm['result']}) "
+                f"A {am['gf']}-{am['ga']}({am['result']})"
+            )
+        result["reasoning"].append(
+            f"Common opponents ({len(common)}): H GD {h_gd_common:+d} vs A GD {a_gd_common:+d}"
+        )
+        result["reasoning"].extend(details)
+
+        # Signal: positive = away advantage, negative = home advantage
+        if len(common) >= 2:
+            gd_diff = a_gd_common - h_gd_common
+            sig = max(-0.5, min(0.5, gd_diff * 0.10))
+            result["signal"] += sig
+            if abs(sig) >= 0.05:
+                fav = "A" if sig > 0 else "H"
+                result["signal_parts"].append(
+                    f"Common opp edge: {fav} (GD diff {gd_diff:+d}, sig {sig:+.2f})"
+                )
+
+    # ── Step 4: League standing differential ──
+    h_pos = data.get("home_pos")
+    a_pos = data.get("away_pos")
+    h_gf = data.get("home_avg_goals_for")
+    h_ga = data.get("home_avg_goals_against")
+    a_gf = data.get("away_avg_goals_for")
+    a_ga = data.get("away_avg_goals_against")
+
+    if h_pos and a_pos:
+        pos_gap = h_pos - a_pos  # negative = H is higher
+        if abs(pos_gap) >= 3:
+            sig = max(-0.3, min(0.3, pos_gap * 0.04))
+            result["signal"] += sig
+            fav = "H" if pos_gap < 0 else "A"
+            result["reasoning"].append(
+                f"Standing: H #{h_pos} vs A #{a_pos} "
+                f"({_ord(abs(pos_gap))} place gap, fav {fav}, sig {sig:+.2f})"
+            )
+            result["signal_parts"].append(f"Standing edge: {fav} ({abs(pos_gap)} pos)")
+
+    if h_gf and h_ga and a_gf and a_ga:
+        h_gd = h_gf - h_ga
+        a_gd = a_gf - a_ga
+        gd_diff = a_gd - h_gd  # positive = A has better GD
+        if abs(gd_diff) >= 0.3:
+            sig = max(-0.25, min(0.25, gd_diff * 0.08))
+            result["signal"] += sig
+            fav = "H" if gd_diff < 0 else "A"
+            result["reasoning"].append(
+                f"Goal diff: H {h_gd:+.1f} vs A {a_gd:+.1f} "
+                f"(diff {gd_diff:+.1f}, fav {fav}, sig {sig:+.2f})"
+            )
+            result["signal_parts"].append(f"GD edge: {fav} ({gd_diff:+.1f})")
+
+    # ── Step 5: Form momentum (recent trend) ──
+    if len(h_last6) >= 3:
+        h_recent3 = h_last6[:3]
+        h_older3 = h_last6[3:6] if len(h_last6) >= 6 else h_last6[3:]
+        h_r3 = _form_rates(h_recent3)
+        h_o3 = _form_rates(h_older3) if h_older3 else {"pts_avg": h_r3["pts_avg"]}
+        if h_r3["pts_avg"] - h_o3["pts_avg"] > 0.5:
+            result["reasoning"].append("H trending up (recent 3 better than older)")
+        elif h_o3["pts_avg"] - h_r3["pts_avg"] > 0.5:
+            result["reasoning"].append("H trending down (recent 3 worse than older)")
+
+    if len(a_last6) >= 3:
+        a_recent3 = a_last6[:3]
+        a_older3 = a_last6[3:6] if len(a_last6) >= 6 else a_last6[3:]
+        a_r3 = _form_rates(a_recent3)
+        a_o3 = _form_rates(a_older3) if a_older3 else {"pts_avg": a_r3["pts_avg"]}
+        if a_r3["pts_avg"] - a_o3["pts_avg"] > 0.5:
+            result["reasoning"].append("A trending up (recent 3 better than older)")
+        elif a_o3["pts_avg"] - a_r3["pts_avg"] > 0.5:
+            result["reasoning"].append("A trending down (recent 3 worse than older)")
+
+    # ── Summary signal ──
+    if result["signal_parts"]:
+        result["reasoning"].insert(0,
+            f"Form analysis signal: {result['signal']:+.2f} "
+            f"({'favors A' if result['signal'] > 0 else 'favors H' if result['signal'] < 0 else 'neutral'})"
+        )
+
+    return result
+
+
 def _ord(n):
     """Ordinal suffix for a number."""
     if not n:
@@ -764,11 +952,11 @@ def _load_ml_model():
     return _ML_MODEL if _ML_MODEL and _ML_MODEL.is_trained else None
 
 
-def _get_dynamic_weights(league_key: str):
+def _get_dynamic_weights(league_key: str, market: str = "1X2"):
     """Get dynamic ensemble weights from DB tracking (improvement 3)."""
     try:
         from database import get_dynamic_weights
-        return get_dynamic_weights(league=league_key, market="1X2")
+        return get_dynamic_weights(league=league_key, market=market)
     except Exception:
         return None
 
@@ -1131,6 +1319,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # Auto-calibrate thresholds from DB (improvement 10)
     _auto_calibrate_thresholds()
 
+    # ── Form analysis (runs early to inform predictions) ──
+    form_analysis = build_form_analysis(data)
+
     # ── ML-enhanced probability computation ──
     ml_model = _load_ml_model() if use_ml else None
     method_parts = []
@@ -1152,8 +1343,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         # Get dynamic weights from DB (improvement 3)
         dynamic_weights = _get_dynamic_weights(league_key)
 
-        # Blend with ML model using dynamic weights
-        ensemble = ensemble_predict(data, profile, ml_model, dynamic_weights=dynamic_weights, league=league_key)
+        # Blend with ML model using market-specific weights
+        ensemble = ensemble_predict(data, profile, ml_model, dynamic_weights=dynamic_weights, league=league_key, market="1X2")
         p_home = ensemble["prob_home"]
         p_draw = ensemble["prob_draw"]
         p_away = ensemble["prob_away"]
@@ -1162,6 +1353,54 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         method_parts.append(f"ml({getattr(ml_model, 'cv_accuracy_1x2', 0):.2f})")
         if dynamic_weights:
             method_parts.append("dyn-weights")
+
+        # ── Form signal: adjust expected goals and re-blend ──
+        fsig = form_analysis.get("signal", 0.0)
+        if abs(fsig) >= 0.05:
+            shift = fsig * 0.08
+            exp_h -= shift
+            exp_a += shift
+            exp_h = max(exp_h, 0.05)
+            exp_a = max(exp_a, 0.05)
+            exp_total = exp_h + exp_a
+            # Re-compute probabilities from adjusted expected goals (local helpers)
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
+            p_over = prob_over(exp_h, exp_a, 2.5)
+            p_under = 1.0 - p_over
+            total_p = p_home + p_draw + p_away
+            p_home /= total_p
+            p_draw /= total_p
+            p_away /= total_p
+            method_parts.append("form")
+
+        # Concordance boost: Forebet + Poisson agreement
+        fb_h_raw = (data.get("forebet_home_pct") or 0) / 100.0
+        fb_d_raw = (data.get("forebet_draw_pct") or 0) / 100.0
+        fb_a_raw = (data.get("forebet_away_pct") or 0) / 100.0
+        fb_total_raw = fb_h_raw + fb_d_raw + fb_a_raw
+        if fb_total_raw > 0:
+            fb_h_n = fb_h_raw / fb_total_raw
+            fb_d_n = fb_d_raw / fb_total_raw
+            fb_a_n = fb_a_raw / fb_total_raw
+            fb_probs = {"Home win": fb_h_n, "Draw": fb_d_n, "Away win": fb_a_n}
+            fb_top = max(fb_probs, key=fb_probs.get)
+            our_probs = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
+            our_top = max(our_probs, key=our_probs.get)
+            if fb_top == our_top and fb_probs[fb_top] > 0.50:
+                boost = 0.05 if fb_probs[fb_top] > 0.60 else 0.03
+                if fb_top == "Home win":
+                    p_home = min(p_home + boost, 0.95)
+                elif fb_top == "Draw":
+                    p_draw = min(p_draw + boost, 0.95)
+                else:
+                    p_away = min(p_away + boost, 0.95)
+                total_p = p_home + p_draw + p_away
+                p_home /= total_p
+                p_draw /= total_p
+                p_away /= total_p
+                method_parts.append("concordance")
     else:
         # Enhanced Poisson with Dixon-Coles even without ML
         from ml_model import poisson_predict as ml_poisson_predict
@@ -1197,6 +1436,26 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             p_draw /= total_p
             p_away /= total_p
             method_parts.append("simple-poisson")
+
+        # ── Form signal (non-ML path): adjust expected goals and re-blend ──
+        fsig = form_analysis.get("signal", 0.0)
+        if abs(fsig) >= 0.05:
+            shift = fsig * 0.08
+            exp_h -= shift
+            exp_a += shift
+            exp_h = max(exp_h, 0.05)
+            exp_a = max(exp_a, 0.05)
+            exp_total = exp_h + exp_a
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
+            p_over = prob_over(exp_h, exp_a, 2.5)
+            p_under = 1.0 - p_over
+            total_p = p_home + p_draw + p_away
+            p_home /= total_p
+            p_draw /= total_p
+            p_away /= total_p
+            method_parts.append("form")
 
     # ── Transitive common-opponent analysis: adjust expected goals ──
     _trans_analysis = _transitive_common_opponent_analysis(data)
@@ -1402,6 +1661,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         parts = [f"model {p_home:.0%}/{p_draw:.0%}/{p_away:.0%}", f"exp {exp_h:.1f}-{exp_a:.1f}"]
         if hp and ap:
             parts.append(f"pos {_ord(hp)}-{_ord(ap)}")
+        # Add form summary
+        h_form = data.get("home_form", "") or ""
+        a_form = data.get("away_form", "") or ""
+        if h_form:
+            parts.append(f"H:{h_form[:6]}")
+        if a_form:
+            parts.append(f"A:{a_form[:6]}")
         best_12_reason = " ".join(parts)
         add("1X2", top_pick, best_12_conf, best_12_reason,
             model_prob={"Home win": p_home, "Draw": p_draw, "Away win": p_away}.get(top_pick))
@@ -1433,6 +1699,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 "_always_show": True,
             })
 
+    # ── Data quality assessment (used by DC and DNB) ──
+    data_quality = 1.0
+    missing_data = 0
+    if not data.get("home_pos") or not data.get("away_pos"):
+        missing_data += 1
+    if not data.get("home_avg_goals_for") or not data.get("away_avg_goals_for"):
+        missing_data += 1
+    hf_len = sum(1 for c in (data.get("home_form") or "") if c in "WDL")
+    af_len = sum(1 for c in (data.get("away_form") or "") if c in "WDL")
+    if hf_len < 4 or af_len < 4:
+        missing_data += 1
+    if missing_data >= 2:
+        data_quality = 0.85
+    elif missing_data == 1:
+        data_quality = 0.92
+
     # ── Draw No Bet (derived from 1X2) — volatility-gated ──
     # Skip DNB entirely in very high volatility (unpredictable leagues)
     dnb_home_conf = "Low"
@@ -1452,6 +1734,14 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 dnb_away_conf = "Medium-High"
             elif top_prob >= 0.48:
                 dnb_away_conf = "Medium"
+
+    # Data quality penalty for DNB: downgrade when key data missing
+    if missing_data >= 2:
+        if dnb_home_conf == "High": dnb_home_conf = "Medium-High"
+        if dnb_away_conf == "High": dnb_away_conf = "Medium-High"
+    elif missing_data == 1:
+        if dnb_home_conf == "Near Certain": dnb_home_conf = "High"
+        if dnb_away_conf == "Near Certain": dnb_away_conf = "High"
 
     # Volatility capping for DNB
     if vol >= 0.20:
@@ -1480,16 +1770,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             model_prob=(p_away / dnb_denom_a) if dnb_denom_a > 0 else None)
 
     # ── Double Chance (derived from 1X2) — tightened thresholds ──
-    if p_home + p_draw > 0.72:
-        add("DC", "1X", "Medium-High" if p_home + p_draw > 0.82 else "Medium", "derived from model",
-            model_prob=p_home + p_draw)
-    if p_away + p_draw > 0.72:
-        add("DC", "X2", "Medium-High" if p_away + p_draw > 0.82 else "Medium", "derived from model",
-            model_prob=p_away + p_draw)
+    # data_quality and missing_data computed above (before DNB)
+    dc_threshold = 0.72 / data_quality  # raise threshold when data is poor
+
+    if p_home + p_draw > dc_threshold:
+        dc_prob = (p_home + p_draw) * data_quality
+        add("DC", "1X", "Medium-High" if dc_prob > 0.82 else "Medium", "derived from model",
+            model_prob=dc_prob)
+    if p_away + p_draw > dc_threshold:
+        dc_prob = (p_away + p_draw) * data_quality
+        add("DC", "X2", "Medium-High" if dc_prob > 0.82 else "Medium", "derived from model",
+            model_prob=dc_prob)
     # '12' only in low-draw leagues with strong separation
     if p_home + p_away > 0.86 and p_draw < 0.22:
-        add("DC", "12", "Medium-High" if p_home + p_away > 0.92 else "Medium", "derived from model",
-            model_prob=p_home + p_away)
+        dc_prob = (p_home + p_away) * data_quality
+        add("DC", "12", "Medium-High" if dc_prob > 0.92 else "Medium", "derived from model",
+            model_prob=dc_prob)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
@@ -1593,23 +1889,34 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
         if ou_conf != "Low":
             ou_reason = f"exp goals {exp_total:.1f} model {p_o:.0%}o/{p_u:.0%}u"
+            # Add venue goal stats
+            hh_gf = data.get("home_home_avg_goals_for")
+            aa_gf = data.get("away_away_avg_goals_for")
+            if hh_gf is not None and aa_gf is not None:
+                ou_reason += f" vG:{hh_gf:.1f}-{aa_gf:.1f}"
             # Append Forebet agreement indicator
             if fb_over is not None and abs(fb_ou_diff) >= 0.15:
                 ou_reason += f" fb{'✓' if fb_ou_diff > 0 else '✗'}"
             add("O/U", ou_pick, ou_conf, ou_reason,
                 model_prob=p_o if "Over" in ou_pick else p_u)
 
-    # ── BTTS (model-driven, with Dixon-Coles correlation) ──
+    # ── BTTS (blended: Poisson + Forebet) ──
     dc_rho = profile.get("dixon_coles_rho", -0.12)
-    p_btss = prob_btts(exp_h, exp_a, rho=dc_rho)
+    p_btss_poisson = prob_btts(exp_h, exp_a, rho=dc_rho)
+
+    # Blend with Forebet BTTS probability when available (Forebet BTTS ~88% accurate)
+    fb_btts_yes = data.get("home_btts_yes_pct")
+    fb_btts_no = data.get("home_btts_no_pct")
+    if fb_btts_yes is not None:
+        fb_btts_prob = fb_btts_yes / 100.0
+        # Forebet 60% weight, Poisson 40%
+        p_btss = p_btss_poisson * 0.40 + fb_btts_prob * 0.60
+    else:
+        p_btss = p_btss_poisson
     p_btn = 1.0 - p_btss
 
     value_yes = p_btss - 0.5
     value_no = p_btn - 0.5
-
-    # Forebet BTTS cross-check
-    fb_btts_yes = data.get("home_btts_yes_pct")
-    fb_btts_no = data.get("home_btts_no_pct")
 
     # Higher threshold for YES (was 0.08) to reduce false positives
     if value_yes > 0.10 and value_yes >= value_no:
@@ -1618,24 +1925,18 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
         if profile.get("avg_goals", 2.8) < 2.5 and btss_conf in ("Near Certain", "High"):
             btss_conf = "Medium-High"
-        # Forebet cross-check: if stats show low BTTS %, cap confidence
-        if fb_btts_yes is not None and fb_btts_yes < 40 and btss_conf in ("Near Certain", "High"):
-            btss_conf = "Medium-High"
-        btss_reason = f"model {p_btss:.0%}y/{p_btn:.0%}n"
-        if fb_btts_yes:
+        btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
+        if fb_btts_yes is not None:
             btss_reason += f" fb{fb_btts_yes}%"
         add("BTTS", "Yes", btss_conf, btss_reason, model_prob=p_btss)
     elif value_no > 0.08:
         btss_conf = conv_label(50 + int(value_no * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        # Forebet BTTS cross-check for NO (mirrors YES logic)
-        if fb_btts_no is not None and fb_btts_no < 40 and btss_conf in ("Near Certain", "High"):
-            btss_conf = "Medium-High"
         # High-scoring league cap — BTTS NO less reliable when avg_goals > 3.0
         if profile.get("avg_goals", 2.8) > 3.0 and btss_conf in ("Near Certain", "High"):
             btss_conf = "Medium-High"
-        btss_reason = f"model {p_btss:.0%}y/{p_btn:.0%}n"
+        btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
         if fb_btts_no:
             btss_reason += f" fb{fb_btts_no}%"
         add("BTTS", "No", btss_conf, btss_reason, model_prob=p_btn)
@@ -1747,6 +2048,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         if draw_adjusted:
             ds = _trans_analysis.get("draw_signal", 0.0)
             reasoning.append(f"†Trans: draw tendency ({ds:.2f})")
+
+    # ── Form analysis reasoning output ──
+    if form_analysis["reasoning"]:
+        reasoning.append("")
+        reasoning.append("── Form Analysis ──")
+        for r in form_analysis["reasoning"]:
+            reasoning.append(r)
 
     # ── Kelly Criterion stake sizing (improvement 9) ──
     kelly_stake = 0.0

@@ -77,6 +77,14 @@ FEATURE_NAMES = [
     "league_hash",
     # Derived features
     "prob_diff_home_away", "implied_home_prob",
+    # NEW: Possession and passing
+    "poss_diff", "passes_pg_diff", "pass_acc_diff",
+    # NEW: Attacking pressure
+    "attacks_pg_diff", "dang_attacks_pg_diff",
+    # NEW: Set pieces and discipline
+    "corners_diff", "fouls_diff", "cards_diff",
+    # NEW: Shots quality
+    "shots_ot_pct_diff", "clean_sheets_diff",
 ]
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
@@ -173,6 +181,50 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     odds_h = row.get("odds_home") or 2.5
     f.append(1.0 / odds_h if odds_h > 1 else 0.5)
 
+    # NEW: Possession and passing (home - away difference)
+    h_poss = row.get("home_possession_pct") or 50
+    a_poss = row.get("away_possession_pct") or 50
+    f.append(h_poss - a_poss)
+
+    h_ppg = row.get("home_passes_per_game") or 40
+    a_ppg = row.get("away_passes_per_game") or 40
+    f.append(h_ppg - a_ppg)
+
+    h_acc = row.get("home_pass_accuracy_pct") or 75
+    a_acc = row.get("away_pass_accuracy_pct") or 75
+    f.append(h_acc - a_acc)
+
+    # NEW: Attacking pressure
+    h_att = row.get("home_total_attacks_pg") or 50
+    a_att = row.get("away_total_attacks_pg") or 50
+    f.append(h_att - a_att)
+
+    h_dang = row.get("home_dangerous_attacks_pg") or 25
+    a_dang = row.get("away_dangerous_attacks_pg") or 25
+    f.append(h_dang - a_dang)
+
+    # NEW: Set pieces and discipline
+    h_corners = row.get("home_corners_avg") or 5
+    a_corners = row.get("away_corners_avg") or 5
+    f.append(h_corners - a_corners)
+
+    h_fouls = row.get("home_fouls_avg") or 10
+    a_fouls = row.get("away_fouls_avg") or 10
+    f.append(h_fouls - a_fouls)
+
+    h_cards = row.get("home_yellow_cards_avg") or 2
+    a_cards = row.get("away_yellow_cards_avg") or 2
+    f.append(h_cards - a_cards)
+
+    # NEW: Shots quality
+    h_sot = row.get("home_shots_ontarget_pct") or 40
+    a_sot = row.get("away_shots_ontarget_pct") or 40
+    f.append(h_sot - a_sot)
+
+    h_cs = row.get("home_clean_sheets_pct") or 30
+    a_cs = row.get("away_clean_sheets_pct") or 30
+    f.append(h_cs - a_cs)
+
     return np.array(f, dtype=np.float32)
 
 
@@ -257,7 +309,25 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
     fb_a = f[24]
     f[30] = fb_h - fb_a  # prob_diff_home_away
     f[31] = 1.0 / f[25] if f[25] > 1 else 0.5  # implied_home_prob
-    
+
+    # NEW: Possession and passing (neutral defaults for game records)
+    f[32] = 0.0   # poss_diff
+    f[33] = 0.0   # passes_pg_diff
+    f[34] = 0.0   # pass_acc_diff
+
+    # NEW: Attacking pressure
+    f[35] = 0.0   # attacks_pg_diff
+    f[36] = 0.0   # dang_attacks_pg_diff
+
+    # NEW: Set pieces and discipline
+    f[37] = 0.0   # corners_diff
+    f[38] = 0.0   # fouls_diff
+    f[39] = 0.0   # cards_diff
+
+    # NEW: Shots quality
+    f[40] = 0.0   # shots_ot_pct_diff
+    f[41] = 0.0   # clean_sheets_diff
+
     return f
 
 
@@ -811,19 +881,34 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
 # Hybrid Ensemble — combine Poisson + ML + Forebet
 # ---------------------------------------------------------------------------
 
+# Market-specific default weights based on proven track records:
+#   Forebet dominates 1X2 (90.5%), O/U (89%), BTTS (88%)
+#   We dominate DC (93.2%)
+#   Both weak on DNB (22%)
+MARKET_WEIGHT_PROFILES = {
+    "1X2":  {"poisson": 0.25, "ml": 0.05, "forebet": 0.70},
+    "O/U":  {"poisson": 0.35, "ml": 0.10, "forebet": 0.55},
+    "BTTS": {"poisson": 0.30, "ml": 0.05, "forebet": 0.65},
+    "DC":   {"poisson": 0.60, "ml": 0.15, "forebet": 0.25},
+    "DNB":  {"poisson": 0.35, "ml": 0.05, "forebet": 0.60},
+}
+
+
 def ensemble_predict(
     data: dict,
     profile: dict,
     ml_model: Optional[MLPredictor] = None,
     dynamic_weights: Optional[dict] = None,
     league: Optional[str] = None,
+    market: Optional[str] = None,
 ) -> dict:
     """
     Combine Poisson, ML, and Forebet predictions into a single ensemble.
 
-    Weighting strategy (improvement 3):
-      - When dynamic_weights provided from DB tracking: use those
-      - Otherwise: conservative defaults that favor proven Poisson over unproven ML
+    Weighting strategy:
+      - Market-specific profiles when no dynamic weights available
+      - Dynamic weights from DB blended 50/50 with market profiles
+      - Forebet gets high weight on markets where it's proven strong
     """
     # Poisson prediction (always use Dixon-Coles)
     poisson = poisson_predict(data, profile, use_dixon_coles=True)
@@ -847,10 +932,15 @@ def ensemble_predict(
         fb_a /= fb_total
 
     # Determine weights based on available sources
+    # Start with market-specific profiles as defaults
+    market_defaults = MARKET_WEIGHT_PROFILES.get(market, {"poisson": 0.50, "ml": 0.20, "forebet": 0.30})
+
     if dynamic_weights:
-        w_poisson = dynamic_weights.get("poisson", 0.35)
-        w_ml = dynamic_weights.get("ml", 0.25)
-        w_fb = dynamic_weights.get("forebet", 0.25)
+        # Blend 50% dynamic (learned) + 50% market profile (proven track records)
+        blend = 0.50
+        w_poisson = dynamic_weights.get("poisson", market_defaults["poisson"]) * blend + market_defaults["poisson"] * (1 - blend)
+        w_ml = dynamic_weights.get("ml", market_defaults["ml"]) * blend + market_defaults["ml"] * (1 - blend)
+        w_fb = dynamic_weights.get("forebet", market_defaults["forebet"]) * blend + market_defaults["forebet"] * (1 - blend)
         # Renormalize if a source is missing
         if not ml_pred:
             w_poisson += w_ml
@@ -864,15 +954,22 @@ def ensemble_predict(
             w_ml /= total_w
             w_fb /= total_w
     else:
-        # Conservative defaults when no dynamic weights from DB
-        if ml_pred and has_forebet:
-            w_ml, w_poisson, w_fb = 0.20, 0.50, 0.30
-        elif ml_pred:
-            w_ml, w_poisson, w_fb = 0.25, 0.75, 0.0
-        elif has_forebet:
-            w_ml, w_poisson, w_fb = 0.0, 0.60, 0.40
-        else:
-            w_ml, w_poisson, w_fb = 0.0, 1.0, 0.0
+        # Use market-specific default profiles
+        w_poisson = market_defaults["poisson"]
+        w_ml = market_defaults["ml"]
+        w_fb = market_defaults["forebet"]
+        # Renormalize if a source is missing
+        if not ml_pred:
+            w_poisson += w_ml
+            w_ml = 0.0
+        if not has_forebet:
+            w_poisson += w_fb
+            w_fb = 0.0
+        total_w = w_poisson + w_ml + w_fb
+        if total_w > 0:
+            w_poisson /= total_w
+            w_ml /= total_w
+            w_fb /= total_w
 
     # Cap ML weight based on per-league accuracy (improvement 14)
     ml_effective_weight = w_ml
@@ -982,7 +1079,7 @@ def ensemble_predict(
         "prediction": pred,
         "confidence": confidence,
         "max_probability": round(max_prob, 4),
-        "method": f"ensemble(poisson={w_poisson:.0%}, ml={w_ml:.0%}, forebet={w_fb:.0%})",
+        "method": f"ensemble(mkt={market or 'default'},poisson={w_poisson:.0%},ml={w_ml:.0%},fb={w_fb:.0%})",
         "_poisson": poisson,
         "_ml": ml_pred,
         "_forebet_home": fb_h,

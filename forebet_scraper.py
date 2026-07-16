@@ -81,8 +81,10 @@ class ForebetScraper:
             "home_scored_pct": None, "home_conceded_pct": None,
             "away_scored_pct": None, "away_conceded_pct": None,
             "home_total_shots_pg": None,
+            "home_total_shots": None,
             "home_shots_ontarget_pct": None,
             "away_total_shots_pg": None,
+            "away_total_shots": None,
             "away_shots_ontarget_pct": None,
             "home_clean_sheets_pct": None,
             "away_clean_sheets_pct": None,
@@ -1205,48 +1207,66 @@ class ForebetScraper:
                 current_type = None
 
     def _parse_corners_cards(self):
-        """Parse average corners and cards from the tbcorner/tbcard market divs."""
-        # Corners: "Avg. corners ... 4" or "4 - 4 4"
+        """Parse average corners and cards from the tbcorner/tbcard market divs.
+
+        The rcnt div contains: "... Pred Correct score Avg. corners ..."
+        followed by the data row: "N - N N - N coef" where first N-N is
+        prediction and second N is the average.
+        """
         corner_div = self.soup.find("div", class_="tbcorner")
         if corner_div:
-            txt = corner_div.get_text(" ", strip=True)
-            # Pattern: "Avg. corners ... N" or "N - N N"
-            corner_m = re.search(r"Avg\.\s*corners\s+\d+\s*-\s*\d+\s+(\d+)", txt)
-            if corner_m:
-                self.data["home_corners_avg"] = float(corner_m.group(1))
-                self.data["away_corners_avg"] = float(corner_m.group(1))
-            else:
-                # Fallback: look for single number after "Avg. corners"
-                corner_m2 = re.search(r"Avg\.\s*corners\s+(\d+)", txt)
-                if corner_m2:
-                    self.data["home_corners_avg"] = float(corner_m2.group(1))
-                    self.data["away_corners_avg"] = float(corner_m2.group(1))
+            rcnt = corner_div.find("div", class_=lambda c: c and "rcnt" in c)
+            if rcnt:
+                txt = rcnt.get_text(" ", strip=True)
+                # Pattern: "N - N N - N" where last N before coef is avg
+                # e.g. "4 - 4 4 - 4 7.77" -> prediction 4-4, avg 4
+                corner_m = re.search(r"(\d+)\s*-\s*(\d+)\s+(\d+)\s*-\s*(\d+)\s+([\d.]+)", txt)
+                if corner_m:
+                    avg = float(corner_m.group(3))
+                    self.data["home_corners_avg"] = avg
+                    self.data["away_corners_avg"] = avg
+                else:
+                    # Fallback: single number after score
+                    corner_m2 = re.search(r"(\d+)\s*-\s*(\d+)\s+([\d.]+)\s+[\d.]+", txt)
+                    if corner_m2:
+                        avg = float(corner_m2.group(3))
+                        self.data["home_corners_avg"] = avg
+                        self.data["away_corners_avg"] = avg
 
-        # Cards: "Avg. cards ... N" or "N - N N"
         card_div = self.soup.find("div", class_="tbcard")
         if card_div:
-            txt = card_div.get_text(" ", strip=True)
-            card_m = re.search(r"Avg\.\s*cards\s+\d+\s*-\s*\d+\s+(\d+)", txt)
-            if card_m:
-                self.data["home_yellow_cards_avg"] = float(card_m.group(1))
-                self.data["away_yellow_cards_avg"] = float(card_m.group(1))
-            else:
-                card_m2 = re.search(r"Avg\.\s*cards\s+(\d+)", txt)
-                if card_m2:
-                    self.data["home_yellow_cards_avg"] = float(card_m2.group(1))
-                    self.data["away_yellow_cards_avg"] = float(card_m2.group(1))
+            rcnt = card_div.find("div", class_=lambda c: c and "rcnt" in c)
+            if rcnt:
+                txt = rcnt.get_text(" ", strip=True)
+                card_m = re.search(r"(\d+)\s*-\s*(\d+)\s+(\d+)\s*-\s*(\d+)\s+([\d.]+)", txt)
+                if card_m:
+                    avg = float(card_m.group(3))
+                    self.data["home_yellow_cards_avg"] = avg
+                    self.data["away_yellow_cards_avg"] = avg
+                else:
+                    card_m2 = re.search(r"(\d+)\s*-\s*(\d+)\s+([\d.]+)\s+[\d.]+", txt)
+                    if card_m2:
+                        avg = float(card_m2.group(3))
+                        self.data["home_yellow_cards_avg"] = avg
+                        self.data["away_yellow_cards_avg"] = avg
 
     def _parse_others_stats(self):
-        """Parse fouls from the Others stats section."""
-        others_div = self.soup.find("div", class_="os_others_container")
-        if not others_div:
-            return
-        txt = others_div.get_text(" ", strip=True)
-        # Fouls: "N.NN N Fouls NNN N.NN"
-        fouls_m = re.search(r"([\d.]+)\s+(\d+)\s+Fouls\s+(\d+)\s+([\d.]+)", txt)
-        if fouls_m:
-            self.data["home_fouls_avg"] = float(fouls_m.group(1))
-            self.data["away_fouls_avg"] = float(fouls_m.group(4))
+        """Parse fouls and yellow cards from the disciplinary/aggressions section."""
+        # Fouls are in os_aggressions_cont, not os_others_container
+        agg_div = self.soup.find("div", class_="os_aggressions_cont")
+        if agg_div:
+            txt = agg_div.get_text(" ", strip=True)
+            # Pattern: "N.NN N Fouls NNN N.NN"
+            # e.g. "4.5 72 Fouls 105 6.56"
+            fouls_m = re.search(r"([\d.]+)\s+(\d+)\s+Fouls\s+(\d+)\s+([\d.]+)", txt)
+            if fouls_m:
+                self.data["home_fouls_avg"] = float(fouls_m.group(1))
+                self.data["away_fouls_avg"] = float(fouls_m.group(4))
+            # Yellow cards: "N.NN N Yellow cards NNN N.NN"
+            yell_m = re.search(r"([\d.]+)\s+(\d+)\s+Yellow cards\s+(\d+)\s+([\d.]+)", txt)
+            if yell_m:
+                self.data["home_yellow_cards_avg"] = float(yell_m.group(1))
+                self.data["away_yellow_cards_avg"] = float(yell_m.group(4))
 
     def _parse_probabilities(self):
         """Extract Forebet's probability percentages and prediction.

@@ -190,6 +190,7 @@ def get_db():
     conn = sqlite3.connect(str(DB_PATH))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    _migrate(conn)
     return conn
 
 
@@ -252,6 +253,26 @@ _MIGRATIONS = [
     ("matches", "away_shots_ontarget_pct", "INTEGER"),
     ("matches", "home_clean_sheets_pct", "REAL"),
     ("matches", "away_clean_sheets_pct", "REAL"),
+    ("matches", "home_possession_pct", "INTEGER"),
+    ("matches", "away_possession_pct", "INTEGER"),
+    ("matches", "home_passes_per_game", "REAL"),
+    ("matches", "away_passes_per_game", "REAL"),
+    ("matches", "home_pass_accuracy_pct", "INTEGER"),
+    ("matches", "away_pass_accuracy_pct", "INTEGER"),
+    ("matches", "home_total_attacks_pg", "REAL"),
+    ("matches", "away_total_attacks_pg", "REAL"),
+    ("matches", "home_dangerous_attacks_pg", "REAL"),
+    ("matches", "away_dangerous_attacks_pg", "REAL"),
+    ("matches", "home_corners_avg", "REAL"),
+    ("matches", "away_corners_avg", "REAL"),
+    ("matches", "home_fouls_avg", "REAL"),
+    ("matches", "away_fouls_avg", "REAL"),
+    ("matches", "home_yellow_cards_avg", "REAL"),
+    ("matches", "away_yellow_cards_avg", "REAL"),
+    ("matches", "home_total_shots", "INTEGER"),
+    ("matches", "away_total_shots", "INTEGER"),
+    ("matches", "home_clean_sheets", "INTEGER"),
+    ("matches", "away_clean_sheets", "INTEGER"),
     ("calibration_log", "method_used", "TEXT"),
     ("calibration_log", "market", "TEXT"),
     ("calibration_log", "stake", "REAL"),
@@ -301,9 +322,18 @@ def save_prediction(data: dict) -> int:
             home_over35_pct, home_under35_pct, away_over35_pct, away_under35_pct,
             home_btts_yes_pct, home_btts_no_pct, away_btts_yes_pct, away_btts_no_pct,
             home_scored_pct, home_conceded_pct, away_scored_pct, away_conceded_pct,
-            home_total_shots_pg, home_shots_ontarget_pct,
-            away_total_shots_pg, away_shots_ontarget_pct,
+            home_total_shots_pg, home_total_shots, home_shots_ontarget_pct,
+            away_total_shots_pg, away_total_shots, away_shots_ontarget_pct,
             home_clean_sheets_pct, away_clean_sheets_pct,
+            home_clean_sheets, away_clean_sheets,
+            home_possession_pct, away_possession_pct,
+            home_passes_per_game, away_passes_per_game,
+            home_pass_accuracy_pct, away_pass_accuracy_pct,
+            home_total_attacks_pg, away_total_attacks_pg,
+            home_dangerous_attacks_pg, away_dangerous_attacks_pg,
+            home_corners_avg, away_corners_avg,
+            home_fouls_avg, away_fouls_avg,
+            home_yellow_cards_avg, away_yellow_cards_avg,
             odds_home, odds_draw, odds_away,
             odds_over25, odds_under25, odds_btts_yes, odds_btts_no,
             forebet_pred, forebet_home_pct, forebet_draw_pct, forebet_away_pct,
@@ -329,9 +359,18 @@ def save_prediction(data: dict) -> int:
             :home_over35_pct, :home_under35_pct, :away_over35_pct, :away_under35_pct,
             :home_btts_yes_pct, :home_btts_no_pct, :away_btts_yes_pct, :away_btts_no_pct,
             :home_scored_pct, :home_conceded_pct, :away_scored_pct, :away_conceded_pct,
-            :home_total_shots_pg, :home_shots_ontarget_pct,
-            :away_total_shots_pg, :away_shots_ontarget_pct,
+            :home_total_shots_pg, :home_total_shots, :home_shots_ontarget_pct,
+            :away_total_shots_pg, :away_total_shots, :away_shots_ontarget_pct,
             :home_clean_sheets_pct, :away_clean_sheets_pct,
+            :home_clean_sheets, :away_clean_sheets,
+            :home_possession_pct, :away_possession_pct,
+            :home_passes_per_game, :away_passes_per_game,
+            :home_pass_accuracy_pct, :away_pass_accuracy_pct,
+            :home_total_attacks_pg, :away_total_attacks_pg,
+            :home_dangerous_attacks_pg, :away_dangerous_attacks_pg,
+            :home_corners_avg, :away_corners_avg,
+            :home_fouls_avg, :away_fouls_avg,
+            :home_yellow_cards_avg, :away_yellow_cards_avg,
             :odds_home, :odds_draw, :odds_away,
             :odds_over25, :odds_under25, :odds_btts_yes, :odds_btts_no,
             :forebet_pred, :forebet_home_pct, :forebet_draw_pct, :forebet_away_pct,
@@ -432,7 +471,7 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
     match = conn.execute("""
         SELECT our_prediction, our_confidence, forebet_pred, league,
                our_stake, our_market, method_used, odds_home, odds_draw, odds_away,
-               odds_over25, odds_under25
+               odds_over25, odds_under25, odds_btts_yes, odds_btts_no
         FROM matches WHERE id = ?
     """, (match_id,)).fetchone()
     if match:
@@ -479,18 +518,8 @@ def _update_component_accuracy(conn, match: dict, our_correct: int):
     method = match["method_used"] or "unknown"
     league = match["league"] or "unknown"
     market = match["our_market"] or "unknown"
-    # Map method to component
-    if "ensemble" in method:
-        if "poisson" in method and "ml" in method:
-            components = ["ml", "poisson"]
-        elif "poisson" in method:
-            components = ["poisson"]
-        else:
-            components = ["ml"]
-    else:
-        components = ["poisson"]
 
-    for comp in components:
+    def _upsert_comp(comp, correct):
         conn.execute("""
             INSERT OR REPLACE INTO component_accuracy
                 (component, league, market, total, correct, last_updated)
@@ -502,7 +531,21 @@ def _update_component_accuracy(conn, match: dict, our_correct: int):
                 datetime('now')
             )
         """, (comp, league, market, comp, league, market,
-              our_correct, comp, league, market, our_correct))
+              correct, comp, league, market, correct))
+
+    if "ensemble" in method:
+        if "poisson" in method and "ml" in method:
+            _upsert_comp("ml", our_correct)
+            _upsert_comp("poisson", our_correct)
+        elif "poisson" in method:
+            _upsert_comp("poisson", our_correct)
+        else:
+            _upsert_comp("ml", our_correct)
+        # Track forebet component when ensemble used
+        if "forebet" in method or "fb=" in method:
+            _upsert_comp("forebet", our_correct)
+    else:
+        _upsert_comp("poisson", our_correct)
 
 
 def _update_league_stats(conn, league: str):
@@ -630,6 +673,11 @@ def store_market_results(match_id: int, all_picks: list, actual_home_goals: int,
             "No": match_data.get("odds_btts_no"),
         }
 
+    # Extract Forebet's prediction for each market from match_data
+    fb_pred_1x2 = (match_data or {}).get("forebet_pred") if match_data else None
+    fb_over25_pct = (match_data or {}).get("forebet_over25_pct") if match_data else None
+    fb_btts_yes_pct = (match_data or {}).get("forebet_btts_yes_pct") if match_data else None
+
     for p in all_picks:
         market = p.get("market", "")
         pick = p.get("pick", "")
@@ -670,6 +718,19 @@ def store_market_results(match_id: int, all_picks: list, actual_home_goals: int,
 
         odds = odds_map.get(pick)
 
+        # Compute Forebet's prediction and correctness for this market
+        fb_pred = None
+        fb_correct = None
+        if market == "1X2" and fb_pred_1x2:
+            fb_pred = fb_pred_1x2
+            fb_correct = 1 if _prediction_correct(fb_pred_1x2, actual_home_goals, actual_away_goals) else 0
+        elif market == "O/U" and fb_over25_pct is not None:
+            fb_pred = "Over 2.5" if fb_over25_pct > 50 else "Under 2.5"
+            fb_correct = 1 if _prediction_correct(fb_pred, actual_home_goals, actual_away_goals) else 0
+        elif market == "BTTS" and fb_btts_yes_pct is not None:
+            fb_pred = "Yes" if fb_btts_yes_pct > 50 else "No"
+            fb_correct = 1 if _prediction_correct(fb_pred, actual_home_goals, actual_away_goals) else 0
+
         conn.execute("""
             INSERT INTO calibration_log
                 (league, match_id, our_prediction, actual_result,
@@ -678,7 +739,7 @@ def store_market_results(match_id: int, all_picks: list, actual_home_goals: int,
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             league, match_id, pick, actual_outcome,
-            correct, confidence, None, None,
+            correct, confidence, fb_pred, fb_correct,
             method, market, 0, odds, model_prob
         ))
 
