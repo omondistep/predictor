@@ -448,6 +448,7 @@ CONF_LABELS = ["Near Certain", "High", "Medium-High", "Medium", "Low"]
 # These get updated from history.db calibration data on each run
 CALIBRATED_THRESHOLDS = {
     "near_certain": 0.58,
+    "near_certain_margin": 0.12,
     "high": 0.50,
     "high_margin": 0.10,
     "medium_high": 0.42,
@@ -458,6 +459,61 @@ CALIBRATED_THRESHOLDS = {
     "draw_medium_high_margin": 0.04,
     "draw_medium": 0.33,
 }
+
+def _get_league_difficulty(league: str) -> dict:
+    """Return difficulty info for a league based on historical accuracy.
+    
+    Returns dict with:
+      - level: "hard" | "medium" | "easy"
+      - accuracy: float (0-100)
+      - matches: int
+      - reason: str
+    """
+    try:
+        import re
+        from database import get_db
+        conn = get_db()
+        
+        # Extract league prefix (e.g. "BrC", "Ar3", "Pe2") from the league string
+        m = re.match(r'^([A-Za-z]+\d?)\s', league or '')
+        prefix = m.group(1) if m else ''
+        
+        if prefix:
+            # Search calibration_log for all entries starting with this prefix
+            row = conn.execute("""
+                SELECT ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct, COUNT(*) as cnt
+                FROM calibration_log WHERE league LIKE ?
+            """, (f"{prefix}%",)).fetchone()
+        else:
+            # Fallback: search by full league name
+            row = conn.execute("""
+                SELECT ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct, COUNT(*) as cnt
+                FROM calibration_log WHERE league LIKE ?
+            """, (f"%{league}%",)).fetchone()
+        
+        conn.close()
+        
+        if not row or not row["pct"] or row["cnt"] < 5:
+            return {"level": "medium", "accuracy": 0, "matches": row["cnt"] if row else 0,
+                    "reason": "Insufficient data for this league"}
+        
+        pct = row["pct"]
+        cnt = row["cnt"]
+        
+        if pct >= 80:
+            level = "easy"
+            reason = f"Historically reliable ({pct:.0f}% accuracy, {cnt} matches)"
+        elif pct >= 65:
+            level = "medium"
+            reason = f"Moderate difficulty ({pct:.0f}% accuracy, {cnt} matches)"
+        else:
+            level = "hard"
+            reason = f"Unreliable league ({pct:.0f}% accuracy, {cnt} matches) — bet with caution"
+        
+        return {"level": level, "accuracy": pct, "matches": cnt, "reason": reason}
+    except Exception:
+        return {"level": "medium", "accuracy": 0, "matches": 0, "reason": "Could not determine league difficulty"}
+
 
 def _auto_calibrate_thresholds():
     """Load calibration data from DB and conservatively adjust thresholds.
@@ -717,6 +773,19 @@ def build_form_analysis(data: dict) -> dict:
             result["reasoning"].append("A trending up (recent 3 better than older)")
         elif a_o3["pts_avg"] - a_r3["pts_avg"] > 0.5:
             result["reasoning"].append("A trending down (recent 3 worse than older)")
+
+    # ── Defensive ceiling: avg of top-2 conceded in recent form (cap for expected goals) ──
+    h_last6_ga = [m.get("ga", 0) for m in h_last6]
+    a_last6_ga = [m.get("ga", 0) for m in a_last6]
+    def _avg_top2(vals):
+        if not vals:
+            return None
+        s = sorted(vals, reverse=True)
+        return sum(s[:2]) / len(s[:2])
+    home_max_conceded = _avg_top2(h_last6_ga)
+    away_max_conceded = _avg_top2(a_last6_ga)
+    result["home_max_conceded"] = home_max_conceded
+    result["away_max_conceded"] = away_max_conceded
 
     # ── Summary signal ──
     if result["signal_parts"]:
@@ -1516,6 +1585,37 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             method_parts.append("draw")
             draw_adjusted = True
 
+    # ── Defensive ceiling: cap exp goals at avg of top-2 conceded vs strong opponents ──
+    h_max_ga = form_analysis.get("home_max_conceded")
+    a_max_ga = form_analysis.get("away_max_conceded")
+    if h_max_ga is not None and a_max_ga is not None:
+        orig_h, orig_a = exp_h, exp_a
+        # exp_h = goals home scores = goals away concedes → cap at away's avg top-2 conceded
+        # exp_a = goals away scores = goals home concedes → cap at home's avg top-2 conceded
+        if exp_h > a_max_ga:
+            exp_h = a_max_ga
+        if exp_a > h_max_ga:
+            exp_a = h_max_ga
+        if exp_h != orig_h or exp_a != orig_a:
+            exp_h = max(exp_h, 0.1)
+            exp_a = max(exp_a, 0.1)
+            exp_total = exp_h + exp_a
+            p_home = prob_home_win(exp_h, exp_a)
+            p_draw = prob_draw(exp_h, exp_a)
+            p_away = prob_away_win(exp_h, exp_a)
+            p_over = prob_over(exp_h, exp_a, 2.5)
+            p_under = 1.0 - p_over
+            total_p = p_home + p_draw + p_away
+            if total_p > 0:
+                p_home /= total_p
+                p_draw /= total_p
+                p_away /= total_p
+            method_parts.append("def-ceiling")
+            reasoning.append(
+                f"Def ceiling: H avg top2 ga {h_max_ga:.1f}, A avg top2 ga {a_max_ga:.1f}"
+                f" — capped exp {orig_h:.1f}-{orig_a:.1f}→{exp_h:.1f}-{exp_a:.1f}"
+            )
+
     # ── Apply learned bias corrections from calibration learning ──
     _load_calibration_biases()
     p_home_bias, p_draw_bias, p_away_bias, p_over_bias, p_under_bias = \
@@ -1619,6 +1719,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     # Use calibrated thresholds (improvement 10)
     nc_thresh = CALIBRATED_THRESHOLDS["near_certain"]
+    nc_margin = CALIBRATED_THRESHOLDS["near_certain_margin"]
     hi_thresh = CALIBRATED_THRESHOLDS["high"]
     hi_margin = CALIBRATED_THRESHOLDS["high_margin"]
     mh_thresh = CALIBRATED_THRESHOLDS["medium_high"]
@@ -1637,14 +1738,26 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             best_12_conf = "Medium"
     else:
         # Calibrated thresholds for Home/Away win
-        if top_prob >= nc_thresh:
+        if top_prob >= nc_thresh and margin >= nc_margin:
             best_12_conf = "Near Certain"
-        elif top_prob >= hi_thresh:
+        elif top_prob >= hi_thresh and margin >= hi_margin:
             best_12_conf = "High" if margin >= hi_margin else "Medium-High"
         elif top_prob >= mh_thresh:
             best_12_conf = "Medium-High" if margin >= mh_margin else "Medium"
         elif top_prob >= med_thresh and margin >= med_margin:
             best_12_conf = "Medium"
+
+    # Draw proximity penalty: when Draw is close to top pick, downgrade confidence
+    # Draws are frequently the "default" result when model is uncertain
+    if top_pick != "Draw" and p_draw >= 0.28:
+        if margin <= 0.10:
+            # Draw within 10% of top — strong draw signal, cap at Medium
+            if best_12_conf in ("Near Certain", "High", "Medium-High"):
+                best_12_conf = "Medium"
+        elif margin <= 0.15 and p_draw >= 0.30:
+            # Draw within 15% AND above 30% — moderate draw signal
+            if best_12_conf in ("Near Certain", "High"):
+                best_12_conf = "Medium-High"
 
     # Volatility Capping: Reduce confidence for volatile leagues
     vol = profile.get("volatility", 0.1)
@@ -1674,8 +1787,138 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     # Also consider Draw as a secondary candidate if it's close but not top
     if top_pick != "Draw":
-        if p_draw >= 0.32 and (top_prob - p_draw) <= 0.12:
-            add("1X2", "Draw", "Medium", f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
+        draw_conf = "Low"
+        if p_draw >= 0.38:
+            draw_conf = "Medium-High"
+        elif p_draw >= 0.32:
+            draw_conf = "Medium"
+        elif p_draw >= 0.26:
+            draw_conf = "Low"
+        # Boost if margin is small (draw is competitive)
+        if margin <= 0.10 and p_draw >= 0.30:
+            if draw_conf == "Low":
+                draw_conf = "Medium"
+        if draw_conf != "Low":
+            add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
+
+    # Draw tendency signal: flag when Draw is close to primary 1X2 pick
+    _draw_tendency = False
+    if top_pick != "Draw" and p_draw >= 0.28 and margin <= 0.12:
+        _draw_tendency = True
+        reasoning.append(f"⚠ Draw tendency: {p_draw:.0%} vs {top_pick} {top_prob:.0%} (margin {margin:.0%})")
+
+    # ── Composite draw signal: multi-factor draw detection ──
+    _draw_factors = []
+    h_form = data.get("home_form") or ""
+    a_form = data.get("away_form") or ""
+    h_d_count = sum(1 for c in h_form[:6] if c == "D")
+    a_d_count = sum(1 for c in a_form[:6] if c == "D")
+
+    # Venue stats for draw signal factors
+    hh_gf = data.get("home_home_avg_goals_for")
+    hh_ga = data.get("home_home_avg_goals_against")
+    aa_gf = data.get("away_away_avg_goals_for")
+    aa_ga = data.get("away_away_avg_goals_against")
+    h_ou15 = data.get("home_over15_pct")
+
+    # Factor 1: Home team has ≥2 draws in recent form
+    if h_d_count >= 2:
+        _draw_factors.append(f"H:{h_d_count}D")
+
+    # Factor 2: Away team has ≥2 draws in recent form
+    if a_d_count >= 2:
+        _draw_factors.append(f"A:{a_d_count}D")
+
+    # Factor 3: Expected goals differential ≤ 0.5
+    exp_diff = abs(exp_h - exp_a)
+    if exp_diff <= 0.5 and exp_h + exp_a > 0:
+        _draw_factors.append(f"expΔ{exp_diff:.1f}")
+
+    # Factor 4: Draw odds ≤ 3.0 (bookmaker signals draw)
+    draw_odds = data.get("odds_draw")
+    if draw_odds and draw_odds <= 3.0:
+        _draw_factors.append(f"odds{draw_odds:.1f}")
+
+    # Factor 5: Form analysis signal is neutral (|signal| ≤ 0.2)
+    if abs(fsig) <= 0.2:
+        _draw_factors.append("form-neutral")
+
+    # Factor 6: Transitive draw tendency
+    if _trans_analysis and _trans_analysis.get("draw_signal", 0) > 0:
+        _draw_factors.append("trans-draw")
+
+    # Factor 7: Both teams score ≤1.0 goals at venue (low-scoring game likely)
+    if hh_gf is not None and aa_gf is not None:
+        if hh_gf <= 1.0 and aa_gf <= 1.0:
+            _draw_factors.append("venue-low")
+
+    # Factor 8: Home O15 rate < 60% (many low-scoring games)
+    if h_ou15 is not None and h_ou15 < 60:
+        _draw_factors.append(f"O15:{h_ou15}%")
+
+    # Factor 9: Home BTTS rate < 45% (one team often fails to score)
+    btts_h = data.get("home_btts_yes_pct")
+    if btts_h is not None and btts_h < 45:
+        _draw_factors.append(f"BTTS:{btts_h}%")
+
+    # Factor 10: Home CS rate > 25% (home keeps clean sheets → 0-0/1-0 draws)
+    cs_h = data.get("home_clean_sheets_pct")
+    if cs_h is not None and cs_h > 25:
+        _draw_factors.append(f"CS:{cs_h}%")
+
+    # Boost draw confidence when multiple factors align
+    if len(_draw_factors) >= 2 and top_pick != "Draw":
+        _draw_boost = min(len(_draw_factors) * 0.03, 0.10)
+        p_draw_boosted = min(p_draw + _draw_boost, 0.60)
+        # Upgrade Draw confidence
+        if p_draw_boosted >= 0.35 and draw_conf == "Low":
+            draw_conf = "Medium"
+            # Re-add Draw with upgraded confidence
+            candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
+            add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} ({'+'.join(_draw_factors)})", model_prob=p_draw_boosted)
+        reasoning.append(f"⚠ Draw signal ({len(_draw_factors)}f): {', '.join(_draw_factors)}")
+
+    # ── Draw override: when composite signal is strong + margin small, make Draw the primary ──
+    _draw_override = False
+    _draw_override_reason = ""
+    # Ensure p_draw_boosted is defined (fallback to p_draw if boost block didn't run)
+    try:
+        p_draw_boosted
+    except NameError:
+        p_draw_boosted = p_draw
+    if len(_draw_factors) >= 3 and top_pick != "Draw":
+        if len(_draw_factors) >= 5 and margin <= 0.25:
+            # Very strong signal (5+ factors) AND margin ≤25% → Draw becomes primary
+            _draw_override = True
+            _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
+        elif len(_draw_factors) >= 4 and margin <= 0.20:
+            # Strong signal (4+ factors) AND margin ≤20% → Draw becomes primary
+            _draw_override = True
+            _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
+        elif len(_draw_factors) >= 3 and margin <= 0.15:
+            # Moderate signal (3+ factors) AND margin ≤15% → Draw becomes primary
+            _draw_override = True
+            _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
+
+    if _draw_override:
+        # Remove the current primary pick (Home/Away win) and any existing Draw candidate
+        candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == top_pick)]
+        candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
+        # Determine Draw override confidence based on boosted probability
+        if p_draw_boosted >= 0.40:
+            draw_override_conf = "Medium-High"
+        elif p_draw_boosted >= 0.35:
+            draw_override_conf = "Medium"
+        else:
+            draw_override_conf = "Medium"
+        add("1X2", "Draw", draw_override_conf,
+            f"model {p_draw:.0%} ({'+'.join(_draw_factors)})", model_prob=p_draw_boosted)
+        reasoning.append(f"⚠ {_draw_override_reason}")
+        # Update top_pick/top_prob for downstream logic (DC, DNB, etc.)
+        top_pick = "Draw"
+        top_prob = p_draw
+        margin = 0.0  # Draw is now the reference
+        _draw_tendency = True  # Ensure backup pick logic activates
 
     # Always show all three 1X2 outcomes (home/draw/away) regardless of probability
     existing_12 = {(c['market'], c['pick']) for c in candidates if c['market'] == '1X2'}
@@ -1909,8 +2152,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     fb_btts_no = data.get("home_btts_no_pct")
     if fb_btts_yes is not None:
         fb_btts_prob = fb_btts_yes / 100.0
-        # Forebet 60% weight, Poisson 40%
-        p_btss = p_btss_poisson * 0.40 + fb_btts_prob * 0.60
+        # Forebet 40% weight, Poisson 60% — Poisson is more reliable for BTTS
+        p_btss = p_btss_poisson * 0.60 + fb_btts_prob * 0.40
     else:
         p_btss = p_btss_poisson
     p_btn = 1.0 - p_btss
@@ -1950,13 +2193,49 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 c["confidence"] = "Low"
 
     # ── Rank candidates and pick primary ──
-    candidates.sort(key=lambda c: (
-        -(c.get("model_prob") or 0),
-        c["rank"],
-    ))
+    # Coverage: how many 1X2 outcomes does each pick cover?
+    # DC 1X covers Home+Draw, DC X2 covers Away+Draw, DC 12 covers Home+Away
+    # O/U covers all outcomes (it's goal-based, not result-based)
+    # DNB covers 1 outcome (Home or Away)
+    # 1X2 covers 1 outcome
+    COVERAGE = {
+        ("DC", "1X"): 2, ("DC", "X2"): 2, ("DC", "12"): 2,
+        ("O/U", "Over 1.5"): 3, ("O/U", "Under 1.5"): 3,
+        ("O/U", "Over 2.5"): 3, ("O/U", "Under 2.5"): 3,
+        ("O/U", "Over 3.5"): 3, ("O/U", "Under 3.5"): 3,
+        ("BTTS", "Yes"): 3, ("BTTS", "No"): 3,
+        ("DNB", "Home"): 1, ("DNB", "Away"): 1,
+        ("1X2", "Home win"): 1, ("1X2", "Draw"): 1, ("1X2", "Away win"): 1,
+    }
+    for c in candidates:
+        c["coverage"] = COVERAGE.get((c["market"], c["pick"]), 1)
+        # Weighted score: confidence rank + coverage bonus + model probability
+        # Lower is better for rank, higher is better for prob/coverage
+        # When draw tendency exists, reduce coverage bonus for non-1X2 picks
+        cov_bonus = (c["coverage"] - 1) * 0.5
+        if _draw_tendency and c["market"] != "1X2":
+            cov_bonus *= 0.5  # Halve coverage bonus when draw is close
+        c["score"] = c["rank"] - cov_bonus - (c.get("model_prob") or 0) * 2
+
+    candidates.sort(key=lambda c: c["score"])
 
     non_show = [c for c in candidates if not c.get('_always_show')]
     primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
+
+    # Backup pick: best alternative if primary fails
+    backup = None
+    # If Draw is close to primary 1X2 pick, make it the backup
+    if primary["market"] == "1X2" and _draw_tendency:
+        for c in non_show[1:]:
+            if c["market"] == "1X2" and c["pick"] == "Draw":
+                backup = c
+                break
+    # Otherwise, best alternative from different market
+    if not backup:
+        for c in non_show[1:]:
+            if c["market"] != primary["market"] or c["pick"] != primary["pick"]:
+                backup = c
+                break
 
     # ── Build reasoning ──
     for c in candidates[:6]:  # top 6
@@ -2085,6 +2364,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_odds": odds_val,
         "_poisson_probs": (p_home, p_draw, p_away),
         "_warnings": warnings,
+        "_backup": {"pick": backup["pick"], "market": backup["market"],
+                    "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
     }
 
 
@@ -2206,7 +2487,10 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                     both = hg_h > 0 and ag_h > 0
                     pc = (ppk == "Yes" and both) or (ppk == "No" and not both)
                 elif pmk == "DNB":
-                    pc = (ppk == "Home" and actual_out == "Home win") or (ppk == "Away" and actual_out == "Away win")
+                    if actual_out == "Draw":
+                        pc = None  # Push — stake returned
+                    else:
+                        pc = (ppk == "Home" and actual_out == "Home win") or (ppk == "Away" and actual_out == "Away win")
                 elif pmk == "DC":
                     if ppk == "1X": pc = actual_out in ("Home win", "Draw")
                     elif ppk == "X2": pc = actual_out in ("Away win", "Draw")
@@ -2215,6 +2499,8 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                     result_cell = '<td style="color:#22c55e;font-weight:700">✓</td>'
                 elif pc is False:
                     result_cell = '<td style="color:#ef4444;font-weight:700">✗</td>'
+                elif pmk == "DNB" and actual_out == "Draw":
+                    result_cell = '<td style="color:#94a3b8;font-weight:700">push</td>'
                 else:
                     result_cell = '<td style="color:#64748b">—</td>'
 
@@ -2245,12 +2531,16 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                 verdict = ""
             result_html = f'<div class="pick-line" style="color:#60a5fa;font-weight:700">RESULT: {hg} - {ag} ({outcome}){ht_tag}  {verdict}</div>'
 
-        rows.append(f"""<div class="card" style="border-left: 4px solid {_c(r['confidence'])};">
+        exp_home = f"{eh:.2f}" if eh is not None else ""
+        exp_away = f"{ea:.2f}" if ea is not None else ""
+        exp_total = f"{eh + ea:.2f}" if eh is not None and ea is not None else ""
+        rows.append(f"""<div class="card" data-match-id="{r.get('match_id', '')}" data-exp-home="{exp_home}" data-exp-away="{exp_away}" data-exp-total="{exp_total}" data-market="{r['market']}" data-pick="{r['pick']}" style="border-left: 4px solid {_c(r['confidence'])};">
 <div class="card-header">
   <span class="teams">{r['home']} vs {r['away']}</span>
   <span class="conf-badge" style="background:{_c(r['confidence'])}">{_star(r['confidence'])} {r['confidence']}</span>
 </div>
 <div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
+{"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("level") == "hard" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
 <div class="card-body">
   {result_html}
   <div class="pick-line"><strong>{r['pick']}</strong> ({r['market']}) &middot; Score lean: {r['score_lean'] or '—'} &middot; Exp: <span style="color:{EXP_COLOR};font-weight:700">{exp_str}</span>{kelly_tag}</div>
@@ -2264,6 +2554,7 @@ def _write_html(results, all_urls, compare_forebet, high_only):
   {_venue_stats_html(r)}
   {reason_html}
   {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
+  {("<div style='margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.1);border-radius:6px;font-size:0.88em;'><strong>Best alternative:</strong> <span style='color:" + _c(r.get('_backup', {}).get('confidence', 'Low')) + "'>" + r['_backup']['market'] + ": " + r['_backup']['pick'] + " (" + r['_backup']['confidence'] + ")</span> — covers " + str(r['_backup']['coverage']) + " outcomes</div>") if r.get('_backup') else ""}
 </div>
 </div>""")
 
@@ -2318,6 +2609,7 @@ ul {{ margin:4px 0 0 18px; color:#94a3b8; }}
 a {{ color:#60a5fa; }}
 .chart-container {{ background:#1e293b; border-radius:8px; padding:16px; margin-bottom:12px; }}
 canvas {{ max-height:300px; }}
+select {{ cursor:pointer; }}
 </style>
 </head>
 <body>
@@ -2338,8 +2630,93 @@ canvas {{ max-height:300px; }}
   <canvas id="trendChart"></canvas>
 </div>
 
-<h2>Predictions</h2>
+<h2>Predictions <span id="matchCount" style="font-size:0.8rem;color:#94a3b8;font-weight:400">{len(filtered)} / {len(filtered)}</span></h2>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;align-items:center;">
+<input type="text" id="matchSearch" placeholder="Search teams…" style="flex:1;min-width:180px;max-width:400px;padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+<select id="filterExpTotal" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">Exp Goals: Any</option>
+  <option value="2.0">Under 2.0</option>
+  <option value="2.5">Under 2.5</option>
+  <option value="3.0">Under 3.0</option>
+  <option value="3.5">Under 3.5</option>
+  <option value="4.0">Under 4.0</option>
+</select>
+<select id="filterOutcome" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">1X2: Any</option>
+  <option value="Home win">Home Win</option>
+  <option value="Draw">Draw</option>
+  <option value="Away win">Away Win</option>
+</select>
+<select id="filterConf" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">Confidence: Any</option>
+  <option value="Near Certain">Near Certain</option>
+  <option value="High">High</option>
+  <option value="Medium-High">Medium-High</option>
+  <option value="Medium">Medium</option>
+  <option value="Low">Low</option>
+</select>
+<select id="filterMarket" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">Market: Any</option>
+  <option value="1X2">1X2</option>
+  <option value="O/U">O/U</option>
+  <option value="BTTS">BTTS</option>
+  <option value="DC">DC</option>
+  <option value="DNB">DNB</option>
+</select>
+</div>
 {"".join(rows)}
+
+<script>
+const cards = document.querySelectorAll('.card');
+const searchInput = document.getElementById('matchSearch');
+const filterExp = document.getElementById('filterExpTotal');
+const filterOutcome = document.getElementById('filterOutcome');
+const filterConf = document.getElementById('filterConf');
+const filterMarket = document.getElementById('filterMarket');
+const matchCount = document.getElementById('matchCount');
+
+function applyFilters() {{
+  const q = (searchInput.value || '').toLowerCase().trim();
+  const maxExp = filterExp.value ? parseFloat(filterExp.value) : null;
+  const outcome = filterOutcome.value;
+  const conf = filterConf.value;
+  const market = filterMarket.value;
+  let visible = 0;
+  cards.forEach(card => {{
+    let show = true;
+    // Team search
+    if (q) {{
+      const teams = card.querySelector('.teams');
+      if (!teams || !q.split(/\\s+/).every(w => teams.textContent.toLowerCase().includes(w))) show = false;
+    }}
+    // Exp goals filter (total expected goals)
+    if (show && maxExp !== null) {{
+      const t = parseFloat(card.dataset.expTotal);
+      if (isNaN(t) || t >= maxExp) show = false;
+    }}
+    // 1X2 outcome filter
+    if (show && outcome) {{
+      if (card.dataset.pick !== outcome) show = false;
+    }}
+    // Confidence filter
+    if (show && conf) {{
+      const badge = card.querySelector('.conf-badge');
+      if (!badge || !badge.textContent.includes(conf)) show = false;
+    }}
+    // Market filter
+    if (show && market) {{
+      if (card.dataset.market !== market) show = false;
+    }}
+    card.style.display = show ? '' : 'none';
+    if (show) visible++;
+  }});
+  if (matchCount) matchCount.textContent = visible + ' / ' + cards.length;
+}}
+
+[searchInput, filterExp, filterOutcome, filterConf, filterMarket].forEach(el => {{
+  if (el) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters);
+}});
+</script>
 
 <script>
 const marketCtx = document.getElementById('marketChart').getContext('2d');
@@ -2753,6 +3130,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "method": pred.get("_method", ""),
             "kelly_stake": pred.get("_kelly_stake", 0),
             "pick_odds": pred.get("_odds"),
+            "league_difficulty": _get_league_difficulty(data.get("league", "")),
         })
 
     # ── Output ──
@@ -2832,6 +3210,11 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         if fb:
             pick_line += f" • Forebet: {fb}"
         print(pick_line)
+
+        # Line 3b: Backup pick
+        backup = r.get("_backup")
+        if backup:
+            print(f"  → Backup: {backup['market']}: {backup['pick']} ({backup['confidence']}) — covers {backup['coverage']} outcomes")
 
         # Line 4: HTML path
         # Find the report number from results

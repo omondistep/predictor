@@ -475,7 +475,13 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
         FROM matches WHERE id = ?
     """, (match_id,)).fetchone()
     if match:
-        our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
+        market = match["our_market"] or ""
+        pick = match["our_prediction"] or ""
+        # DNB picks on a draw are pushes — skip calibration log
+        if market == "DNB" and home_goals == away_goals:
+            our_correct = None
+        else:
+            our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
         fb_correct = 1 if match["forebet_pred"] and _prediction_correct(match["forebet_pred"], home_goals, away_goals) else 0
 
         odds = None
@@ -493,22 +499,23 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
         elif market == "DNB":
             odds = match["odds_home"] if "Home" in pick else match["odds_away"]
 
-        conn.execute("""
-            INSERT INTO calibration_log
-                (league, match_id, our_prediction, actual_result,
-                 correct, confidence, forebet_pred, forebet_correct,
-                 method_used, market, stake, odds)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            match["league"], match_id, match["our_prediction"], result,
-            our_correct, match["our_confidence"], match["forebet_pred"], fb_correct,
-            match["method_used"], match["our_market"],
-            match["our_stake"], odds
-        ))
-        # Update league stats
-        _update_league_stats(conn, match["league"])
-        # Update component accuracy
-        _update_component_accuracy(conn, match, our_correct)
+        if our_correct is not None:
+            conn.execute("""
+                INSERT INTO calibration_log
+                    (league, match_id, our_prediction, actual_result,
+                     correct, confidence, forebet_pred, forebet_correct,
+                     method_used, market, stake, odds)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                match["league"], match_id, match["our_prediction"], result,
+                our_correct, match["our_confidence"], match["forebet_pred"], fb_correct,
+                match["method_used"], match["our_market"],
+                match["our_stake"], odds
+            ))
+            # Update league stats
+            _update_league_stats(conn, match["league"])
+            # Update component accuracy
+            _update_component_accuracy(conn, match, our_correct)
     conn.commit()
     conn.close()
 
@@ -701,7 +708,9 @@ def store_market_results(match_id: int, all_picks: list, actual_home_goals: int,
             elif pick == "No":
                 correct = 1 if not both_scored else 0
         elif market == "DNB":
-            if pick == "Home":
+            if actual_outcome == "Draw":
+                correct = None  # Push — stake returned
+            elif pick == "Home":
                 correct = 1 if actual_outcome == "Home win" else 0
             elif pick == "Away":
                 correct = 1 if actual_outcome == "Away win" else 0
