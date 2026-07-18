@@ -745,10 +745,22 @@ def compute_attack_defense_strength(
     """Compute expected goals using attack/defense strength (Dixon-Coles style).
     Regresses toward league mean when form sample is small."""
     league_avg = league_avg_goals / 2.0
-    home_strength = (home_gf or 1.3) / league_avg if league_avg > 0 else 1.0
-    home_defense = (home_ga or 1.0) / league_avg if league_avg > 0 else 1.0
-    away_strength = (away_gf or 1.1) / league_avg if league_avg > 0 else 1.0
-    away_defense = (away_ga or 1.2) / league_avg if league_avg > 0 else 1.0
+    # Shrink team-specific gf/ga toward the league mean by sample size BEFORE
+    # deriving strength. This prevents raw season averages (e.g. 2.4 gf) from
+    # being taken at face value and over-predicting goals for low-sample/volatile
+    # teams. ~10 games → ~50% trust in team data, 6 games → ~38%.
+    trust = lambda n: min(1.0, (n or 0) / 16.0)
+    h_t = trust(form_len_h)
+    a_t = trust(form_len_a)
+    home_gf = (home_gf or league_avg) * h_t + league_avg * (1 - h_t)
+    home_ga = (home_ga or league_avg) * h_t + league_avg * (1 - h_t)
+    away_gf = (away_gf or league_avg) * a_t + league_avg * (1 - a_t)
+    away_ga = (away_ga or league_avg) * a_t + league_avg * (1 - a_t)
+
+    home_strength = home_gf / league_avg if league_avg > 0 else 1.0
+    home_defense = home_ga / league_avg if league_avg > 0 else 1.0
+    away_strength = away_gf / league_avg if league_avg > 0 else 1.0
+    away_defense = away_ga / league_avg if league_avg > 0 else 1.0
 
     exp_h = home_strength * away_defense * league_avg * home_adv
     exp_a = away_strength * home_defense * league_avg * (2.0 - home_adv)
@@ -806,6 +818,19 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
         exp_a *= max(0.7, 1.0 + (total_teams - ap) / total_teams * 0.3)
         exp_a *= max(0.7, 1.0 - (total_teams - hp) / total_teams * 0.2)
         exp_h *= max(0.7, 1.0 - (total_teams - ap) / total_teams * 0.2)
+
+    # ── No-goal / clean-sheet discount ──
+    # Average goals alone double-counts high-scoring freaks and ignores how often a
+    # team actually FAILS to score (or keeps a clean sheet). Blend in the observed
+    # frequency of goalless matches so exp reflects "scores in X% of games":
+    #   exp_h discounted by home's fail-to-score rate AND away's clean-sheet rate
+    # (0.5 blend keeps it a nudge, not overriding the attack/defense model above).
+    home_score_rate = (data.get("home_scored_pct") or 100) / 100.0
+    away_score_rate = (data.get("away_scored_pct") or 100) / 100.0
+    home_cs_rate = (data.get("home_clean_sheets_pct") or 0) / 100.0
+    away_cs_rate = (data.get("away_clean_sheets_pct") or 0) / 100.0
+    exp_h *= (1.0 - 0.5 * (1.0 - home_score_rate)) * (1.0 - 0.5 * away_cs_rate)
+    exp_a *= (1.0 - 0.5 * (1.0 - away_score_rate)) * (1.0 - 0.5 * home_cs_rate)
 
     # Volatility regression
     vol = profile.get("volatility", 0.1)

@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS ml_league_accuracy (
 SCHEMA_INDEXES = """
 CREATE INDEX IF NOT EXISTS idx_matches_league ON matches(league);
 CREATE INDEX IF NOT EXISTS idx_matches_reviewed ON matches(reviewed);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_forebet_url ON matches(forebet_url);
 CREATE INDEX IF NOT EXISTS idx_calibration_league ON calibration_log(league);
 CREATE INDEX IF NOT EXISTS idx_calibration_method ON calibration_log(method_used);
 """
@@ -305,9 +306,16 @@ def save_prediction(data: dict) -> int:
     }
     for k, v in defaults.items():
         data.setdefault(k, v)
+    # Reuse the existing row id for the same Forebet URL so re-running a link
+    # updates the prior record instead of inserting a duplicate (this keeps
+    # match ids stable for report de-duplication and prevents DB bloat).
+    existing = conn.execute(
+        "SELECT id FROM matches WHERE forebet_url = ?", (data.get("forebet_url"),)
+    ).fetchone()
+    data["id"] = existing[0] if existing else None
     conn.execute("""
         INSERT OR REPLACE INTO matches (
-            forebet_url, home_team, away_team, league,
+            id, forebet_url, home_team, away_team, league,
             match_date, match_time,
             home_form, away_form, home_pos, away_pos,
             home_pts, away_pts, home_games_played, away_games_played,
@@ -344,7 +352,7 @@ def save_prediction(data: dict) -> int:
             ml_prob_home, ml_prob_draw, ml_prob_away,
             forebet_prob_home, forebet_prob_draw, forebet_prob_away
         ) VALUES (
-            :forebet_url, :home_team, :away_team, :league,
+            :id, :forebet_url, :home_team, :away_team, :league,
             :match_date, :match_time,
             :home_form, :away_form, :home_pos, :away_pos,
             :home_pts, :away_pts, :home_games_played, :away_games_played,

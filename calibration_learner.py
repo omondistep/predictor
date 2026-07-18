@@ -509,17 +509,28 @@ def apply_calibration(market: str, raw_prob: float) -> float:
         return raw_prob
     
     market_data = params["markets"][market]
-    
+
+    # 1X2 must NOT be isotonic-calibrated per outcome: each of Home/Draw/Away
+    # is trained as an independent binary problem against a ~1/3 base rate, so
+    # the regression collapses to a flat line (~0.33) and destroys the relative
+    # ordering of the three outcomes (they all renormalize to 33%). The Poisson/
+    # ensemble probabilities already sum to 1 and carry the real separation, so
+    # for 1X2 we keep the raw probability and let the 1X2 re-normalization in
+    # predict.py preserve it. O/U and BTTS are genuine binary markets and keep
+    # their calibration.
+    if market == "1X2":
+        return raw_prob
+
     # Re-fit isotonic regression from saved data
     from sklearn.isotonic import IsotonicRegression
-    
+
     X = np.array(market_data["X_train"])
     y = np.array(market_data["y_train"])
-    
+
     try:
         ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
         ir.fit(X, y)
-        
+
         # Apply calibration
         calibrated = ir.predict(np.array([raw_prob]))[0]
         return float(np.clip(calibrated, 0.01, 0.99))

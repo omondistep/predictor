@@ -117,7 +117,7 @@ LEAGUE_PROFILES = {
     "sweden-division-2":    {"avg_goals": 2.94, "u25_rate": 0.45, "btts_no_rate": 0.47, "draw_rate": 0.27, "home_win_rate": 0.41, "home_adv": 1.10, "volatility": 0.25},
     "finland-veikkausliiga":{"avg_goals": 2.5, "u25_rate": 0.48, "btts_no_rate": 0.46, "draw_rate": 0.25, "home_win_rate": 0.47, "home_adv": 1.12, "volatility": 0.12},
     "finland-ykkonen":      {"avg_goals": 2.6, "u25_rate": 0.45, "btts_no_rate": 0.44, "draw_rate": 0.24, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.18},
-    "finland-kakkonen":     {"avg_goals": 3.74, "u25_rate": 0.31, "btts_no_rate": 0.36, "draw_rate": 0.15, "home_win_rate": 0.52, "home_adv": 1.10, "volatility": 0.25},
+    "finland-kakkonen":     {"avg_goals": 2.70, "u25_rate": 0.42, "btts_no_rate": 0.40, "draw_rate": 0.22, "home_win_rate": 0.46, "home_adv": 1.10, "volatility": 0.25},
     "morocco-botola":       {"avg_goals": 3.0, "u25_rate": 0.55, "btts_no_rate": 0.5, "draw_rate": 0.25, "home_win_rate": 0.52, "home_adv": 1.12, "volatility": 0.08},
     "iceland":              {"avg_goals": 4.17, "u25_rate": 0.33, "btts_no_rate": 0.28, "draw_rate": 0.33, "home_win_rate": 0.39, "home_adv": 1.10, "volatility": 0.15},
     "iceland-women":        {"avg_goals": 2.0, "u25_rate": 0.65, "btts_no_rate": 0.55, "draw_rate": 0.30, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.20},
@@ -774,19 +774,6 @@ def build_form_analysis(data: dict) -> dict:
         elif a_o3["pts_avg"] - a_r3["pts_avg"] > 0.5:
             result["reasoning"].append("A trending down (recent 3 worse than older)")
 
-    # ── Defensive ceiling: avg of top-2 conceded in recent form (cap for expected goals) ──
-    h_last6_ga = [m.get("ga", 0) for m in h_last6]
-    a_last6_ga = [m.get("ga", 0) for m in a_last6]
-    def _avg_top2(vals):
-        if not vals:
-            return None
-        s = sorted(vals, reverse=True)
-        return sum(s[:2]) / len(s[:2])
-    home_max_conceded = _avg_top2(h_last6_ga)
-    away_max_conceded = _avg_top2(a_last6_ga)
-    result["home_max_conceded"] = home_max_conceded
-    result["away_max_conceded"] = away_max_conceded
-
     # ── Summary signal ──
     if result["signal_parts"]:
         result["reasoning"].insert(0,
@@ -828,16 +815,19 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     exp_h = base * h_adv
     exp_a = base * a_adv
 
-    # Adjust for form — capped to avoid streak overreaction
+    # Adjust for form — capped to avoid streak overreaction.
+    # Multiplier range is narrowed and sample-weighted more conservatively so a
+    # short hot/cold streak cannot blow up expected goals (e.g. 4.7 home goals).
     hf_len = sum(1 for c in hf if c in "WDL") if hf else 0
     af_len = sum(1 for c in af if c in "WDL") if af else 0
     if h_f is not None:
-        f = min(1.25, max(0.75, h_f / 1.2))
-        f = 1.0 + (f - 1.0) * min(1.0, hf_len / 6)
+        f = min(1.15, max(0.85, h_f / 1.2))
+        # sqrt weighting: 6 games → 0.62, 10 → 0.80, 20 → ~1.0 (more shrinkage for short form)
+        f = 1.0 + (f - 1.0) * min(1.0, (hf_len / 6) ** 0.5)
         exp_h *= f
     if a_f is not None:
-        f = min(1.25, max(0.75, a_f / 1.2))
-        f = 1.0 + (f - 1.0) * min(1.0, af_len / 6)
+        f = min(1.15, max(0.85, a_f / 1.2))
+        f = 1.0 + (f - 1.0) * min(1.0, (af_len / 6) ** 0.5)
         exp_a *= f
 
     # Adjust for standings
@@ -863,19 +853,24 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     if a_ga:
         exp_h = (exp_h + a_ga) / 2
 
-    # Venue-specific goal averages (home-at-home, away-at-away)
+    # Venue-specific goal averages (home-at-home, away-at-away).
+    # These come from a SMALL sample (often 3-5 home/away games) and are noisy
+    # (e.g. 3.7 GF from 3 home games). Shrink them toward the season/league mean
+    # with a conservative weight rather than a 50/50 blend, so a hot/cold venue
+    # streak can't dominate expected goals.
     hh_gf = data.get("home_home_avg_goals_for")
     hh_ga = data.get("home_home_avg_goals_against")
     aa_gf = data.get("away_away_avg_goals_for")
     aa_ga = data.get("away_away_avg_goals_against")
+    venue_w = 0.30  # venue stats get at most 30% weight; rest = current exp (season/league mean)
     if hh_gf:
-        exp_h = (exp_h + hh_gf) / 2
+        exp_h = exp_h * (1 - venue_w) + hh_gf * venue_w
     if aa_gf:
-        exp_a = (exp_a + aa_gf) / 2
+        exp_a = exp_a * (1 - venue_w) + aa_gf * venue_w
     if hh_ga:
-        exp_a = (exp_a + hh_ga) / 2
+        exp_a = exp_a * (1 - venue_w) + hh_ga * venue_w
     if aa_ga:
-        exp_h = (exp_h + aa_ga) / 2
+        exp_h = exp_h * (1 - venue_w) + aa_ga * venue_w
 
     # Shots-on-target proxy for xG
     h_sot = data.get("home_shots_ontarget_pct")
@@ -883,12 +878,20 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     h_tsh = data.get("home_total_shots_pg")
     a_tsh = data.get("away_total_shots_pg")
     if h_sot and h_tsh:
-        # Expected goals ≈ shots_on_target * 0.65 – 0.75 (league average conversion)
-        h_xg_proxy = h_tsh * (h_sot / 100.0) * 0.70
+        # Expected goals ≈ shots_on_target * ~0.32 (realistic SoT conversion rate)
+        h_xg_proxy = h_tsh * (h_sot / 100.0) * 0.32
         exp_h = (exp_h + h_xg_proxy) / 2
     if a_sot and a_tsh:
-        a_xg_proxy = a_tsh * (a_sot / 100.0) * 0.70
+        a_xg_proxy = a_tsh * (a_sot / 100.0) * 0.32
         exp_a = (exp_a + a_xg_proxy) / 2
+
+    # ── No-goal / clean-sheet discount (mirrors poisson_predict) ──
+    home_score_rate = (data.get("home_scored_pct") or 100) / 100.0
+    away_score_rate = (data.get("away_scored_pct") or 100) / 100.0
+    home_cs_rate = (data.get("home_clean_sheets_pct") or 0) / 100.0
+    away_cs_rate = (data.get("away_clean_sheets_pct") or 0) / 100.0
+    exp_h *= (1.0 - 0.5 * (1.0 - home_score_rate)) * (1.0 - 0.5 * away_cs_rate)
+    exp_a *= (1.0 - 0.5 * (1.0 - away_score_rate)) * (1.0 - 0.5 * home_cs_rate)
 
     # H2H goal average adjustment
     h2h_avg = data.get("h2h_avg_total_goals")
@@ -901,10 +904,14 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
         exp_h *= h2h_adj
         exp_a *= h2h_adj
 
-    # Volatility regression: higher volatility -> regress toward league mean
+    # Volatility regression: higher volatility -> regress toward league mean.
+    # Also apply a mild general shrinkage toward league mean so that teams with
+    # small/volatile samples (e.g. a 6-game form streak) cannot produce extreme
+    # expected goals. This is the primary guard against over-confident extremes.
     vol = profile.get("volatility", 0.1)
-    exp_h = exp_h * (1.0 - vol) + base * vol
-    exp_a = exp_a * (1.0 - vol) + base * vol
+    shrink = 0.10 + vol  # baseline 10% shrinkage, more for volatile leagues
+    exp_h = exp_h * (1.0 - shrink) + base * shrink
+    exp_a = exp_a * (1.0 - shrink) + base * shrink
 
     return max(0.1, exp_h), max(0.1, exp_a)
 
@@ -1364,6 +1371,63 @@ def _transitive_common_opponent_analysis(data: dict) -> dict:
     }
 
 
+def _common_opponent_strength(data: dict) -> dict:
+    """Derive attack/defense strength multipliers from head-to-head form vs the
+    SAME opponents (the fairest available strength comparison).
+
+    For each common opponent O, we have:
+      H scored gf_H vs O, conceded ga_H vs O   (home team's view)
+      A scored gf_A vs O, conceded ga_A vs O   (away team's view)
+    Per-game goal difference vs O:  gd_H = gf_H - ga_H,  gd_A = gf_A - ga_A.
+    If gd_H > gd_A, the home team is relatively stronger (it out-scored/out-defended
+    the same opposition), so we nudge exp_h up and exp_a down proportionally — and
+    vice-versa. This makes expected goals reflect "scores X against THIS opponent"
+    rather than just adding two independent season rates together.
+
+    Returns {"h_mult": float, "a_mult": float, "reason": str|None}.
+    """
+    home_form = _get_team_form_details(data, "home")
+    away_form = _get_team_form_details(data, "away")
+    if not home_form or not away_form:
+        return {"h_mult": 1.0, "a_mult": 1.0, "reason": None}
+
+    home_opp = {}
+    for m in home_form:
+        if m.get("opponent"):
+            home_opp.setdefault(m["opponent"], []).append(m)
+    away_opp = {}
+    for m in away_form:
+        if m.get("opponent"):
+            away_opp.setdefault(m["opponent"], []).append(m)
+
+    common = set(home_opp) & set(away_opp)
+    if not common:
+        return {"h_mult": 1.0, "a_mult": 1.0, "reason": None}
+
+    h_gd = 0.0
+    a_gd = 0.0
+    n = 0
+    for opp in common:
+        h_g = sum(m["gf"] - m["ga"] for m in home_opp[opp])
+        a_g = sum(m["gf"] - m["ga"] for m in away_opp[opp])
+        h_gd += h_g
+        a_gd += a_g
+        n += 1
+
+    if n == 0:
+        return {"h_mult": 1.0, "a_mult": 1.0, "reason": None}
+
+    # Average per-common-opponent goal difference gap (home relative to away)
+    gap = (h_gd - a_gd) / n  # positive → home stronger
+    # Gentle scaling: each 1.0 GD gap → ±10% on the relevant rate (clamped)
+    scale = max(-0.30, min(0.30, gap * 0.10))
+    h_mult = 1.0 + scale
+    a_mult = 1.0 - scale
+    reason = (f"Common-opp strength: H GD {h_gd:+.1f}/{n} vs A GD {a_gd:+.1f}/{n} "
+              f"→ H×{h_mult:.2f} A×{a_mult:.2f}")
+    return {"h_mult": h_mult, "a_mult": a_mult, "reason": reason}
+
+
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """Analyze all markets, recommend highest-conviction pick.
     
@@ -1376,6 +1440,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     profile = get_profile(league_key)
     reasoning = []
     candidates = []
+
+    # ── League reliability factor ──
+    # Lower historical accuracy → dampen O/U/BTTS confidence (the model tends to
+    # over-predict goals in unreliable leagues). 1.0 = fully reliable.
+    _ld = _get_league_difficulty(data.get("league", ""))
+    _league_acc = _ld.get("accuracy", 0) or 0
+    if _league_acc >= 65:
+        league_reliability = 1.0
+    elif _league_acc >= 45:
+        league_reliability = 0.7
+    elif _league_acc > 0:
+        league_reliability = 0.45
+    else:
+        league_reliability = 0.7  # unknown → moderately cautious
+    if _ld.get("level") == "hard":
+        reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
 
     hf, af = data.get("home_form", ""), data.get("away_form", "")
     h_ppg = _ppg(hf) if hf else None
@@ -1394,6 +1474,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # ── ML-enhanced probability computation ──
     ml_model = _load_ml_model() if use_ml else None
     method_parts = []
+    # Accumulates how strongly the adjustment signals fired; drives the
+    # single final blend weight between ML/DC base and exp-derived probs.
+    signal_blend = 0.0
 
     if ml_model:
         from ml_model import poisson_predict, ensemble_predict
@@ -1409,6 +1492,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         exp_total = exp_h + exp_a
         method_parts.append("dc-poisson")
 
+        # ── Common-opponent strength: scale exp by how each team performed vs
+        # the SAME opponents (fairer than adding two independent season rates). ──
+        _cos = _common_opponent_strength(data)
+        if _cos["reason"]:
+            exp_h = max(0.1, exp_h * _cos["h_mult"])
+            exp_a = max(0.1, exp_a * _cos["a_mult"])
+            exp_total = exp_h + exp_a
+            signal_blend = min(0.65, signal_blend + 0.12)
+            reasoning.append(f"⚠ {_cos['reason']}")
+
         # Get dynamic weights from DB (improvement 3)
         dynamic_weights = _get_dynamic_weights(league_key)
 
@@ -1423,7 +1516,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         if dynamic_weights:
             method_parts.append("dyn-weights")
 
-        # ── Form signal: adjust expected goals and re-blend ──
+        # ── Form signal: shift expected goals only (probabilities recomputed once at end) ──
         fsig = form_analysis.get("signal", 0.0)
         if abs(fsig) >= 0.05:
             shift = fsig * 0.08
@@ -1431,17 +1524,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             exp_a += shift
             exp_h = max(exp_h, 0.05)
             exp_a = max(exp_a, 0.05)
-            exp_total = exp_h + exp_a
-            # Re-compute probabilities from adjusted expected goals (local helpers)
-            p_home = prob_home_win(exp_h, exp_a)
-            p_draw = prob_draw(exp_h, exp_a)
-            p_away = prob_away_win(exp_h, exp_a)
-            p_over = prob_over(exp_h, exp_a, 2.5)
-            p_under = 1.0 - p_over
-            total_p = p_home + p_draw + p_away
-            p_home /= total_p
-            p_draw /= total_p
-            p_away /= total_p
+            signal_blend = min(0.65, signal_blend + abs(fsig))
             method_parts.append("form")
 
         # Concordance boost: Forebet + Poisson agreement
@@ -1506,7 +1589,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             p_away /= total_p
             method_parts.append("simple-poisson")
 
-        # ── Form signal (non-ML path): adjust expected goals and re-blend ──
+        # ── Form signal (non-ML path): shift expected goals only ──
         fsig = form_analysis.get("signal", 0.0)
         if abs(fsig) >= 0.05:
             shift = fsig * 0.08
@@ -1514,22 +1597,14 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             exp_a += shift
             exp_h = max(exp_h, 0.05)
             exp_a = max(exp_a, 0.05)
-            exp_total = exp_h + exp_a
-            p_home = prob_home_win(exp_h, exp_a)
-            p_draw = prob_draw(exp_h, exp_a)
-            p_away = prob_away_win(exp_h, exp_a)
-            p_over = prob_over(exp_h, exp_a, 2.5)
-            p_under = 1.0 - p_over
-            total_p = p_home + p_draw + p_away
-            p_home /= total_p
-            p_draw /= total_p
-            p_away /= total_p
+            signal_blend = min(0.65, signal_blend + abs(fsig))
             method_parts.append("form")
 
     # ── Transitive common-opponent analysis: adjust expected goals ──
     _trans_analysis = _transitive_common_opponent_analysis(data)
     trans_adjusted = False
     draw_adjusted = False
+    trans_signal = 0.0  # default; only overridden when transitivity fires
     if _trans_analysis and _trans_analysis["reasoning"]:
         trans_signal = _trans_analysis.get("signal", 0.0)
         trans_conf = _trans_analysis.get("confidence", "Low")
@@ -1543,18 +1618,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             else:
                 exp_a += shift
                 exp_h = max(exp_h - shift * 0.3, 0.05)
-            exp_total = exp_h + exp_a
-            trans_p_home = prob_home_win(exp_h, exp_a)
-            trans_p_draw = prob_draw(exp_h, exp_a)
-            trans_p_away = prob_away_win(exp_h, exp_a)
-            trans_p_over = prob_over(exp_h, exp_a, 2.5)
-            trans_p_under = 1.0 - trans_p_over
-            blend_w = min(0.6, trans_weight * abs_sig)
-            p_home = p_home * (1 - blend_w) + trans_p_home * blend_w
-            p_draw = p_draw * (1 - blend_w) + trans_p_draw * blend_w
-            p_away = p_away * (1 - blend_w) + trans_p_away * blend_w
-            p_over = p_over * (1 - blend_w) + trans_p_over * blend_w
-            p_under = p_under * (1 - blend_w) + trans_p_under * blend_w
+            signal_blend = min(0.65, signal_blend + trans_weight * abs_sig)
             method_parts.append("trans")
             trans_adjusted = True
 
@@ -1570,51 +1634,31 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             else:
                 exp_a = max(exp_a - reduction, exp_avg)
                 exp_h = min(exp_h + reduction, exp_avg)
-            exp_total = exp_h + exp_a
-            draw_p_home = prob_home_win(exp_h, exp_a)
-            draw_p_draw = prob_draw(exp_h, exp_a)
-            draw_p_away = prob_away_win(exp_h, exp_a)
-            draw_p_over = prob_over(exp_h, exp_a, 2.5)
-            draw_p_under = 1.0 - draw_p_over
-            blend_w = min(0.5, draw_signal_val * 0.3)
-            p_home = p_home * (1 - blend_w) + draw_p_home * blend_w
-            p_draw = p_draw * (1 - blend_w) + draw_p_draw * blend_w
-            p_away = p_away * (1 - blend_w) + draw_p_away * blend_w
-            p_over = p_over * (1 - blend_w) + draw_p_over * blend_w
-            p_under = p_under * (1 - blend_w) + draw_p_under * blend_w
+            signal_blend = min(0.65, signal_blend + min(0.5, draw_signal_val * 0.3))
             method_parts.append("draw")
             draw_adjusted = True
 
-    # ── Defensive ceiling: cap exp goals at avg of top-2 conceded vs strong opponents ──
-    h_max_ga = form_analysis.get("home_max_conceded")
-    a_max_ga = form_analysis.get("away_max_conceded")
-    if h_max_ga is not None and a_max_ga is not None:
-        orig_h, orig_a = exp_h, exp_a
-        # exp_h = goals home scores = goals away concedes → cap at away's avg top-2 conceded
-        # exp_a = goals away scores = goals home concedes → cap at home's avg top-2 conceded
-        if exp_h > a_max_ga:
-            exp_h = a_max_ga
-        if exp_a > h_max_ga:
-            exp_a = h_max_ga
-        if exp_h != orig_h or exp_a != orig_a:
-            exp_h = max(exp_h, 0.1)
-            exp_a = max(exp_a, 0.1)
-            exp_total = exp_h + exp_a
-            p_home = prob_home_win(exp_h, exp_a)
-            p_draw = prob_draw(exp_h, exp_a)
-            p_away = prob_away_win(exp_h, exp_a)
-            p_over = prob_over(exp_h, exp_a, 2.5)
-            p_under = 1.0 - p_over
-            total_p = p_home + p_draw + p_away
-            if total_p > 0:
-                p_home /= total_p
-                p_draw /= total_p
-                p_away /= total_p
-            method_parts.append("def-ceiling")
-            reasoning.append(
-                f"Def ceiling: H avg top2 ga {h_max_ga:.1f}, A avg top2 ga {a_max_ga:.1f}"
-                f" — capped exp {orig_h:.1f}-{orig_a:.1f}→{exp_h:.1f}-{exp_a:.1f}"
-            )
+    # ── Single final probability recompute from adjusted expected goals ──
+    # Every signal above only modified exp_h/exp_a; now derive probabilities once
+    # and blend with the ML/DC base, weighted by how strongly the signals fired.
+    # This removes the repeated prob↔goal round-tripping that produced extremes.
+    exp_total = exp_h + exp_a
+    _ph = prob_home_win(exp_h, exp_a)
+    _pd = prob_draw(exp_h, exp_a)
+    _pa = prob_away_win(exp_h, exp_a)
+    _po = prob_over(exp_h, exp_a, 2.5)
+    _pu = 1.0 - _po
+    _tp = _ph + _pd + _pa
+    if _tp > 0:
+        _ph /= _tp
+        _pd /= _tp
+        _pa /= _tp
+    _w = min(0.65, signal_blend)
+    p_home = p_home * (1 - _w) + _ph * _w
+    p_draw = p_draw * (1 - _w) + _pd * _w
+    p_away = p_away * (1 - _w) + _pa * _w
+    p_over = p_over * (1 - _w) + _po * _w
+    p_under = 1.0 - p_over
 
     # ── Apply learned bias corrections from calibration learning ──
     _load_calibration_biases()
@@ -1886,17 +1930,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         p_draw_boosted
     except NameError:
         p_draw_boosted = p_draw
-    if len(_draw_factors) >= 3 and top_pick != "Draw":
-        if len(_draw_factors) >= 5 and margin <= 0.25:
-            # Very strong signal (5+ factors) AND margin ≤25% → Draw becomes primary
-            _draw_override = True
-            _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
-        elif len(_draw_factors) >= 4 and margin <= 0.20:
-            # Strong signal (4+ factors) AND margin ≤20% → Draw becomes primary
-            _draw_override = True
-            _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
-        elif len(_draw_factors) >= 3 and margin <= 0.15:
-            # Moderate signal (3+ factors) AND margin ≤15% → Draw becomes primary
+    if len(_draw_factors) >= 5 and top_pick != "Draw":
+        # Only override to Draw when it is the genuine model leader BEFORE the
+        # cosmetic draw boost — compare the unboosted model probabilities so the
+        # boost block (which can lift Draw above 0.60) cannot manufacture a Draw
+        # primary. Require Draw to clearly top the best side win probability.
+        _side_max = max(p_home, p_away)
+        if p_draw >= 0.42 and p_draw - _side_max >= 0.04:
             _draw_override = True
             _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
 
@@ -2067,6 +2107,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         elif vol >= 0.15 and ou_conf == "Near Certain":
             ou_conf = "High"
 
+        # League-reliability damping: unreliable leagues over-predict goals,
+        # so cap O/U confidence regardless of the model's certainty.
+        if league_reliability < 1.0:
+            _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
+            if CONF_RANK.get(ou_conf, 99) < CONF_RANK[_max_conf]:
+                ou_conf = _max_conf
+
         # Under 3.5 expected-goals gate — prevent overconfident picks when exp goals are marginal
         if thresh == 3.5 and "Under" in ou_pick:
             if exp_total > 3.5:
@@ -2168,6 +2215,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
         if profile.get("avg_goals", 2.8) < 2.5 and btss_conf in ("Near Certain", "High"):
             btss_conf = "Medium-High"
+        # League-reliability damping (same logic as O/U)
+        if league_reliability < 1.0:
+            _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
+            if CONF_RANK.get(btss_conf, 99) < CONF_RANK[_max_conf]:
+                btss_conf = _max_conf
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
         if fb_btts_yes is not None:
             btss_reason += f" fb{fb_btts_yes}%"
@@ -2179,6 +2231,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         # High-scoring league cap — BTTS NO less reliable when avg_goals > 3.0
         if profile.get("avg_goals", 2.8) > 3.0 and btss_conf in ("Near Certain", "High"):
             btss_conf = "Medium-High"
+        # League-reliability damping (same logic as O/U)
+        if league_reliability < 1.0:
+            _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
+            if CONF_RANK.get(btss_conf, 99) < CONF_RANK[_max_conf]:
+                btss_conf = _max_conf
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
         if fb_btts_no:
             btss_reason += f" fb{fb_btts_no}%"
@@ -2209,15 +2266,41 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     }
     for c in candidates:
         c["coverage"] = COVERAGE.get((c["market"], c["pick"]), 1)
-        # Weighted score: confidence rank + coverage bonus + model probability
-        # Lower is better for rank, higher is better for prob/coverage
-        # When draw tendency exists, reduce coverage bonus for non-1X2 picks
-        cov_bonus = (c["coverage"] - 1) * 0.5
-        if _draw_tendency and c["market"] != "1X2":
-            cov_bonus *= 0.5  # Halve coverage bonus when draw is close
-        c["score"] = c["rank"] - cov_bonus - (c.get("model_prob") or 0) * 2
 
-    candidates.sort(key=lambda c: c["score"])
+    # ── Holistic synthesis ──
+    # Fuse every match signal (model probs, market edge, component agreement,
+    # uncertainty, draw tendency, coverage) into one decision value per
+    # candidate, then re-rank. This replaces the old isolated confidence sort
+    # so picks are chosen on the whole picture, not one threshold at a time.
+    try:
+        from synthesis import (
+            synthesize, build_synthesis_rationale, context_from_pred,
+        )
+        _synth_ctx = context_from_pred(
+            pred={},  # not used; fields passed explicitly below
+            data=data, vol=vol, form_signal=fsig,
+            trans_signal=trans_signal, draw_tendency=_draw_tendency,
+            draw_factors=len(_draw_factors), top_pick=top_pick, margin=margin,
+            league_reliability=league_reliability,
+            ml_dir=None,
+        )
+        # inject the computed 1X2 probs + exp goals directly (pred dict is empty)
+        _synth_ctx.p_home, _synth_ctx.p_draw, _synth_ctx.p_away = p_home, p_draw, p_away
+        _synth_ctx.exp_h, _synth_ctx.exp_a = exp_h, exp_a
+        candidates = synthesize(_synth_ctx, candidates)
+        _synth_rationale = build_synthesis_rationale(_synth_ctx, candidates, candidates[0])
+        from synthesis import component_agreement
+        _synth_consensus, _synth_n_sources = component_agreement(_synth_ctx)
+        method_parts.append("synthesis")
+    except Exception as _syn_err:
+        # Fallback: keep the legacy score so the model still produces picks
+        for c in candidates:
+            cov_bonus = (c["coverage"] - 1) * 0.5
+            if _draw_tendency and c["market"] != "1X2":
+                cov_bonus *= 0.5
+            c["score"] = c["rank"] - cov_bonus - (c.get("model_prob") or 0) * 2
+        candidates.sort(key=lambda c: c["score"])
+        _synth_rationale = f"(synthesis unavailable: {_syn_err})"
 
     non_show = [c for c in candidates if not c.get('_always_show')]
     primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
@@ -2242,7 +2325,15 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         line = f"{c['market']}: {c['pick']} ({c['confidence']})"
         if c.get("reason"):
             line += f" — {c['reason']}"
+        if c.get("decision_value") is not None:
+            line += f"  [synth {c['decision_value']:.3f}]"
         reasoning.append(line)
+
+    # ── Holistic synthesis verdict ──
+    if _synth_rationale:
+        reasoning.append("")
+        reasoning.append("── Synthesis ──")
+        reasoning.append(_synth_rationale)
 
     # ── Correct score estimate ──
     cs_h, cs_a = round(exp_h), round(exp_a)
@@ -2335,6 +2426,51 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         for r in form_analysis["reasoning"]:
             reasoning.append(r)
 
+    # ── Combined Synthesis + Form verdict (standout line) ──
+    # Brings together the holistic synthesis direction and the recent-form
+    # signal into one plain-language sentence, so the two lenses are read as a
+    # single conclusion rather than separate sections.
+    try:
+        _form_dir = "home" if fsig < -0.05 else "away" if fsig > 0.05 else "balanced"
+        _form_strength = "strongly" if abs(fsig) >= 0.30 else "moderately" if abs(fsig) >= 0.12 else "slightly"
+        _syn_dir = "home" if _synth_consensus < -0.05 else "away" if _synth_consensus > 0.05 else "balanced"
+
+        # The decisive conclusion: the actual top-ranked pick from the holistic
+        # fusion, plus the single strongest factor that drove it.
+        _top = primary
+        _top_pick = f"{_top['market']} {_top['pick']}"
+        _top_dv = _top.get("decision_value")
+        _top_comp = _top.get("components") or {}
+        _top_edge = _top_comp.get("edge")
+        if _top_edge is not None and _top_edge > 0.02:
+            _driver = f"model edge vs market +{_top_edge:.0%}"
+        elif _top["market"] == "O/U":
+            _driver = f"expected total {exp_h+exp_a:.1f} goals (model {_top_comp.get('prob'):.0%})"
+        else:
+            _driver = f"model probability {_top_comp.get('prob'):.0%}"
+
+        # Opening clause: how synthesis and form relate
+        if _form_dir == _syn_dir and _form_dir != "balanced":
+            _lead = (f"Synthesis and recent form align on the {_form_dir} side "
+                     f"({_form_strength} on form, consensus {_synth_consensus:+.2f}); ")
+        elif _form_dir == "balanced":
+            _lead = (f"Recent form is balanced, so the call rests on the holistic synthesis "
+                     f"(consensus {_synth_consensus:+.2f}); ")
+        elif _syn_dir == "balanced":
+            _lead = (f"Synthesis is inconclusive, so recent form ({_form_dir}, {_form_strength}) "
+                     f"decides; ")
+        else:
+            _lead = (f"Synthesis favours {_syn_dir} while recent form favours {_form_dir} "
+                     f"— the split keeps conviction modest; ")
+
+        _combo = (f"⟁SYNTHFORM⟁ {_lead}overall the model settles on "
+                  f"{_top_pick} ({_top['confidence']}), driven by {_driver} "
+                  f"(decision value {_top_dv:.2f}).")
+        reasoning.append("")
+        reasoning.append(_combo)
+    except Exception:
+        pass
+
     # ── Kelly Criterion stake sizing (improvement 9) ──
     kelly_stake = 0.0
     model_prob = primary.get("model_prob")
@@ -2363,6 +2499,12 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_implied_prob": implied_prob,
         "_odds": odds_val,
         "_poisson_probs": (p_home, p_draw, p_away),
+        "_synthesis_rationale": _synth_rationale if "_synth_rationale" in dir() else None,
+        "_synthesis_ranked": [
+            {"market": c["market"], "pick": c["pick"], "confidence": c["confidence"],
+             "decision_value": c.get("decision_value"), "components": c.get("components")}
+            for c in candidates[:6]
+        ],
         "_warnings": warnings,
         "_backup": {"pick": backup["pick"], "market": backup["market"],
                     "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
@@ -2439,14 +2581,14 @@ def _write_html(results, all_urls, compare_forebet, high_only):
             parts.append(f"Away(A): {aa_gf:.1f}GF/{aa_ga:.1f}GA")
         ou15 = r.get("home_over15_pct")
         if ou15 is not None:
-            parts.append(f"O15: {ou15}%")
+            parts.append(f"O15: {ou15}% (Forebet)")
         btts_h = r.get("home_btts_yes_pct")
         if btts_h is not None:
-            parts.append(f"BTTS: {btts_h}%")
+            parts.append(f"BTTS: {btts_h}% (Forebet)")
         sot_h = r.get("home_shots_ontarget_pct")
         ts_h = r.get("home_total_shots_pg")
         if sot_h is not None and ts_h is not None:
-            sot_est = round(ts_h * (sot_h / 100.0) * 0.70, 1)
+            sot_est = round(ts_h * (sot_h / 100.0) * 0.32, 1)
             parts.append(f"SoT: {sot_h}% ({sot_est:.1f} xG)")
         cs_h = r.get("home_clean_sheets_pct")
         if cs_h is not None:
@@ -2509,7 +2651,11 @@ def _write_html(results, all_urls, compare_forebet, high_only):
         reason_html = ""
         if r.get("reasoning"):
             for reason in r["reasoning"]:
-                reason_html += f"<li>{_highlight_exp(reason)}</li>\n"
+                if reason.startswith("⟁SYNTHFORM⟁"):
+                    _body = _highlight_exp(reason.replace("⟁SYNTHFORM⟁", "", 1).strip())
+                    reason_html += f'<li class="synthform-line">✦ {_body}</li>\n'
+                else:
+                    reason_html += f"<li>{_highlight_exp(reason)}</li>\n"
             reason_html = f'<div class="reasoning"><strong>Reasoning</strong><ul>{reason_html}</ul></div>'
 
         kelly_tag = f" &middot; Kelly: {r.get('kelly_stake', 0)*100:.1f}%" if r.get('kelly_stake', 0) > 0 else ""
@@ -2602,8 +2748,12 @@ table {{ width:100%; border-collapse:collapse; margin:6px 0; }}
 th, td {{ text-align:left; padding:2px 8px 2px 0; }}
 th {{ color:#94a3b8; font-weight:500; width:60px; }}
  details {{ margin-top:6px; }}
- .reasoning {{ margin-top:6px; }}
- .reasoning strong {{ color:#94a3b8; font-weight:500; }}
+  .reasoning {{ margin-top:6px; }}
+  .reasoning strong {{ color:#94a3b8; font-weight:500; }}
+  .synthform-line {{ list-style:none; margin:10px 0 4px 0 !important; padding:9px 12px;
+    background:linear-gradient(90deg, rgba(250,204,21,0.16), rgba(250,204,21,0.04));
+    border-left:4px solid #facc15; border-radius:6px; color:#fde68a; font-weight:600;
+    font-size:0.92rem; box-shadow:0 1px 4px rgba(0,0,0,0.25); }}
  summary {{ cursor:pointer; color:#60a5fa; font-weight:500; }}
 ul {{ margin:4px 0 0 18px; color:#94a3b8; }}
 a {{ color:#60a5fa; }}
@@ -2784,9 +2934,25 @@ new Chart(trendCtx, {{
 </body>
 </html>"""
 
-    # ── Save numbered report ──
+    # ── Save numbered report (dedupe by match id) ──
     pred_dir = Path("predictions")
     pred_dir.mkdir(exist_ok=True)
+
+    # Build the set of match ids for this run. Forebet match URLs end in a
+    # numeric id (e.g. ...-2428062); use that as the stable unique identifier
+    # so re-running the same URL(s) reuses the existing report instead of
+    # creating a duplicate.
+    import re as _re
+    current_ids = set()
+    for r in (results or []):
+        mid = r.get("match_id")
+        if mid:
+            current_ids.add(str(mid))
+    # Fallback: derive id from the trailing digits of each URL
+    for u in (all_urls or []):
+        m = _re.search(r"/(\d+)(?:[/?]|$)", u)
+        if m:
+            current_ids.add(m.group(1))
 
     # Find next available number
     existing = sorted(pred_dir.glob("*.html"))
@@ -2798,11 +2964,32 @@ new Chart(trendCtx, {{
             existing_nums.append(int(f.stem))
         except ValueError:
             pass
-    next_num = max(existing_nums, default=0) + 1
 
-    report_path = pred_dir / f"{next_num:03d}.html"
+    # Reuse an existing report that already contains the exact same match set
+    report_path = None
+    if current_ids:
+        for f in existing:
+            if f.name == "index.html":
+                continue
+            try:
+                int(f.stem)
+            except ValueError:
+                continue
+            content = f.read_text(encoding="utf-8", errors="ignore")
+            file_ids = set(_re.findall(r'data-match-id="(\d+)"', content))
+            if current_ids and file_ids == current_ids:
+                report_path = f
+                break
+
+    if report_path is None:
+        next_num = max(existing_nums, default=0) + 1
+        report_path = pred_dir / f"{next_num:03d}.html"
+
     report_path.write_text(html)
-    log(f"HTML report: {report_path.resolve()}")
+    if report_path.stem in {str(n) for n in existing_nums}:
+        log(f"HTML report (reused): {report_path.resolve()}")
+    else:
+        log(f"HTML report: {report_path.resolve()}")
 
     # ── Update index.html ──
     _update_index(pred_dir, now)
@@ -2810,6 +2997,8 @@ new Chart(trendCtx, {{
     # ── Auto-open in browser ──
     index_path = pred_dir / "index.html"
     webbrowser.open(str(index_path.resolve()))
+
+    return report_path
 
 
 def _update_index(pred_dir: Path, current_time: str):
@@ -3139,7 +3328,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         return
 
     # ── Always generate HTML ──
-    _write_html(results, match_urls, compare_forebet, high_only)
+    report_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
@@ -3217,8 +3406,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             print(f"  → Backup: {backup['market']}: {backup['pick']} ({backup['confidence']}) — covers {backup['coverage']} outcomes")
 
         # Line 4: HTML path
-        # Find the report number from results
-        print(f"→ predictions/{preds_made:03d}.html")
+        print(f"→ predictions/{report_path.stem}.html")
     print(f"\nSaved to database: history.db")
 
     # Schedule retrain ~18h after games finish
