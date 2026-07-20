@@ -78,6 +78,9 @@ class MatchContext:
     fb_home_pct: Optional[float] = None
     fb_draw_pct: Optional[float] = None
     fb_away_pct: Optional[float] = None
+    # Draw bias suppression and away win boost flags
+    draw_bias_suppressed: bool = False
+    away_win_boosted: bool = False
 
 
 @dataclass
@@ -206,11 +209,14 @@ def uncertainty(ctx: MatchContext) -> float:
 # ---------------------------------------------------------------------------
 # Core synthesis
 # ---------------------------------------------------------------------------
-def synthesize(ctx: MatchContext, candidates: list) -> list:
+def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> list:
     """Re-rank candidates by a holistic decision value.
 
     Returns the candidate dicts (mutated) sorted best-first, each carrying
     `decision_value`, `components` and `synth_note`.
+    
+    When ml_only=True, skips the 1X2 side-pick bonus so the ML model
+    picks independently based on probability and coverage.
     """
     consensus, n_sources = component_agreement(ctx)
     unc = uncertainty(ctx)
@@ -248,15 +254,24 @@ def synthesize(ctx: MatchContext, candidates: list) -> list:
 
         comp["conv"] = round(conv_base, 3)
 
-        cov_component = (cov - 1) * 0.15
+        cov_component = (cov - 1) * 0.10
 
         value = (
-            prob_component * 0.45
-            + max(0.0, edge or 0.0) * 0.55
-            + dir_align * 0.25 * conv_base
+            prob_component * 0.50
+            + max(0.0, edge or 0.0) * 0.50
+            + dir_align * 0.30 * conv_base
             + cov_component
         )
-        value += CONF_VALUE.get(c.get("confidence", "Low"), 0.15) * 0.10
+        value += CONF_VALUE.get(c.get("confidence", "Low"), 0.15) * 0.12
+
+        # 1X2 conviction boost: when a side pick has strong alignment and
+        # the model is confident, boost it to compete with O/U's coverage advantage
+        # Skip this boost for ML-only mode to let the model pick independently
+        if not ml_only and market == "1X2" and pick in ("Home win", "Away win"):
+            if prob and prob >= 0.50 and abs(dir_align) >= 0.3:
+                value += 0.15  # strong side pick bonus
+            elif prob and prob >= 0.45 and abs(dir_align) >= 0.2:
+                value += 0.08  # moderate side pick bonus
 
         if drawish and market == "1X2" and pick != "Draw":
             value *= 0.80
@@ -294,8 +309,40 @@ def build_synthesis_rationale(ctx: MatchContext, ranked: list, top: dict) -> str
     elif edge is not None and edge < -0.02:
         bits.append(f"Market favours this more than model ({edge:.0%}) -- limited value")
 
+    # Explain why O/U won over 1X2 picks when they differ
+    top_market = top.get("market", "")
+    if top_market == "O/U" and direction in ("home", "away"):
+        # Find the best 1X2 pick
+        best_1x2 = None
+        for c in ranked:
+            if c.get("market") == "1X2" and c.get("pick") in ("Home win", "Away win"):
+                best_1x2 = c
+                break
+        if best_1x2:
+            best_1x2_dv = best_1x2.get("decision_value", 0)
+            top_dv = top.get("decision_value", 0)
+            if top_dv > best_1x2_dv:
+                bits.append(
+                    f"O/U pick scored higher than 1X2 {best_1x2['pick']} "
+                    f"(coverage {top.get('coverage', 1)} vs {best_1x2.get('coverage', 1)} outcomes)"
+                )
+
+    # Enhanced draw tendency analysis with suppression awareness
     if ctx.draw_tendency or ctx.p_draw >= max(ctx.p_home, ctx.p_away):
-        bits.append("Draw tendency detected -- side picks discounted")
+        if ctx.draw_bias_suppressed:
+            bits.append(f"Draw bias suppressed (form/trans favor clear side)")
+        elif ctx.draw_factors >= 5:
+            bits.append(f"Strong draw signal ({ctx.draw_factors} factors) -- side picks heavily discounted")
+        elif ctx.draw_factors >= 3:
+            bits.append(f"Moderate draw signal ({ctx.draw_factors} factors) -- side picks discounted")
+        else:
+            bits.append("Draw tendency detected -- side picks discounted")
+
+    # Away win probability analysis with boost awareness
+    if ctx.away_win_boosted:
+        bits.append(f"Away win probability ({ctx.p_away:.0%}) boosted by form/trans signals")
+    elif ctx.p_away > ctx.p_home and consensus > 0.1:
+        bits.append(f"Away win probability ({ctx.p_away:.0%}) favoured by component consensus")
 
     if unc >= 0.5:
         bits.append(f"High uncertainty (vol {ctx.vol:.2f}, {len(ctx.warnings)} data warnings) -- conviction reduced")
@@ -316,7 +363,9 @@ def context_from_pred(pred: dict, data: dict, vol: float = 0.1,
                       draw_tendency: bool = False, draw_factors: int = 0,
                       top_pick: str = "", margin: float = 0.0,
                       league_reliability: float = 1.0,
-                      ml_dir: Optional[float] = None) -> MatchContext:
+                      ml_dir: Optional[float] = None,
+                      draw_bias_suppressed: bool = False,
+                      away_win_boosted: bool = False) -> MatchContext:
     ph, pd, pa = pred.get("_poisson_probs", (0.0, 0.0, 0.0))
     eh, ea = pred.get("_exp_goals", (0.0, 0.0))
     return MatchContext(
@@ -335,4 +384,6 @@ def context_from_pred(pred: dict, data: dict, vol: float = 0.1,
         fb_draw_pct=data.get("forebet_draw_pct"),
         fb_away_pct=data.get("forebet_away_pct"),
         ml_dir=ml_dir,
+        draw_bias_suppressed=draw_bias_suppressed,
+        away_win_boosted=away_win_boosted,
     )

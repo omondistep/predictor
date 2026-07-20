@@ -815,29 +815,29 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     exp_h = base * h_adv
     exp_a = base * a_adv
 
-    # Adjust for form — capped to avoid streak overreaction.
-    # Multiplier range is narrowed and sample-weighted more conservatively so a
-    # short hot/cold streak cannot blow up expected goals (e.g. 4.7 home goals).
+    # Adjust for form — ADDITIVE offsets to avoid multiplicative compounding.
+    # Form signal maps to ±0.15 goals max, weighted by sample size.
     hf_len = sum(1 for c in hf if c in "WDL") if hf else 0
     af_len = sum(1 for c in af if c in "WDL") if af else 0
     if h_f is not None:
-        f = min(1.15, max(0.85, h_f / 1.2))
-        # sqrt weighting: 6 games → 0.62, 10 → 0.80, 20 → ~1.0 (more shrinkage for short form)
-        f = 1.0 + (f - 1.0) * min(1.0, (hf_len / 6) ** 0.5)
-        exp_h *= f
+        # h_f ranges ~0.5 (bad) to ~2.0 (good); map to ±0.15 goal offset
+        form_offset = max(-0.15, min(0.15, (h_f - 1.2) * 0.2))
+        form_offset *= min(1.0, (hf_len / 6) ** 0.5)  # shrink for short form
+        exp_h += form_offset
     if a_f is not None:
-        f = min(1.15, max(0.85, a_f / 1.2))
-        f = 1.0 + (f - 1.0) * min(1.0, (af_len / 6) ** 0.5)
-        exp_a *= f
+        form_offset = max(-0.15, min(0.15, (a_f - 1.2) * 0.2))
+        form_offset *= min(1.0, (af_len / 6) ** 0.5)
+        exp_a += form_offset
 
-    # Adjust for standings
+    # Adjust for standings — ADDITIVE offsets, not multiplicative.
+    # Top team gets +0.1 goals, bottom team gets -0.1 goals.
     if hp and ap and total_teams:
-        # Higher position → more goals scored, fewer conceded
-        exp_h *= max(0.7, 1.0 + (total_teams - hp) / total_teams * 0.3)
-        exp_a *= max(0.7, 1.0 + (total_teams - ap) / total_teams * 0.3)
-        # Defensive adjustment: higher position → fewer conceded
-        exp_a *= max(0.7, 1.0 - (total_teams - hp) / total_teams * 0.2)
-        exp_h *= max(0.7, 1.0 - (total_teams - ap) / total_teams * 0.2)
+        # Offensive: higher position → slightly more goals
+        exp_h += (total_teams - hp) / total_teams * 0.15
+        exp_a += (total_teams - ap) / total_teams * 0.15
+        # Defensive: higher position → slightly fewer conceded
+        exp_a -= (total_teams - hp) / total_teams * 0.10
+        exp_h -= (total_teams - ap) / total_teams * 0.10
 
     # Override with actual avg goals data if available
     h_gf = data.get("home_avg_goals_for")
@@ -862,7 +862,7 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     hh_ga = data.get("home_home_avg_goals_against")
     aa_gf = data.get("away_away_avg_goals_for")
     aa_ga = data.get("away_away_avg_goals_against")
-    venue_w = 0.30  # venue stats get at most 30% weight; rest = current exp (season/league mean)
+    venue_w = 0.15  # venue stats get at most 15% weight (small samples of 3-5 games)
     if hh_gf:
         exp_h = exp_h * (1 - venue_w) + hh_gf * venue_w
     if aa_gf:
@@ -913,7 +913,56 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
     exp_h = exp_h * (1.0 - shrink) + base * shrink
     exp_a = exp_a * (1.0 - shrink) + base * shrink
 
+    # ── High-scoring league adjustment ──
+    # For leagues with avg_goals > 3.0, allow higher expected goals when venue
+    # stats support it (prevents underestimation in volatile high-scoring leagues)
+    if profile.get("avg_goals", 2.5) > 3.0:
+        # Check if venue stats show high-scoring tendency
+        hh_gf_val = data.get("home_home_avg_goals_for")
+        aa_gf_val = data.get("away_away_avg_goals_for")
+        if hh_gf_val is not None and aa_gf_val is not None:
+            venue_avg = (hh_gf_val + aa_gf_val) / 2.0
+            # If venue average is significantly higher than current estimate, allow upward adjustment
+            if venue_avg > exp_h + exp_a + 0.5:
+                # Blend toward venue average (conservative: 25% weight)
+                target_total = (exp_h + exp_a) * 0.75 + venue_avg * 0.25
+                ratio = target_total / (exp_h + exp_a) if (exp_h + exp_a) > 0 else 1.0
+                exp_h *= ratio
+                exp_a *= ratio
+
+    # Cap expected total at 3.5 to prevent extreme overestimation
+    exp_h, exp_a = _cap_expected_goals(exp_h, exp_a, profile.get("avg_goals", 2.5))
+
     return max(0.1, exp_h), max(0.1, exp_a)
+
+
+def _cap_expected_goals(exp_h: float, exp_a: float, league_avg: float = 2.5) -> tuple:
+    """Cap expected total goals at 3.5 to prevent extreme overestimation.
+    
+    Real football matches rarely average >3.5 total goals. The expected goals
+    model can inflate to 4.0+ when adjustments compound multiplicatively.
+    This cap brings unrealistic estimates back to reality.
+    """
+    total = exp_h + exp_a
+    if total > 3.5:
+        # Scale down proportionally to cap at 3.5
+        ratio = 3.5 / total
+        exp_h *= ratio
+        exp_a *= ratio
+    return exp_h, exp_a
+    """Cap expected total goals at 3.5 to prevent extreme overestimation.
+    
+    Real football matches rarely average >3.5 total goals. The expected goals
+    model can inflate to 4.0+ when adjustments compound multiplicatively.
+    This cap brings unrealistic estimates back to reality.
+    """
+    total = exp_h + exp_a
+    if total > 3.5:
+        # Scale down proportionally to cap at 3.5
+        ratio = 3.5 / total
+        exp_h *= ratio
+        exp_a *= ratio
+    return exp_h, exp_a
 
 
 def poisson_prob(goals: float, k: int) -> float:
@@ -1428,6 +1477,611 @@ def _common_opponent_strength(data: dict) -> dict:
     return {"h_mult": h_mult, "a_mult": a_mult, "reason": reason}
 
 
+def compute_ml_odds(data: dict) -> dict:
+    """Compute independent ML odds from match data without using Forebet odds.
+    
+    Returns:
+        dict with ml_1x2_odds, ml_ou_odds, ml_btts_odds, ml_dc_odds
+        and underlying probabilities
+    """
+    ml_model = _load_ml_model()
+    if not ml_model:
+        return {}
+    
+    # Get ML predictions from the model
+    ml_pred = ml_model.predict_from_row(data)
+    
+    # Extract probabilities
+    ml_prob_home = ml_pred.get("ml_prob_home", 0.33)
+    ml_prob_draw = ml_pred.get("ml_prob_draw", 0.33)
+    ml_prob_away = ml_pred.get("ml_prob_away", 0.33)
+    ml_prob_over = ml_pred.get("ml_prob_over", 0.5)
+    ml_prob_under = ml_pred.get("ml_prob_under", 0.5)
+    
+    # Compute decimal odds (fair odds, no margin)
+    def prob_to_odds(prob, min_prob=0.01):
+        """Convert probability to decimal odds."""
+        prob = max(prob, min_prob)
+        return round(1 / prob, 2)
+    
+    # 1X2 odds
+    ml_1x2_odds = {
+        "home": prob_to_odds(ml_prob_home),
+        "draw": prob_to_odds(ml_prob_draw),
+        "away": prob_to_odds(ml_prob_away)
+    }
+    
+    # O/U odds
+    ml_ou_odds = {
+        "over": prob_to_odds(ml_prob_over),
+        "under": prob_to_odds(ml_prob_under)
+    }
+    
+    # BTTS estimate (using form and scoring data)
+    home_scored = data.get("home_scored_pct", 50) or 50
+    away_scored = data.get("away_scored_pct", 50) or 50
+    home_conceded = data.get("home_conceded_pct", 50) or 50
+    away_conceded = data.get("away_conceded_pct", 50) or 50
+    
+    # Simple BTTS model: both teams score if both have >40% scoring rate
+    ml_prob_btts_yes = (home_scored / 100 * away_scored / 100) * 1.2  # boost for correlation
+    ml_prob_btts_yes = max(0.15, min(0.85, ml_prob_btts_yes))
+    ml_prob_btts_no = 1 - ml_prob_btts_yes
+    
+    ml_btts_odds = {
+        "yes": prob_to_odds(ml_prob_btts_yes),
+        "no": prob_to_odds(ml_prob_btts_no)
+    }
+    
+    # DC odds (Double Chance)
+    ml_prob_1x = ml_prob_home + ml_prob_draw
+    ml_prob_12 = ml_prob_home + ml_prob_away
+    ml_prob_x2 = ml_prob_draw + ml_prob_away
+    
+    ml_dc_odds = {
+        "1X": prob_to_odds(ml_prob_1x),
+        "12": prob_to_odds(ml_prob_12),
+        "X2": prob_to_odds(ml_prob_x2)
+    }
+    
+    # DNB odds (Draw No Bet)
+    ml_prob_dnb_home = ml_prob_home / (ml_prob_home + ml_prob_away) if (ml_prob_home + ml_prob_away) > 0 else 0.5
+    ml_prob_dnb_away = ml_prob_away / (ml_prob_home + ml_prob_away) if (ml_prob_home + ml_prob_away) > 0 else 0.5
+    
+    ml_dnb_odds = {
+        "home": prob_to_odds(ml_prob_dnb_home),
+        "away": prob_to_odds(ml_prob_dnb_away)
+    }
+    
+    return {
+        "ml_1x2": {
+            "probs": {"home": ml_prob_home, "draw": ml_prob_draw, "away": ml_prob_away},
+            "odds": ml_1x2_odds
+        },
+        "ml_ou": {
+            "probs": {"over": ml_prob_over, "under": ml_prob_under},
+            "odds": ml_ou_odds
+        },
+        "ml_btts": {
+            "probs": {"yes": ml_prob_btts_yes, "no": ml_prob_btts_no},
+            "odds": ml_btts_odds
+        },
+        "ml_dc": {
+            "probs": {"1X": ml_prob_1x, "12": ml_prob_12, "X2": ml_prob_x2},
+            "odds": ml_dc_odds
+        },
+        "ml_dnb": {
+            "probs": {"home": ml_prob_dnb_home, "away": ml_prob_dnb_away},
+            "odds": ml_dnb_odds
+        },
+        "ml_prediction": ml_pred.get("ml_prediction"),
+        "ml_ou_prediction": ml_pred.get("ml_ou_prediction")
+    }
+
+
+def analyze_ml_only(data: dict) -> dict:
+    """Run a complete ML-only analysis pipeline with draw signal, form analysis,
+    venue stats, and synthesis adjustments — independent of Forebet odds.
+    
+    Returns a dict structured identically to analyze_from_data() output.
+    """
+    ml_model = _load_ml_model()
+    if not ml_model:
+        return {}
+
+    ml_pred = ml_model.predict_from_row(data)
+    ph = ml_pred.get("ml_prob_home", 0.33)
+    pd = ml_pred.get("ml_prob_draw", 0.33)
+    pa = ml_pred.get("ml_prob_away", 0.33)
+    p_over = ml_pred.get("ml_prob_over", 0.5)
+    p_under = ml_pred.get("ml_prob_under", 0.5)
+
+    # ── Convert 1X2 probabilities to expected goals ──
+    best_exp_h, best_exp_a = 1.5, 1.2
+    best_err = 1e9
+    for eh_i in range(5, 60):
+        eh = eh_i / 10.0
+        for ea_i in range(3, 50):
+            ea = ea_i / 10.0
+            p_h_test = prob_home_win(eh, ea)
+            p_d_test = prob_draw(eh, ea)
+            p_a_test = prob_away_win(eh, ea)
+            err = abs(p_h_test - ph) + abs(p_a_test - pa) + abs(p_d_test - pd)
+            if err < best_err:
+                best_err = err
+                best_exp_h, best_exp_a = eh, ea
+    exp_h, exp_a = best_exp_h, best_exp_a
+
+    # ── Blend with venue stats (same as estimate_goals) ──
+    # Venue stats are small-sample (3-5 games) but ground the model in reality.
+    venue_w = 0.25  # ML-only gets more venue weight since inversion can be wild
+    hh_gf = data.get("home_home_avg_goals_for")
+    hh_ga = data.get("home_home_avg_goals_against")
+    aa_gf = data.get("away_away_avg_goals_for")
+    aa_ga = data.get("away_away_avg_goals_against")
+    if hh_gf is not None:
+        exp_h = exp_h * (1 - venue_w) + hh_gf * venue_w
+    if aa_gf is not None:
+        exp_a = exp_a * (1 - venue_w) + aa_gf * venue_w
+    if hh_ga is not None:
+        exp_a = exp_a * (1 - venue_w) + hh_ga * venue_w
+    if aa_ga is not None:
+        exp_h = exp_h * (1 - venue_w) + aa_ga * venue_w
+
+    # Shots-on-target xG proxy
+    h_sot = data.get("home_shots_ontarget_pct")
+    a_sot = data.get("away_shots_ontarget_pct")
+    h_tsh = data.get("home_total_shots_pg")
+    a_tsh = data.get("away_total_shots_pg")
+    if h_sot and h_tsh:
+        h_xg = h_tsh * (h_sot / 100.0) * 0.32
+        exp_h = (exp_h + h_xg) / 2
+    if a_sot and a_tsh:
+        a_xg = a_tsh * (a_sot / 100.0) * 0.32
+        exp_a = (exp_a + a_xg) / 2
+
+    # No-goal / clean-sheet discount
+    home_score_rate = (data.get("home_scored_pct") or 100) / 100.0
+    away_score_rate = (data.get("away_scored_pct") or 100) / 100.0
+    home_cs_rate = (data.get("home_clean_sheets_pct") or 0) / 100.0
+    away_cs_rate = (data.get("away_clean_sheets_pct") or 0) / 100.0
+    exp_h *= (1.0 - 0.5 * (1.0 - home_score_rate)) * (1.0 - 0.5 * away_cs_rate)
+    exp_a *= (1.0 - 0.5 * (1.0 - away_score_rate)) * (1.0 - 0.5 * home_cs_rate)
+    exp_h = max(exp_h, 0.1)
+    exp_a = max(exp_a, 0.1)
+    exp_total = exp_h + exp_a
+
+    # ── BTTS from scoring data ──
+    home_scored = (data.get("home_scored_pct", 50) or 50) / 100.0
+    away_scored = (data.get("away_scored_pct", 50) or 50) / 100.0
+    p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 1.2))
+    p_btts_no = 1 - p_btts_yes
+
+    # DC / DNB from 1X2
+    p_1x, p_x2, p_12 = ph + pd, pd + pa, ph + pa
+    p_dnb_h = ph / (ph + pa) if (ph + pa) > 0 else 0.5
+    p_dnb_a = pa / (ph + pa) if (ph + pa) > 0 else 0.5
+
+    # ── Volatility ──
+    league_key = detect_league(data.get("league", ""))
+    profile = get_profile(league_key)
+    vol = profile.get("volatility", 0.1)
+
+    # ── Form analysis from string ──
+    hf, af = data.get("home_form", ""), data.get("away_form", "")
+    h_ppg = _ppg(hf) if hf else 1.0
+    a_ppg = _ppg(af) if af else 1.0
+    fsig = (a_ppg - h_ppg) / 3.0
+
+    def _form_stats(form_str):
+        """Parse form string into W/D/L counts and ppg."""
+        w = sum(1 for c in form_str[:6] if c == "W")
+        d = sum(1 for c in form_str[:6] if c == "D")
+        l = sum(1 for c in form_str[:6] if c == "L")
+        n = w + d + l
+        ppg = (w * 3 + d) / n if n else 1.0
+        return {"w": w, "d": d, "l": l, "n": n, "ppg": ppg}
+
+    h_stats = _form_stats(hf)
+    a_stats = _form_stats(af)
+
+    # ── Form reasoning ──
+    form_reasoning = []
+    if hf:
+        form_reasoning.append(
+            f"H last 6: {h_stats['w']}W-{h_stats['d']}D-{h_stats['l']}L "
+            f"({h_stats['ppg']:.1f} ppg)"
+        )
+    if af:
+        form_reasoning.append(
+            f"A last 6: {a_stats['w']}W-{a_stats['d']}D-{a_stats['l']}L "
+            f"({a_stats['ppg']:.1f} ppg)"
+        )
+
+    # Venue-specific form from DB columns
+    hh_gf = data.get("home_home_avg_goals_for")
+    hh_ga = data.get("home_home_avg_goals_against")
+    aa_gf = data.get("away_away_avg_goals_for")
+    aa_ga = data.get("away_away_avg_goals_against")
+    if hh_gf is not None:
+        form_reasoning.append(f"H at home: {hh_gf:.1f}GF/{hh_ga:.1f}GA")
+    if aa_gf is not None:
+        form_reasoning.append(f"A away: {aa_gf:.1f}GF/{aa_ga:.1f}GA")
+
+    # Trending (recent 3 vs older 3)
+    if len(hf) >= 3:
+        h_r3 = _form_stats(hf[:3])
+        h_o3 = _form_stats(hf[3:6]) if len(hf) >= 6 else h_r3
+        if h_r3["ppg"] - h_o3["ppg"] > 0.5:
+            form_reasoning.append("H trending up (recent 3 better than older)")
+        elif h_o3["ppg"] - h_r3["ppg"] > 0.5:
+            form_reasoning.append("H trending down (recent 3 worse than older)")
+    if len(af) >= 3:
+        a_r3 = _form_stats(af[:3])
+        a_o3 = _form_stats(af[3:6]) if len(af) >= 6 else a_r3
+        if a_r3["ppg"] - a_o3["ppg"] > 0.5:
+            form_reasoning.append("A trending up (recent 3 better than older)")
+        elif a_o3["ppg"] - a_r3["ppg"] > 0.5:
+            form_reasoning.append("A trending down (recent 3 worse than older)")
+
+    # ── Draw tendency & draw signal factors ──
+    _draw_factors = []
+    h_d_count = sum(1 for c in hf[:6] if c == "D")
+    a_d_count = sum(1 for c in af[:6] if c == "D")
+
+    # Factor 1: Home team has ≥3 draws
+    if h_d_count >= 3:
+        _draw_factors.append(f"H:{h_d_count}D")
+
+    # Factor 2: Away team has ≥3 draws
+    if a_d_count >= 3:
+        _draw_factors.append(f"A:{a_d_count}D")
+
+    # Factor 3: Expected goals differential ≤ 0.3
+    exp_diff = abs(exp_h - exp_a)
+    if exp_diff <= 0.3 and exp_h + exp_a > 0:
+        _draw_factors.append(f"expΔ{exp_diff:.1f}")
+
+    # Factor 4: Form signal neutral (|signal| ≤ 0.15)
+    if abs(fsig) <= 0.15:
+        _draw_factors.append("form-neutral")
+
+    # Factor 5: Venue low-scoring
+    if hh_gf is not None and aa_gf is not None:
+        if hh_gf <= 0.8 and aa_gf <= 0.8:
+            _draw_factors.append("venue-low")
+
+    # Factor 6: Home O15 rate < 50%
+    h_ou15 = data.get("home_over15_pct")
+    if h_ou15 is not None and h_ou15 < 50:
+        _draw_factors.append(f"O15:{h_ou15}%")
+
+    # Factor 7: Home BTTS rate < 40%
+    btts_h = data.get("home_btts_yes_pct")
+    if btts_h is not None and btts_h < 40:
+        _draw_factors.append(f"BTTS:{btts_h}%")
+
+    # Factor 8: Home CS rate > 30%
+    cs_h = data.get("home_clean_sheets_pct")
+    if cs_h is not None and cs_h > 30:
+        _draw_factors.append(f"CS:{cs_h}%")
+
+    # Factor 9: Home has ≥2D in venue-specific stats (from form string)
+    if h_d_count >= 2 and a_d_count >= 1:
+        _draw_factors.append("form-draws")
+
+    # Draw tendency detection
+    top_prob = max(ph, pd, pa)
+    top_pick = "Home win" if ph == top_prob else ("Away win" if pa == top_prob else "Draw")
+    margin = top_prob - pd if top_pick != "Draw" else 0
+    _draw_tendency = False
+    if top_pick != "Draw" and pd >= 0.28 and margin <= 0.12:
+        _draw_tendency = True
+
+    # Boost draw when multiple factors align
+    p_draw_boosted = pd
+    if len(_draw_factors) >= 3 and top_pick != "Draw":
+        _draw_boost = min(len(_draw_factors) * 0.02, 0.06)
+        p_draw_boosted = min(pd + _draw_boost, 0.55)
+
+    # ── Build candidates ──
+    candidates = []
+
+    def add(market, pick, conf, reason, model_prob=None, odds=None):
+        candidates.append({
+            "market": market, "pick": pick, "confidence": conf,
+            "rank": 0, "reason": reason, "model_prob": model_prob,
+            "implied_prob": None, "value_ratio": None,
+            "_always_show": True, "odds": odds,
+        })
+
+    def prob_to_odds(prob, min_p=0.01):
+        return round(1 / max(prob, min_p), 2)
+
+    # ── 1X2 with draw signal ──
+    for name, prob in [("Home win", ph), ("Away win", pa)]:
+        if prob >= 0.58: conf = "Near Certain"
+        elif prob >= 0.48: conf = "High"
+        elif prob >= 0.38: conf = "Medium-High"
+        elif prob >= 0.30: conf = "Medium"
+        else: conf = "Low"
+        add("1X2", name, conf, f"ML model {prob:.0%}", model_prob=prob,
+            odds=prob_to_odds(prob))
+
+    # Draw with boosted probability when draw signal is present
+    draw_conf = "Medium" if pd >= 0.30 else "Low"
+    if len(_draw_factors) >= 3:
+        if p_draw_boosted >= 0.36: draw_conf = "Medium-High"
+        elif p_draw_boosted >= 0.30: draw_conf = "Medium"
+    add("1X2", "Draw", draw_conf, f"ML model {pd:.0%} ({'+'.join(_draw_factors[:3]) if _draw_factors else 'no signal'})",
+        model_prob=p_draw_boosted, odds=prob_to_odds(p_draw_boosted))
+
+    # ── DNB ──
+    if vol < 0.25:
+        if ph > pa + 0.08:
+            if p_dnb_h >= 0.55: conf = "High"
+            elif p_dnb_h >= 0.50: conf = "Medium-High"
+            elif p_dnb_h >= 0.46: conf = "Medium"
+            else: conf = "Low"
+            add("DNB", "Home", conf, "derived from ML", model_prob=p_dnb_h,
+                odds=prob_to_odds(p_dnb_h))
+        elif pa > ph + 0.10:
+            if p_dnb_a >= 0.58: conf = "High"
+            elif p_dnb_a >= 0.52: conf = "Medium-High"
+            elif p_dnb_a >= 0.48: conf = "Medium"
+            else: conf = "Low"
+            add("DNB", "Away", conf, "derived from ML", model_prob=p_dnb_a,
+                odds=prob_to_odds(p_dnb_a))
+
+    # ── DC ──
+    dc_thresh = 0.72
+    if p_1x > dc_thresh:
+        add("DC", "1X", "Medium-High" if p_1x > 0.82 else "Medium", "derived from ML",
+            model_prob=p_1x, odds=prob_to_odds(p_1x))
+    if p_x2 > dc_thresh:
+        add("DC", "X2", "Medium-High" if p_x2 > 0.82 else "Medium", "derived from ML",
+            model_prob=p_x2, odds=prob_to_odds(p_x2))
+    if p_12 > 0.86 and pd < 0.22:
+        add("DC", "12", "Medium-High" if p_12 > 0.92 else "Medium", "derived from ML",
+            model_prob=p_12, odds=prob_to_odds(p_12))
+
+    # ── O/U multi-threshold ──
+    for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
+                                       (2.5, "Under 2.5", "Over 2.5"),
+                                       (3.5, "Under 3.5", "Over 3.5")]:
+        if thresh == 2.5:
+            p_o = p_over
+            p_u = p_under
+        else:
+            p_o = prob_over(exp_h, exp_a, thresh)
+            p_u = 1.0 - p_o
+        val_o, val_u = p_o - 0.5, p_u - 0.5
+
+        if p_o > p_u and val_o > 0:
+            ou_pick, ou_val = label_o, val_o
+        elif p_u > p_o and val_u > 0:
+            ou_pick, ou_val = label_u, val_u
+        else:
+            continue
+
+        if ou_val > 0.45: ou_conf = "Near Certain"
+        elif ou_val > 0.35: ou_conf = "High"
+        elif ou_val > 0.18: ou_conf = "Medium-High"
+        elif ou_val > 0.10: ou_conf = "Medium"
+        else: ou_conf = "Low"
+
+        if vol >= 0.25 and ou_conf in ("Near Certain", "High"):
+            ou_conf = "Medium-High"
+        if thresh == 3.5 and "Under" in ou_pick and exp_total > 3.5:
+            ou_conf = "Low"
+        if thresh == 1.5:
+            if ou_conf not in ("Near Certain", "High", "Medium-High"):
+                ou_conf = "Medium-High"
+            if exp_total < 2.5: ou_conf = "Low"
+            elif exp_total < 3.0 and ou_conf == "Low":
+                ou_conf = "Medium"
+
+        add("O/U", ou_pick, ou_conf, f"ML exp {exp_total:.1f}g model {max(p_o,p_u):.0%}" + (" (ML direct)" if thresh == 2.5 else ""),
+            model_prob=max(p_o, p_u), odds=prob_to_odds(max(p_o, p_u)))
+
+    # ── BTTS ──
+    btts_conf = "Medium-High" if p_btts_yes > 0.62 else "Medium" if p_btts_yes > 0.52 else "Low"
+    btts_no_conf = "Medium-High" if p_btts_no > 0.62 else "Medium" if p_btts_no > 0.52 else "Low"
+    add("BTTS", "Yes", btts_conf, f"ML {p_btts_yes:.0%}", model_prob=p_btts_yes,
+        odds=prob_to_odds(p_btts_yes))
+    add("BTTS", "No", btts_no_conf, f"ML {p_btts_no:.0%}", model_prob=p_btts_no,
+        odds=prob_to_odds(p_btts_no))
+
+    # ── Synthesis ──
+    reasoning = []
+
+    # ── League reliability factor ──
+    _ld = _get_league_difficulty(data.get("league", ""))
+    if _ld.get("level") == "hard":
+        reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
+
+    # ── Common-opponent strength ──
+    _cos = _common_opponent_strength(data)
+    if _cos["reason"]:
+        reasoning.append(f"⚠ {_cos['reason']}")
+
+    # ── Transitive common-opponent analysis ──
+    _trans = _transitive_common_opponent_analysis(data)
+    if _trans and _trans.get("reasoning"):
+        for tr in _trans["reasoning"]:
+            reasoning.append(tr)
+
+    # Draw tendency warning
+    if _draw_tendency:
+        reasoning.append(f"⚠ Draw tendency: {pd:.0%} vs {top_pick} {top_prob:.0%} (margin {margin:.0%})")
+
+    # Draw signal warning
+    if len(_draw_factors) >= 3:
+        reasoning.append(f"⚠ Draw signal ({len(_draw_factors)}f): {', '.join(_draw_factors)}")
+
+    reasoning.append(f"── ML-Only Synthesis ──")
+
+    # Build MatchContext for synthesis
+    _synth_ctx = None
+    try:
+        from synthesis import MatchContext, synthesize, build_synthesis_rationale, context_from_pred
+        _synth_ctx = context_from_pred(
+            {"_poisson_probs": (ph, pd, pa), "_exp_goals": (exp_h, exp_a),
+             "_volatility": vol, "_warnings": []},
+            data, vol=vol, form_signal=fsig,
+            draw_tendency=_draw_tendency, draw_factors=len(_draw_factors),
+            top_pick=top_pick, margin=margin,
+        )
+        candidates = synthesize(_synth_ctx, candidates, ml_only=True)
+        _synth_rationale = build_synthesis_rationale(_synth_ctx, candidates, candidates[0])
+        reasoning.append(_synth_rationale)
+        method_parts = ["ml-only"]
+    except Exception as e:
+        reasoning.append(f"(ML synthesis error: {e})")
+        candidates.sort(key=lambda c: c.get("model_prob") or 0, reverse=True)
+        _synth_rationale = None
+        method_parts = ["ml-odds"]
+
+    primary = candidates[0] if candidates else {"pick": "—", "market": "—", "confidence": "Low"}
+
+    # ── Picks summary ──
+    picks_summary = []
+    for c in candidates[:5]:
+        star = "★" if c["confidence"] in ("Near Certain", "High") else "☆" if c["confidence"] == "Medium-High" else ""
+        picks_summary.append(f"{star}{c['market']}: {c['pick']} ({c['confidence']})")
+
+    # ── Synthform summary line (like the Forebet-based one) ──
+    try:
+        _top = candidates[0] if candidates else None
+        _top_comp = _top.get("components", {}) if _top else {}
+        _top_dv = _top.get("decision_value", 0) if _top else 0
+        _top_pick = f"{_top['market']}: {_top['pick']}" if _top else "—"
+
+        # Form direction and synthesis direction
+        if fsig > 0.12:
+            _form_dir, _form_strength = "away", f"+{fsig:.2f}"
+        elif fsig < -0.12:
+            _form_dir, _form_strength = "home", f"{fsig:.2f}"
+        else:
+            _form_dir, _form_strength = "balanced", "neutral"
+
+        _syn_dir = "balanced"
+        if _synth_ctx:
+            if _synth_ctx.p_home > _synth_ctx.p_away + 0.10:
+                _syn_dir = "home"
+            elif _synth_ctx.p_away > _synth_ctx.p_home + 0.10:
+                _syn_dir = "away"
+            elif abs(_synth_ctx.p_home - _synth_ctx.p_away) <= 0.10:
+                _syn_dir = "balanced"
+
+        _synth_consensus = 0.0
+        if _synth_ctx:
+            _synth_consensus = _synth_ctx.form_signal
+
+        _top_edge = None
+        if _top and _top.get("model_prob"):
+            implied = 1.0 / _top.get("odds", 2.0) if _top.get("odds") else 0.5
+            if implied > 0:
+                _top_edge = _top["model_prob"] - implied
+
+        if _top_edge is not None and _top_edge > 0.02:
+            _driver = f"model edge vs market +{_top_edge:.0%}"
+        elif _top and _top.get("market") == "O/U":
+            _driver = f"expected total {exp_total:.1f}g (model {_top_comp.get('prob', 0):.0%})"
+        else:
+            _driver = f"model probability {_top_comp.get('prob', 0):.0%}"
+
+        if _form_dir == _syn_dir and _form_dir != "balanced":
+            _lead = (f"Synthesis and recent form align on the {_form_dir} side "
+                     f"({_form_strength} on form, consensus {_synth_consensus:+.2f}); ")
+        elif _form_dir == "balanced":
+            _lead = (f"Recent form is balanced, so the call rests on the holistic synthesis "
+                     f"(consensus {_synth_consensus:+.2f}); ")
+        elif _syn_dir == "balanced":
+            _lead = (f"Synthesis is inconclusive, so recent form ({_form_dir}, {_form_strength}) "
+                     f"decides; ")
+        else:
+            _lead = (f"Synthesis favours {_syn_dir} while recent form favours {_form_dir} "
+                     f"— the split keeps conviction modest; ")
+
+        _1x2_picks = [c for c in candidates if c["market"] == "1X2" and c["pick"] in ("Home win", "Away win")]
+        _best_1x2 = _1x2_picks[0] if _1x2_picks else None
+        if _best_1x2 and _top and _top["market"] != "1X2":
+            _top_dv_val = _top.get("decision_value", 0)
+            _1x2_dv_val = _best_1x2.get("decision_value", 0)
+            _cov_diff = _top.get("coverage", 1) - _best_1x2.get("coverage", 1)
+            if _cov_diff > 0:
+                _driver += f" (O/U covers {_top.get('coverage', 1)} outcomes vs 1X2's 1)"
+            elif _top_dv_val > _1x2_dv_val:
+                _driver += f" (scored {_top_dv_val:.2f} vs {_best_1x2['pick']} {_1x2_dv_val:.2f})"
+
+        _combo = (f"⟁SYNTHFORM⟁ {_form_dir} side ({_form_strength} form, "
+                  f"{_synth_consensus:+.2f} consensus); settles on "
+                  f"{_top_pick} ({_top['confidence']}, dv {_top_dv:.2f}).")
+
+        _1x2_picks_all = [c for c in candidates if c["market"] == "1X2"]
+        if _1x2_picks_all:
+            _best_1x2_all = _1x2_picks_all[0]
+            _1x2_prob = _best_1x2_all.get("model_prob")
+            if _1x2_prob:
+                _combo += f" 1X2: {_best_1x2_all['pick']} ({_1x2_prob:.0%})."
+
+        reasoning.append("")
+        reasoning.append(_combo)
+    except Exception:
+        pass
+
+    # ── Form analysis section ──
+    reasoning.append("")
+    reasoning.append("── Form Analysis ──")
+    reasoning.extend(form_reasoning)
+
+    # ── Odds dict ──
+    ml_odds_1x2 = {"home": prob_to_odds(ph), "draw": prob_to_odds(pd), "away": prob_to_odds(pa)}
+    ml_odds_ou = {"over": prob_to_odds(p_over), "under": prob_to_odds(p_under)}
+    ml_odds_btts = {"yes": prob_to_odds(p_btts_yes), "no": prob_to_odds(p_btts_no)}
+    ml_odds_dc = {"1X": prob_to_odds(p_1x), "12": prob_to_odds(p_12), "X2": prob_to_odds(p_x2)}
+    ml_odds_dnb = {"home": prob_to_odds(p_dnb_h), "away": prob_to_odds(p_dnb_a)}
+
+    # ── Kelly Criterion for ML top pick ──
+    ml_kelly = 0.0
+    ml_top_prob = primary.get("model_prob")
+    ml_top_odds = primary.get("odds")
+    if ml_top_prob and ml_top_odds and ml_top_odds > 1.0:
+        ml_implied = 1.0 / ml_top_odds
+        ml_edge = ml_top_prob - ml_implied
+        if ml_edge > 0:
+            ml_kelly_f = ml_edge / (ml_top_odds - 1)
+            ml_kelly = round(min(ml_kelly_f * 0.25, 0.05), 4)
+
+    return {
+        "pick": primary["pick"],
+        "market": primary["market"],
+        "confidence": primary["confidence"],
+        "all_picks": candidates,
+        "picks_summary": picks_summary,
+        "reasoning": reasoning,
+        "_exp_goals": (exp_h, exp_a),
+        "_method": "+".join(method_parts),
+        "_kelly_stake": ml_kelly,
+        "_ml_odds": {
+            "ml_1x2": {"probs": {"home": ph, "draw": pd, "away": pa}, "odds": ml_odds_1x2},
+            "ml_ou": {"probs": {"over": p_over, "under": p_under}, "odds": ml_odds_ou},
+            "ml_btts": {"probs": {"yes": p_btts_yes, "no": p_btts_no}, "odds": ml_odds_btts},
+            "ml_dc": {"probs": {"1X": p_1x, "12": p_12, "X2": p_x2}, "odds": ml_odds_dc},
+            "ml_dnb": {"probs": {"home": p_dnb_h, "away": p_dnb_a}, "odds": ml_odds_dnb},
+            "ml_prediction": ml_pred.get("ml_prediction"),
+            "ml_ou_prediction": ml_pred.get("ml_ou_prediction"),
+        },
+        "_synthesis_rationale": _synth_rationale if "_synth_rationale" in dir() else None,
+        "_synthesis_ranked": [
+            {"market": c["market"], "pick": c["pick"], "confidence": c["confidence"],
+             "decision_value": c.get("decision_value"), "components": c.get("components")}
+            for c in candidates[:6]
+        ],
+    }
+
+
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """Analyze all markets, recommend highest-conviction pick.
     
@@ -1473,6 +2127,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     # ── ML-enhanced probability computation ──
     ml_model = _load_ml_model() if use_ml else None
+    _ml_from_ensemble = None
     method_parts = []
     # Accumulates how strongly the adjustment signals fired; drives the
     # single final blend weight between ML/DC base and exp-derived probs.
@@ -1512,6 +2167,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         p_away = ensemble["prob_away"]
         p_over = ensemble["prob_over"]
         p_under = ensemble["prob_under"]
+        _ml_from_ensemble = ensemble.get("_ml")
         method_parts.append(f"ml({getattr(ml_model, 'cv_accuracy_1x2', 0):.2f})")
         if dynamic_weights:
             method_parts.append("dyn-weights")
@@ -1526,6 +2182,17 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             exp_a = max(exp_a, 0.05)
             signal_blend = min(0.65, signal_blend + abs(fsig))
             method_parts.append("form")
+
+        # ── Away win probability boost when form strongly favors away ──
+        # Prevents systematic under-prediction of away wins
+        if fsig > 0.20:
+            away_boost = min(fsig * 0.10, 0.08)  # Max 8% boost
+            p_away = min(p_away + away_boost, 0.65)
+            # Renormalize
+            total_p = p_home + p_draw + p_away
+            p_home /= total_p
+            p_draw /= total_p
+            p_away /= total_p
 
         # Concordance boost: Forebet + Poisson agreement
         fb_h_raw = (data.get("forebet_home_pct") or 0) / 100.0
@@ -1575,11 +2242,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             p_draw = prob_draw(exp_h, exp_a)
             p_away = prob_away_win(exp_h, exp_a)
 
-            # Draw inflation
+            # Draw inflation (reduced to avoid over-predicting draws)
             draw_rate = profile.get("draw_rate", 0.25)
-            draw_boost = 0.07 if exp_total < 2.5 else 0.04
+            draw_boost = 0.03 if exp_total < 2.5 else 0.02  # Reduced from 0.07/0.04
             if draw_rate >= 0.32:
-                draw_boost += 0.04
+                draw_boost += 0.02  # Reduced from 0.04
             p_draw += draw_boost
 
             # Re-normalize
@@ -1599,6 +2266,15 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             exp_a = max(exp_a, 0.05)
             signal_blend = min(0.65, signal_blend + abs(fsig))
             method_parts.append("form")
+
+        # ── Away win probability boost when form strongly favors away (non-ML path) ──
+        if fsig > 0.20:
+            away_boost = min(fsig * 0.10, 0.08)
+            p_away = min(p_away + away_boost, 0.65)
+            total_p = p_home + p_draw + p_away
+            p_home /= total_p
+            p_draw /= total_p
+            p_away /= total_p
 
     # ── Transitive common-opponent analysis: adjust expected goals ──
     _trans_analysis = _transitive_common_opponent_analysis(data)
@@ -1621,6 +2297,20 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             signal_blend = min(0.65, signal_blend + trans_weight * abs_sig)
             method_parts.append("trans")
             trans_adjusted = True
+
+        # -- Away win probability floor when trans signal favors away --
+        # When trans signal strongly favors away, ensure away win prob isn't suppressed
+        if trans_signal > 0.25 and trans_conf in ("High", "Medium-High", "Medium"):
+            # Boost away win probability floor based on trans signal strength
+            away_floor = 0.25 + min(trans_signal * 0.15, 0.15)  # Floor 25-40%
+            if p_away < away_floor:
+                p_away = away_floor
+                # Renormalize
+                total_p = p_home + p_draw + p_away
+                p_home /= total_p
+                p_draw /= total_p
+                p_away /= total_p
+                method_parts.append("trans-away-boost")
 
         # -- Draw tendency: reduce expected-goals gap when teams are evenly matched --
         draw_signal_val = _trans_analysis.get("draw_signal", 0.0)
@@ -1851,7 +2541,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _draw_tendency = True
         reasoning.append(f"⚠ Draw tendency: {p_draw:.0%} vs {top_pick} {top_prob:.0%} (margin {margin:.0%})")
 
-    # ── Composite draw signal: multi-factor draw detection ──
+    # ── Composite draw signal: multi-factor draw detection (conservative) ──
     _draw_factors = []
     h_form = data.get("home_form") or ""
     a_form = data.get("away_form") or ""
@@ -1865,78 +2555,82 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     aa_ga = data.get("away_away_avg_goals_against")
     h_ou15 = data.get("home_over15_pct")
 
-    # Factor 1: Home team has ≥2 draws in recent form
-    if h_d_count >= 2:
+    # ── Skip draw factors when form/trans clearly favor a side ──
+    _form_clearly_favors = abs(fsig) >= 0.25
+    _trans_clearly_favors = abs(trans_signal) >= 0.30
+    _model_clearly_favors = max(p_home, p_away) >= 0.48 and margin >= 0.12
+
+    # Factor 1: Home team has ≥3 draws in recent form (raised from 2)
+    if h_d_count >= 3:
         _draw_factors.append(f"H:{h_d_count}D")
 
-    # Factor 2: Away team has ≥2 draws in recent form
-    if a_d_count >= 2:
+    # Factor 2: Away team has ≥3 draws in recent form (raised from 2)
+    if a_d_count >= 3:
         _draw_factors.append(f"A:{a_d_count}D")
 
-    # Factor 3: Expected goals differential ≤ 0.5
+    # Factor 3: Expected goals differential ≤ 0.3 (tightened from 0.5)
     exp_diff = abs(exp_h - exp_a)
-    if exp_diff <= 0.5 and exp_h + exp_a > 0:
+    if exp_diff <= 0.3 and exp_h + exp_a > 0:
         _draw_factors.append(f"expΔ{exp_diff:.1f}")
 
-    # Factor 4: Draw odds ≤ 3.0 (bookmaker signals draw)
+    # Factor 4: Draw odds ≤ 2.8 (bookmaker signals draw — tightened from 3.0)
     draw_odds = data.get("odds_draw")
-    if draw_odds and draw_odds <= 3.0:
+    if draw_odds and draw_odds <= 2.8:
         _draw_factors.append(f"odds{draw_odds:.1f}")
 
-    # Factor 5: Form analysis signal is neutral (|signal| ≤ 0.2)
-    if abs(fsig) <= 0.2:
+    # Factor 5: Form analysis signal is neutral (|signal| ≤ 0.15 — tightened from 0.2)
+    if abs(fsig) <= 0.15:
         _draw_factors.append("form-neutral")
 
-    # Factor 6: Transitive draw tendency
-    if _trans_analysis and _trans_analysis.get("draw_signal", 0) > 0:
+    # Factor 6: Transitive draw tendency (only when trans signal is weak)
+    if _trans_analysis and _trans_analysis.get("draw_signal", 0) > 0.15:
         _draw_factors.append("trans-draw")
 
-    # Factor 7: Both teams score ≤1.0 goals at venue (low-scoring game likely)
+    # Factor 7: Both teams score ≤0.8 goals at venue (low-scoring game likely — tightened from 1.0)
     if hh_gf is not None and aa_gf is not None:
-        if hh_gf <= 1.0 and aa_gf <= 1.0:
+        if hh_gf <= 0.8 and aa_gf <= 0.8:
             _draw_factors.append("venue-low")
 
-    # Factor 8: Home O15 rate < 60% (many low-scoring games)
-    if h_ou15 is not None and h_ou15 < 60:
+    # Factor 8: Home O15 rate < 50% (many low-scoring games — tightened from 60%)
+    if h_ou15 is not None and h_ou15 < 50:
         _draw_factors.append(f"O15:{h_ou15}%")
 
-    # Factor 9: Home BTTS rate < 45% (one team often fails to score)
+    # Factor 9: Home BTTS rate < 40% (one team often fails to score — tightened from 45%)
     btts_h = data.get("home_btts_yes_pct")
-    if btts_h is not None and btts_h < 45:
+    if btts_h is not None and btts_h < 40:
         _draw_factors.append(f"BTTS:{btts_h}%")
 
-    # Factor 10: Home CS rate > 25% (home keeps clean sheets → 0-0/1-0 draws)
+    # Factor 10: Home CS rate > 30% (home keeps clean sheets — tightened from 25%)
     cs_h = data.get("home_clean_sheets_pct")
-    if cs_h is not None and cs_h > 25:
+    if cs_h is not None and cs_h > 30:
         _draw_factors.append(f"CS:{cs_h}%")
 
-    # Boost draw confidence when multiple factors align
-    if len(_draw_factors) >= 2 and top_pick != "Draw":
-        _draw_boost = min(len(_draw_factors) * 0.03, 0.10)
-        p_draw_boosted = min(p_draw + _draw_boost, 0.60)
-        # Upgrade Draw confidence
-        if p_draw_boosted >= 0.35 and draw_conf == "Low":
+    # Remove draw factors when form/trans clearly favor a side
+    if _form_clearly_favors or _trans_clearly_favors or _model_clearly_favors:
+        # Only keep high-confidence draw factors (odds-based and venue-low)
+        _draw_factors = [f for f in _draw_factors if f.startswith("odds") or f == "venue-low"]
+
+    # Boost draw confidence when multiple factors align (reduced boost)
+    p_draw_boosted = p_draw
+    if len(_draw_factors) >= 3 and top_pick != "Draw":
+        _draw_boost = min(len(_draw_factors) * 0.02, 0.06)  # Reduced from 0.03/0.10
+        p_draw_boosted = min(p_draw + _draw_boost, 0.55)  # Capped lower (0.55 vs 0.60)
+        # Upgrade Draw confidence only when boost is significant
+        if p_draw_boosted >= 0.38 and draw_conf == "Low":
             draw_conf = "Medium"
             # Re-add Draw with upgraded confidence
             candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
             add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} ({'+'.join(_draw_factors)})", model_prob=p_draw_boosted)
         reasoning.append(f"⚠ Draw signal ({len(_draw_factors)}f): {', '.join(_draw_factors)}")
 
-    # ── Draw override: when composite signal is strong + margin small, make Draw the primary ──
+    # ── Draw override: very conservative — only when model strongly agrees ──
     _draw_override = False
     _draw_override_reason = ""
-    # Ensure p_draw_boosted is defined (fallback to p_draw if boost block didn't run)
-    try:
-        p_draw_boosted
-    except NameError:
-        p_draw_boosted = p_draw
-    if len(_draw_factors) >= 5 and top_pick != "Draw":
-        # Only override to Draw when it is the genuine model leader BEFORE the
-        # cosmetic draw boost — compare the unboosted model probabilities so the
-        # boost block (which can lift Draw above 0.60) cannot manufacture a Draw
-        # primary. Require Draw to clearly top the best side win probability.
+    if len(_draw_factors) >= 6 and top_pick != "Draw":  # Raised from 5 to 6
+        # Require Draw to clearly dominate AND not be contradicted by form/trans
         _side_max = max(p_home, p_away)
-        if p_draw >= 0.42 and p_draw - _side_max >= 0.04:
+        if (p_draw >= 0.45 and p_draw - _side_max >= 0.06  # Tightened from 0.42/0.04
+            and not _form_clearly_favors and not _trans_clearly_favors):
             _draw_override = True
             _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
 
@@ -1945,9 +2639,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == top_pick)]
         candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
         # Determine Draw override confidence based on boosted probability
-        if p_draw_boosted >= 0.40:
+        if p_draw_boosted >= 0.42:
             draw_override_conf = "Medium-High"
-        elif p_draw_boosted >= 0.35:
+        elif p_draw_boosted >= 0.38:
             draw_override_conf = "Medium"
         else:
             draw_override_conf = "Medium"
@@ -2190,19 +2884,33 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             add("O/U", ou_pick, ou_conf, ou_reason,
                 model_prob=p_o if "Over" in ou_pick else p_u)
 
-    # ── BTTS (blended: Poisson + Forebet) ──
+    # ── BTTS (blended: Poisson + Forebet + venue rates) ──
     dc_rho = profile.get("dixon_coles_rho", -0.12)
     p_btss_poisson = prob_btts(exp_h, exp_a, rho=dc_rho)
 
-    # Blend with Forebet BTTS probability when available (Forebet BTTS ~88% accurate)
+    # Collect BTTS signals from multiple sources
     fb_btts_yes = data.get("home_btts_yes_pct")
     fb_btts_no = data.get("home_btts_no_pct")
-    if fb_btts_yes is not None:
+    # Venue-specific BTTS rates (home/away splits)
+    h_btts_rate = data.get("home_btts_pct")  # home team's BTTS rate
+    a_btts_rate = data.get("away_btts_pct")  # away team's BTTS rate
+
+    # Start with Poisson
+    p_btss = p_btss_poisson
+
+    # Forebet BTTS (high quality signal)
+    if fb_btts_yes is not None and fb_btts_no is not None:
         fb_btts_prob = fb_btts_yes / 100.0
-        # Forebet 40% weight, Poisson 60% — Poisson is more reliable for BTTS
-        p_btss = p_btss_poisson * 0.60 + fb_btts_prob * 0.40
-    else:
-        p_btss = p_btss_poisson
+        # Stronger Forebet weight when both yes/no rates are available
+        p_btss = p_btss_poisson * 0.45 + fb_btts_prob * 0.55
+    elif fb_btts_yes is not None:
+        p_btss = p_btss_poisson * 0.55 + (fb_btts_yes / 100.0) * 0.45
+
+    # Venue-specific BTTS adjustment: blend in home/away BTTS rates
+    if h_btts_rate is not None and a_btts_rate is not None:
+        venue_btts = (h_btts_rate / 100.0 + a_btts_rate / 100.0) / 2.0
+        p_btss = p_btss * 0.70 + venue_btts * 0.30
+
     p_btn = 1.0 - p_btss
 
     value_yes = p_btss - 0.5
@@ -2283,6 +2991,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             draw_factors=len(_draw_factors), top_pick=top_pick, margin=margin,
             league_reliability=league_reliability,
             ml_dir=None,
+            draw_bias_suppressed=(_form_clearly_favors or _trans_clearly_favors or _model_clearly_favors),
+            away_win_boosted=(fsig > 0.20),
         )
         # inject the computed 1X2 probs + exp goals directly (pred dict is empty)
         _synth_ctx.p_home, _synth_ctx.p_draw, _synth_ctx.p_away = p_home, p_draw, p_away
@@ -2305,20 +3015,25 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     non_show = [c for c in candidates if not c.get('_always_show')]
     primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
 
+    # ── League-reliability pick rate gate ──
+    # For leagues with <50% accuracy, suppress Medium-High picks to reduce noise
+    if _ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0 and _ld["accuracy"] < 50:
+        # Only keep Medium picks that are truly strong (top prob >= 0.45)
+        if primary.get("confidence") == "Medium-High":
+            if primary.get("model_prob", 0) < 0.45:
+                primary["confidence"] = "Low"
+                reasoning.append(f"⚠ League reliability gate: suppressed Medium-High pick (league accuracy {_ld['accuracy']:.0f}%)")
+        # Also suppress Medium picks for very unreliable leagues (<40% accuracy)
+        if _ld["accuracy"] < 40 and primary.get("confidence") == "Medium":
+            if primary.get("model_prob", 0) < 0.50:
+                primary["confidence"] = "Low"
+                reasoning.append(f"⚠ League reliability gate: suppressed Medium pick (league accuracy {_ld['accuracy']:.0f}%)")
+
     # Backup pick: best alternative if primary fails
+    # Simply the next highest probability pick
     backup = None
-    # If Draw is close to primary 1X2 pick, make it the backup
-    if primary["market"] == "1X2" and _draw_tendency:
-        for c in non_show[1:]:
-            if c["market"] == "1X2" and c["pick"] == "Draw":
-                backup = c
-                break
-    # Otherwise, best alternative from different market
-    if not backup:
-        for c in non_show[1:]:
-            if c["market"] != primary["market"] or c["pick"] != primary["pick"]:
-                backup = c
-                break
+    if len(non_show) > 1:
+        backup = non_show[1]
 
     # ── Build reasoning ──
     for c in candidates[:6]:  # top 6
@@ -2463,9 +3178,33 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             _lead = (f"Synthesis favours {_syn_dir} while recent form favours {_form_dir} "
                      f"— the split keeps conviction modest; ")
 
+        # Explain when primary pick differs from 1X2 consensus
+        _1x2_picks = [c for c in candidates if c["market"] == "1X2" and c["pick"] in ("Home win", "Away win")]
+        _best_1x2 = _1x2_picks[0] if _1x2_picks else None
+        if _best_1x2 and _top["market"] != "1X2":
+            # Primary pick is not 1X2 — explain why
+            _top_dv_val = _top.get("decision_value", 0)
+            _1x2_dv_val = _best_1x2.get("decision_value", 0)
+            _cov_diff = _top.get("coverage", 1) - _best_1x2.get("coverage", 1)
+            if _cov_diff > 0:
+                _driver += f" (O/U covers {_top.get('coverage', 1)} outcomes vs 1X2's 1)"
+            elif _top_dv_val > _1x2_dv_val:
+                _driver += f" (scored {_top_dv_val:.2f} vs {_best_1x2['pick']} {_1x2_dv_val:.2f})"
+
         _combo = (f"⟁SYNTHFORM⟁ {_lead}overall the model settles on "
                   f"{_top_pick} ({_top['confidence']}), driven by {_driver} "
                   f"(decision value {_top_dv:.2f}).")
+
+        # Add 1X2 prediction summary at the end
+        _1x2_picks_all = [c for c in candidates if c["market"] == "1X2"]
+        if _1x2_picks_all:
+            _best_1x2_all = _1x2_picks_all[0]  # Already sorted by score
+            _1x2_prob = _best_1x2_all.get("model_prob") or _best_1x2_all.get("components", {}).get("prob")
+            _1x2_conf = _best_1x2_all.get("confidence", "")
+            if _1x2_prob:
+                _combo += (f" 1X2 prediction: {_best_1x2_all['pick']} "
+                          f"({_1x2_prob:.0%}, {_1x2_conf}).")
+
         reasoning.append("")
         reasoning.append(_combo)
     except Exception:
@@ -2499,6 +3238,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_implied_prob": implied_prob,
         "_odds": odds_val,
         "_poisson_probs": (p_home, p_draw, p_away),
+        "_ml": _ml_from_ensemble,
         "_synthesis_rationale": _synth_rationale if "_synth_rationale" in dir() else None,
         "_synthesis_ranked": [
             {"market": c["market"], "pick": c["pick"], "confidence": c["confidence"],
@@ -2508,6 +3248,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_warnings": warnings,
         "_backup": {"pick": backup["pick"], "market": backup["market"],
                     "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
+        "_ml_analysis": analyze_ml_only(data) if use_ml else None,
     }
 
 
@@ -2569,6 +3310,44 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                       rf'<span style="color:{EXP_COLOR};font-weight:700">exp \1</span>', text)
         return text
 
+    def _ml_reason_style(line: str) -> str:
+        """Return inline CSS for ML-only reasoning lines."""
+        if line.startswith("⚠"):
+            return "color:#facc15;font-weight:600;"
+        if line.startswith("──"):
+            return "color:#94a3b8;font-weight:700;border-top:1px solid #334155;padding-top:6px;margin-top:8px;"
+        if line.startswith("[TRANS"):
+            return "color:#818cf8;font-size:0.78em;"
+        if line.startswith("†Trans"):
+            return "color:#818cf8;font-size:0.78em;font-style:italic;"
+        if line.startswith("Form analysis"):
+            return "color:#94a3b8;font-weight:600;"
+        return "color:#cbd5e1;"
+
+    def _comparison_table(r):
+        """Build a consensus table for picks where both models agree (≥70% prob)."""
+        ml = r.get("_ml_analysis")
+        if not ml:
+            return ""
+        fb_picks = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob") and p["model_prob"] >= 0.70}
+        ml_picks = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob") and p["model_prob"] >= 0.70}
+        agreed_keys = sorted(set(fb_picks) & set(ml_picks),
+                             key=lambda k: (fb_picks[k]["model_prob"] + ml_picks[k]["model_prob"]) / 2,
+                             reverse=True)
+        if not agreed_keys:
+            return ""
+        rows_html = ""
+        for k in agreed_keys:
+            fp = fb_picks[k]
+            mp = ml_picks[k]
+            avg = (fp["model_prob"] + mp["model_prob"]) / 2
+            mkt, pick = k.split("|", 1)
+            rows_html += f'<tr><td>{mkt}</td><td>{pick}</td><td>{fp["model_prob"]:.0%}</td><td>{mp["model_prob"]:.0%}</td><td style="color:#22c55e;font-weight:600">{avg:.0%}</td></tr>'
+        return (f'<div style="margin-top:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:6px;font-size:0.82em;">'
+                f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">🤝 Consensus picks (both ≥70%)</div>'
+                f'<table style="width:100%;font-size:0.9em;"><tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Avg</th></tr>'
+                f'{rows_html}</table></div>')
+
     def _venue_stats_html(r):
         parts = []
         hh_gf = r.get("home_home_avg_goals_for")
@@ -2597,6 +3376,40 @@ def _write_html(results, all_urls, compare_forebet, high_only):
             return '<p class="venue-stats">' + " &middot; ".join(parts) + "</p>"
         return ""
 
+    def _pick_result(p, r):
+        """Return result cell HTML for a pick against actual match result."""
+        hg = r.get("actual_home_goals")
+        ag = r.get("actual_away_goals")
+        if hg is None or ag is None:
+            return ""
+        tot = hg + ag
+        out = r.get("actual_outcome", "")
+        pmk, ppk = p["market"], p["pick"]
+        pc = None
+        if pmk == "1X2":
+            pc = (ppk == out)
+        elif pmk == "O/U":
+            if "Over" in ppk:
+                pc = (tot > float(ppk.split()[-1]))
+            elif "Under" in ppk:
+                pc = (tot <= float(ppk.split()[-1]))
+        elif pmk == "BTTS":
+            both = hg > 0 and ag > 0
+            pc = (ppk == "Yes" and both) or (ppk == "No" and not both)
+        elif pmk == "DNB":
+            if out == "Draw":
+                return '<td style="color:#94a3b8;font-weight:700">push</td>'
+            pc = (ppk == "Home" and out == "Home win") or (ppk == "Away" and out == "Away win")
+        elif pmk == "DC":
+            if ppk == "1X": pc = out in ("Home win", "Draw")
+            elif ppk == "X2": pc = out in ("Away win", "Draw")
+            elif ppk == "12": pc = out in ("Home win", "Away win")
+        if pc is True:
+            return '<td style="color:#22c55e;font-weight:700">✓</td>'
+        elif pc is False:
+            return '<td style="color:#ef4444;font-weight:700">✗</td>'
+        return '<td style="color:#64748b">—</td>'
+
     rows = []
     for r in filtered:
         eh, ea = r.get("_exp_goals", (None, None))
@@ -2605,11 +3418,30 @@ def _write_html(results, all_urls, compare_forebet, high_only):
         af = r.get("away_form", "")
         picks_rows = ""
         has_result_h = r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None
-        for p in r.get("all_picks") or []:
+        
+        # Sort picks by probability (highest first) for ranking
+        all_picks_sorted = sorted(
+            r.get("all_picks") or [],
+            key=lambda x: x.get("model_prob") or 0,
+            reverse=True
+        )
+        
+        for p in all_picks_sorted:
             mp = p.get("model_prob")
             mp_s = f"{mp:.0%}" if mp else ""
             vr = p.get("value_ratio")
             vr_s = f" ({vr:.2f})" if vr else ""
+
+            # Color highlighting for pick based on confidence
+            _conf = p.get("confidence", "")
+            if _conf == "High":
+                _pick_bg = "rgba(34,197,94,0.15)"  # green
+            elif _conf == "Medium-High":
+                _pick_bg = "rgba(234,179,8,0.15)"  # yellow
+            elif _conf == "Medium":
+                _pick_bg = "rgba(249,115,22,0.12)"  # orange
+            else:
+                _pick_bg = "rgba(239,68,68,0.1)"  # red/light
 
             result_cell = ""
             if has_result_h:
@@ -2646,7 +3478,7 @@ def _write_html(results, all_urls, compare_forebet, high_only):
                 else:
                     result_cell = '<td style="color:#64748b">—</td>'
 
-            picks_rows += f"<tr><td>{p['market']}</td><td>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td>{result_cell}</tr>\n"
+            picks_rows += f"<tr><td>{p['market']}</td><td style='background:{_pick_bg};border-radius:4px;padding:2px 6px'>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td>{result_cell}</tr>\n"
 
         reason_html = ""
         if r.get("reasoning"):
@@ -2670,8 +3502,8 @@ def _write_html(results, all_urls, compare_forebet, high_only):
             if r.get("correct_pick") is True:
                 verdict = '<span style="color:#22c55e;font-weight:700">Correct!</span>'
             elif r.get("correct_pick") is False:
-                our_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
-                our_main = our_12[0]["pick"] if our_12 else r["pick"]
+                # Use the actual primary pick (market + pick) for verdict display
+                our_main = f"{r['market']}: {r['pick']}"
                 verdict = f'<span style="color:#ef4444;font-weight:700">Incorrect</span> (picked {our_main})'
             else:
                 verdict = ""
@@ -2680,46 +3512,74 @@ def _write_html(results, all_urls, compare_forebet, high_only):
         exp_home = f"{eh:.2f}" if eh is not None else ""
         exp_away = f"{ea:.2f}" if ea is not None else ""
         exp_total = f"{eh + ea:.2f}" if eh is not None and ea is not None else ""
-        rows.append(f"""<div class="card" data-match-id="{r.get('match_id', '')}" data-exp-home="{exp_home}" data-exp-away="{exp_away}" data-exp-total="{exp_total}" data-market="{r['market']}" data-pick="{r['pick']}" style="border-left: 4px solid {_c(r['confidence'])};">
+        
+        # Model comparison badge
+        _ml = r.get("_ml_analysis")
+        if _ml and _ml.get("pick") and r.get("pick"):
+            _agree = (_ml["pick"] == r["pick"] and _ml.get("market") == r.get("market"))
+            if _agree:
+                _compare_badge = '<div style="margin:8px 0;padding:6px 10px;border-radius:6px;font-size:0.82em;font-weight:600;background:rgba(34,197,94,0.12);color:#86efac;">✓ Models agree</div>'
+            else:
+                _compare_badge = (f'<div style="margin:8px 0;padding:6px 10px;border-radius:6px;font-size:0.82em;font-weight:600;background:rgba(234,179,8,0.12);color:#fde68a;">'
+                                 f'⚠ Models disagree: <span style="color:{_c(r["confidence"])}">{r["market"]}: {r["pick"]}</span>'
+                                 f' vs <span style="color:{_c(_ml["confidence"])}">{_ml["market"]}: {_ml["pick"]}</span></div>')
+        else:
+            _compare_badge = ""
+        
+        rows.append(f"""<div class="card" data-match-id="{r.get('match_id', '')}" data-exp-home="{exp_home}" data-exp-away="{exp_away}" data-exp-total="{exp_total}" data-market="{r['market']}" data-pick="{r['pick']}" data-date="{r.get('date', '')}" data-time="{r.get('time', '')}" style="border-left: 4px solid {_c(r['confidence'])};">
 <div class="card-header">
   <span class="teams">{r['home']} vs {r['away']}</span>
   <span class="conf-badge" style="background:{_c(r['confidence'])}">{_star(r['confidence'])} {r['confidence']}</span>
 </div>
-<div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
+<div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} {r.get('time', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
 {"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("level") == "hard" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
-<div class="card-body">
-  {result_html}
-  <div class="pick-line"><strong>{r['pick']}</strong> ({r['market']}) &middot; Score lean: {r['score_lean'] or '—'} &middot; Exp: <span style="color:{EXP_COLOR};font-weight:700">{exp_str}</span>{kelly_tag}</div>
-  <table>
-    <tr><th>Home</th><td>Pos {r.get('home_pos', '—')}</td><td>Form {hf or '—'}</td><td>{r.get('odds_home', '—')}</td></tr>
-    <tr><th>Draw</th><td></td><td></td><td>{r.get('odds_draw', '—')}</td></tr>
-    <tr><th>Away</th><td>Pos {r.get('away_pos', '—')}</td><td>Form {af or '—'}</td><td>{r.get('odds_away', '—')}</td></tr>
-  </table>
-  <table><tr><th>O/U 2.5</th><td>{r.get('odds_over25', '—')}/{r.get('odds_under25', '—')}</td><th>BTTS</th><td>{r.get('odds_btts_yes', '—')}/{r.get('odds_btts_no', '—')}</td></tr></table>
-  {"<p>H2H: " + str(r.get('h2h_home_wins', 0)) + "W-" + str(r.get('h2h_draws', 0)) + "D-" + str(r.get('h2h_away_wins', 0)) + "L &ndash; GF/GA: " + str(r.get('h2h_goals_for', 0)) + "/" + str(r.get('h2h_goals_against', 0)) + " &ndash; avg " + str(r.get('h2h_avg_total_goals', 0)) + " goals (" + str(r.get('h2h_matches', 0)) + " matches)</p>" if r.get('h2h_matches', 0) >= 3 else ""}
-  {_venue_stats_html(r)}
-  {reason_html}
-  {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
-  {("<div style='margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.1);border-radius:6px;font-size:0.88em;'><strong>Best alternative:</strong> <span style='color:" + _c(r.get('_backup', {}).get('confidence', 'Low')) + "'>" + r['_backup']['market'] + ": " + r['_backup']['pick'] + " (" + r['_backup']['confidence'] + ")</span> — covers " + str(r['_backup']['coverage']) + " outcomes</div>") if r.get('_backup') else ""}
+{result_html}
+<table style="margin:6px 0;">
+  <tr><th>Home</th><td>Pos {r.get('home_pos', '—')}</td><td>Form {hf or '—'}</td><td>{r.get('odds_home', '—')}</td></tr>
+  <tr><th>Draw</th><td></td><td></td><td>{r.get('odds_draw', '—')}</td></tr>
+  <tr><th>Away</th><td>Pos {r.get('away_pos', '—')}</td><td>Form {af or '—'}</td><td>{r.get('odds_away', '—')}</td></tr>
+</table>
+<table><tr><th>O/U 2.5</th><td>{r.get('odds_over25') or '—'}/{r.get('odds_under25') or '—'}</td><th>BTTS</th><td>{r.get('odds_btts_yes') or '—'}/{r.get('odds_btts_no') or '—'}</td></tr></table>
+{"<p>H2H: " + str(r.get('h2h_home_wins', 0)) + "W-" + str(r.get('h2h_draws', 0)) + "D-" + str(r.get('h2h_away_wins', 0)) + "L &ndash; GF/GA: " + str(r.get('h2h_goals_for', 0)) + "/" + str(r.get('h2h_goals_against', 0)) + " &ndash; avg " + str(r.get('h2h_avg_total_goals', 0)) + " goals (" + str(r.get('h2h_matches', 0)) + " matches)</p>" if r.get('h2h_matches', 0) >= 3 else ""}
+{_venue_stats_html(r)}
+{_compare_badge}
+<div class="two-models">
+{"".join(f'''<div class="model-panel model-forebet">
+<div class="model-header">
+  <span style="font-weight:600;">📊 Forebet-based</span>
+  <span style="color:{_c(r['confidence'])};font-weight:700;font-size:0.85em;">{_star(r['confidence'])} {r['confidence']}</span>
+</div>
+<div style="font-weight:700;margin-bottom:4px;">{r['pick']} ({r['market']})</div>
+<div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px;">Exp: {exp_str} &middot; Kelly: {r.get('kelly_stake', 0)*100:.1f}%</div>
+{reason_html}
+{("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
+{("<div style='margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.1);border-radius:6px;font-size:0.82em;'><strong>Best alt:</strong> <span style='color:" + _c(r.get('_backup', {}).get('confidence', 'Low')) + "'>" + r['_backup']['market'] + ": " + r['_backup']['pick'] + " (" + r['_backup']['confidence'] + ")</span></div>") if r.get('_backup') else ""}
+</div>''')}
+{"".join(f'''<div class="model-panel model-ml">
+<div class="model-header">
+  <span style="font-weight:600;">🤖 ML-only</span>
+  <span style="color:{_c(r["_ml_analysis"]["confidence"])};font-weight:700;font-size:0.85em;">{_star(r["_ml_analysis"]["confidence"])} {r["_ml_analysis"]["confidence"]}</span>
+</div>
+<div style="font-weight:700;margin-bottom:4px;">{r["_ml_analysis"]["pick"]} ({r["_ml_analysis"]["market"]})</div>
+<div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px;">Exp: {r["_ml_analysis"]["_exp_goals"][0]:.1f}-{r["_ml_analysis"]["_exp_goals"][1]:.1f} &middot; Kelly: {r["_ml_analysis"].get("_kelly_stake", 0)*100:.1f}%</div>
+<div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px;">Model odds:</div>
+<table style="font-size:0.85em;">
+  <tr><th>1X2</th><td>H: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["home"]:.2f}</td><td>D: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["draw"]:.2f}</td><td>A: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["away"]:.2f}</td></tr>
+  <tr><th>O/U</th><td>O: {r["_ml_analysis"]["_ml_odds"]["ml_ou"]["odds"]["over"]:.2f}</td><td>U: {r["_ml_analysis"]["_ml_odds"]["ml_ou"]["odds"]["under"]:.2f}</td><td></td></tr>
+  <tr><th>BTTS</th><td>Y: {r["_ml_analysis"]["_ml_odds"]["ml_btts"]["odds"]["yes"]:.2f}</td><td>N: {r["_ml_analysis"]["_ml_odds"]["ml_btts"]["odds"]["no"]:.2f}</td><td></td></tr>
+</table>
+{"".join(f'<div class="synthform-line" style="margin:8px 0;padding:6px 10px;font-size:0.82em;">✦ {_highlight_exp(l.replace("⟁SYNTHFORM⟁", "", 1).strip())}</div>' if l.startswith("⟁SYNTHFORM⟁") else f'<div style="font-size:0.82em;margin:4px 0;{_ml_reason_style(l)}">{_highlight_exp(l)}</div>' if l.strip() and not l.startswith("──") else "" for l in r["_ml_analysis"].get("reasoning", []))}
+<table style="font-size:0.85em;width:100%;">
+  <tr><th>Mkt</th><th>Pick</th><th>Prob</th><th>Score</th>{"<th>Res</th>" if has_result_h else ""}</tr>
+  {"".join(f"""<tr><td>{p["market"]}</td><td>{p["pick"]}</td><td>{f'{p["model_prob"]:.0%}' if p.get("model_prob") else ""}</td><td>{f'{p.get("decision_value",0):.2f}' if p.get("decision_value") else ""}</td>{_pick_result(p, r) if has_result_h else ""}</tr>""" for p in r["_ml_analysis"].get("all_picks", [])[:4])}
+</table>
+</div>''')}
+{_comparison_table(r)}
 </div>
 </div>""")
 
-    # ── Get market accuracy data for charts ──
+    # ── Get market accuracy data for summary ──
     market_accuracy_data = get_market_accuracy()
-    market_labels = json.dumps([m["market"] for m in market_accuracy_data if m["market"]])
-    market_totals = json.dumps([m["total"] for m in market_accuracy_data if m["market"]])
-    market_correct = json.dumps([m["correct"] for m in market_accuracy_data if m["market"]])
-    market_accuracy = json.dumps([m["accuracy"] for m in market_accuracy_data if m["market"]])
-
-    # ── Get accuracy trend data for charts ──
-    trend_data = {}
-    for market in ["1X2", "O/U", "BTTS"]:
-        history = get_market_accuracy_history(market, window=20)
-        if history:
-            trend_data[market] = {
-                "dates": [h["date"][:10] for h in history[-30:]],
-                "accuracy": [h["accuracy"] for h in history[-30:]]
-            }
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -2727,7 +3587,6 @@ def _write_html(results, all_urls, compare_forebet, high_only):
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Predictions — {now}</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; padding:20px; }}
@@ -2760,6 +3619,12 @@ a {{ color:#60a5fa; }}
 .chart-container {{ background:#1e293b; border-radius:8px; padding:16px; margin-bottom:12px; }}
 canvas {{ max-height:300px; }}
 select {{ cursor:pointer; }}
+.two-models {{ display:flex; gap:12px; margin-top:10px; }}
+.model-panel {{ flex:1; min-width:0; background:rgba(15,23,42,0.5); border-radius:6px; padding:10px 12px; font-size:0.82em; }}
+.model-forebet {{ border-left:3px solid #3b82f6; }}
+.model-ml {{ border-left:3px solid #8b5cf6; }}
+.model-header {{ display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; font-size:0.95em; }}
+@media (max-width:700px) {{ .two-models {{ flex-direction: column; }} }}
 </style>
 </head>
 <body>
@@ -2772,12 +3637,7 @@ select {{ cursor:pointer; }}
 </div>
 
 <h2>Model Accuracy</h2>
-<div class="chart-container">
-  <canvas id="marketChart"></canvas>
-</div>
-
-<div class="chart-container">
-  <canvas id="trendChart"></canvas>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">{"".join(f'<div class="stat" style="border-left:3px solid #888"><span style="color:#888">{m["market"]}</span> <span>{m["correct"]}/{m["total"]} ({m["accuracy"]:.0f}%)</span></div>' for m in market_accuracy_data if m["market"])}
 </div>
 
 <h2>Predictions <span id="matchCount" style="font-size:0.8rem;color:#94a3b8;font-weight:400">{len(filtered)} / {len(filtered)}</span></h2>
@@ -2813,6 +3673,17 @@ select {{ cursor:pointer; }}
   <option value="DC">DC</option>
   <option value="DNB">DNB</option>
 </select>
+<select id="filterDate" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">Date: Any</option>
+  {"".join(f'<option value="{d}">{d}</option>' for d in sorted(set(r.get("date", "") for r in filtered if r.get("date"))))}
+</select>
+<select id="filterTime" style="padding:8px 12px;border-radius:6px;border:1px solid #334155;background:#1e293b;color:#e2e8f0;font-size:0.9rem;outline:none;">
+  <option value="">Time: Any</option>
+  <option value="morning">Morning (06-12)</option>
+  <option value="afternoon">Afternoon (12-18)</option>
+  <option value="evening">Evening (18-00)</option>
+  <option value="night">Night (00-06)</option>
+</select>
 </div>
 {"".join(rows)}
 
@@ -2823,6 +3694,8 @@ const filterExp = document.getElementById('filterExpTotal');
 const filterOutcome = document.getElementById('filterOutcome');
 const filterConf = document.getElementById('filterConf');
 const filterMarket = document.getElementById('filterMarket');
+const filterDate = document.getElementById('filterDate');
+const filterTime = document.getElementById('filterTime');
 const matchCount = document.getElementById('matchCount');
 
 function applyFilters() {{
@@ -2831,6 +3704,8 @@ function applyFilters() {{
   const outcome = filterOutcome.value;
   const conf = filterConf.value;
   const market = filterMarket.value;
+  const date = filterDate.value;
+  const timeSlot = filterTime.value;
   let visible = 0;
   cards.forEach(card => {{
     let show = true;
@@ -2857,78 +3732,31 @@ function applyFilters() {{
     if (show && market) {{
       if (card.dataset.market !== market) show = false;
     }}
+    // Date filter
+    if (show && date) {{
+      if (card.dataset.date !== date) show = false;
+    }}
+    // Time slot filter
+    if (show && timeSlot) {{
+      const t = card.dataset.time || '';
+      const m = t.match(/(\\d{{1,2}}):(\\d{{2}})/);
+      if (!m) {{ show = false; }}
+      else {{
+        const h = parseInt(m[1], 10);
+        if (timeSlot === 'morning' && (h < 6 || h >= 12)) show = false;
+        else if (timeSlot === 'afternoon' && (h < 12 || h >= 18)) show = false;
+        else if (timeSlot === 'evening' && (h < 18 || h >= 24)) show = false;
+        else if (timeSlot === 'night' && (h >= 6)) show = false;
+      }}
+    }}
     card.style.display = show ? '' : 'none';
     if (show) visible++;
   }});
   if (matchCount) matchCount.textContent = visible + ' / ' + cards.length;
 }}
 
-[searchInput, filterExp, filterOutcome, filterConf, filterMarket].forEach(el => {{
+[searchInput, filterExp, filterOutcome, filterConf, filterMarket, filterDate, filterTime].forEach(el => {{
   if (el) el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', applyFilters);
-}});
-</script>
-
-<script>
-const marketCtx = document.getElementById('marketChart').getContext('2d');
-new Chart(marketCtx, {{
-  type: 'bar',
-  data: {{
-    labels: {market_labels},
-    datasets: [{{
-      label: 'Total Picks',
-      data: {market_totals},
-      backgroundColor: 'rgba(59, 130, 246, 0.5)',
-      borderColor: 'rgba(59, 130, 246, 1)',
-      borderWidth: 1
-    }}, {{
-      label: 'Correct',
-      data: {market_correct},
-      backgroundColor: 'rgba(34, 197, 94, 0.5)',
-      borderColor: 'rgba(34, 197, 94, 1)',
-      borderWidth: 1
-    }}]
-  }},
-  options: {{
-    responsive: true,
-    plugins: {{
-      title: {{ display: true, text: 'Market Accuracy', color: '#e2e8f0' }},
-      legend: {{ labels: {{ color: '#94a3b8' }} }}
-    }},
-    scales: {{
-      x: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }} }},
-      y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }} }}
-    }}
-  }}
-}});
-
-const trendCtx = document.getElementById('trendChart').getContext('2d');
-const trendDatasets = [];
-{"".join(f'''
-trendDatasets.push({{
-  label: '{m}',
-  data: {json.dumps(trend_data[m]["accuracy"]) if m in trend_data else "[]"},
-  borderColor: '{"#22c55e" if m == "1X2" else "#3b82f6" if m == "O/U" else "#eab308"}',
-  tension: 0.1,
-  fill: false
-}});''' for m in ["1X2", "O/U", "BTTS"] if m in trend_data)}
-
-new Chart(trendCtx, {{
-  type: 'line',
-  data: {{
-    labels: {json.dumps(trend_data["1X2"]["dates"]) if "1X2" in trend_data else "[]"},
-    datasets: trendDatasets
-  }},
-  options: {{
-    responsive: true,
-    plugins: {{
-      title: {{ display: true, text: 'Accuracy Trend (Rolling 20)', color: '#e2e8f0' }},
-      legend: {{ labels: {{ color: '#94a3b8' }} }}
-    }},
-    scales: {{
-      x: {{ ticks: {{ color: '#94a3b8', maxTicksLimit: 10 }}, grid: {{ color: '#334155' }} }},
-      y: {{ ticks: {{ color: '#94a3b8' }}, grid: {{ color: '#334155' }}, min: 0, max: 100 }}
-    }}
-  }}
 }});
 </script>
 </body>
@@ -3186,12 +4014,34 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             else:
                 actual_outcome = "Draw"
             # Check if our primary pick matches
-            our_12 = [p for p in (pred.get("all_picks") or []) if p["market"] == "1X2"]
-            our_main_12 = our_12[0]["pick"] if our_12 else pred["pick"]
-            correct_pick = (our_main_12 == actual_outcome)
+            # Use the actual primary pick (market + pick), not just 1X2
+            our_main = pred["pick"]
+            our_market = pred.get("market", "")
+            correct_pick = False
+            if our_market == "1X2":
+                correct_pick = (our_main == actual_outcome)
+            elif our_market == "O/U":
+                total_g = actual_hg + actual_ag
+                if "Over" in our_main:
+                    correct_pick = (total_g > float(our_main.split()[-1]))
+                elif "Under" in our_main:
+                    correct_pick = (total_g <= float(our_main.split()[-1]))
+            elif our_market == "BTTS":
+                both = actual_hg > 0 and actual_ag > 0
+                correct_pick = (our_main == "Yes" and both) or (our_main == "No" and not both)
+            elif our_market == "DNB":
+                if actual_outcome == "Draw":
+                    correct_pick = None  # Push
+                else:
+                    correct_pick = (our_main == "Home" and actual_outcome == "Home win") or (our_main == "Away" and actual_outcome == "Away win")
+            elif our_market == "DC":
+                if our_main == "1X": correct_pick = actual_outcome in ("Home win", "Draw")
+                elif our_main == "X2": correct_pick = actual_outcome in ("Away win", "Draw")
+                elif our_main == "12": correct_pick = actual_outcome in ("Home win", "Away win")
 
         # Store in DB (map analysis keys to DB column names)
         poisson_probs = pred.get("_poisson_probs", (None, None, None))
+        ml_pred = pred.get("_ml")
         db_data = {
             **data,
             "our_prediction": pred["pick"],
@@ -3203,6 +4053,9 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "poisson_prob_home": poisson_probs[0] if poisson_probs else None,
             "poisson_prob_draw": poisson_probs[1] if poisson_probs else None,
             "poisson_prob_away": poisson_probs[2] if poisson_probs else None,
+            "ml_prob_home": ml_pred.get("ml_prob_home") if ml_pred else None,
+            "ml_prob_draw": ml_pred.get("ml_prob_draw") if ml_pred else None,
+            "ml_prob_away": ml_pred.get("ml_prob_away") if ml_pred else None,
         }
         match_id = save_prediction(db_data)
 
@@ -3251,6 +4104,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "away": data.get("away_team", "?"),
             "league": data.get("league", ""),
             "date": data.get("match_date", ""),
+            "time": data.get("match_time", ""),
             **pred,
             "forebet": data.get("forebet_pred", ""),
             "forebet_pct": (data.get("forebet_home_pct"),
@@ -3380,8 +4234,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             if r.get("correct_pick") is True:
                 verdict = "\033[1;32m✓ Correct\033[0m"
             elif r.get("correct_pick") is False:
-                our_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
-                our_main = our_12[0]["pick"] if our_12 else r["pick"]
+                # Use the actual primary pick (market + pick) for verdict display
+                our_main = f"{r['market']}: {r['pick']}"
                 verdict = f"\033[1;31m✗ Incorrect\033[0m (picked {our_main})"
             else:
                 verdict = ""
@@ -3403,7 +4257,34 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # Line 3b: Backup pick
         backup = r.get("_backup")
         if backup:
-            print(f"  → Backup: {backup['market']}: {backup['pick']} ({backup['confidence']}) — covers {backup['coverage']} outcomes")
+            print(f"  → Backup: {backup['market']}: {backup['pick']} ({backup['confidence']}) — {backup['coverage']} outcomes")
+
+        # Line 3c: ML Analysis
+        ml_analysis = r.get("_ml_analysis")
+        if ml_analysis:
+            ml_conf = ml_analysis.get("confidence", "Low")
+            print(f"  → ML Model: {ml_analysis['pick']} ({ml_analysis['market']}) • {ml_conf} • {ml_analysis.get('_method', '')}")
+            ml_odds = ml_analysis.get("_ml_odds", {})
+            ml_1x2 = ml_odds.get("ml_1x2", {})
+            ml_ou = ml_odds.get("ml_ou", {})
+            ml_btts = ml_odds.get("ml_btts", {})
+            print(f"    Odds: 1X2 H:{ml_1x2.get('odds',{}).get('home',0):.2f} D:{ml_1x2.get('odds',{}).get('draw',0):.2f} A:{ml_1x2.get('odds',{}).get('away',0):.2f} | O/U O:{ml_ou.get('odds',{}).get('over',0):.2f} U:{ml_ou.get('odds',{}).get('under',0):.2f} | BTTS Y:{ml_btts.get('odds',{}).get('yes',0):.2f} N:{ml_btts.get('odds',{}).get('no',0):.2f}")
+            # ML picks summary
+            ml_picks = ml_analysis.get("all_picks", [])[:3]
+            for mp in ml_picks:
+                dv = mp.get("decision_value", 0)
+                print(f"    {mp['market']:5s}: {mp['pick']:12s} ({mp['confidence']:12s}) [synth {dv:.3f}]")
+            # ML synthesis rationale
+            ml_rationale = ml_analysis.get("reasoning", [])
+            # Find and print the synthform line
+            for line in ml_rationale:
+                if line.startswith("⟁SYNTHFORM⟁"):
+                    print(f"    ✦ {line.replace('⟁SYNTHFORM⟁', '', 1).strip()}")
+                    break
+            # Print last form analysis lines
+            for line in ml_rationale[-3:]:
+                if line and not line.startswith("──") and not line.startswith("⟁SYNTHFORM⟁"):
+                    print(f"    {line}")
 
         # Line 4: HTML path
         print(f"→ predictions/{report_path.stem}.html")

@@ -74,17 +74,16 @@ FEATURE_NAMES = [
     # League volatility
     "league_volatility",
     # League encoding
-    "league_hash",
+    "league_encoding",
     # Derived features
     "prob_diff_home_away", "implied_home_prob",
-    # NEW: Possession and passing
+    # Odds-Forebet relationship features
+    "odds_fb_value_home", "draw_concentration",
+    "goals_vs_league", "home_advantage_signal",
+    "prob_entropy", "odds_implied_overround",
+    "favorite_strength", "gap_favorite_underdog",
+    # Possession and passing
     "poss_diff", "passes_pg_diff", "pass_acc_diff",
-    # NEW: Attacking pressure
-    "attacks_pg_diff", "dang_attacks_pg_diff",
-    # NEW: Set pieces and discipline
-    "corners_diff", "fouls_diff", "cards_diff",
-    # NEW: Shots quality
-    "shots_ot_pct_diff", "clean_sheets_diff",
 ]
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
@@ -170,18 +169,53 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     # Volatility
     f.append(0.15)
 
-    # League encoding
+    # League encoding (use profile-based features instead of hash noise)
     league_code = row.get("league", "default")
-    f.append(float(hash(league_code) % 1000) / 1000.0)
+    lp = _lookup_league_profile(league_code)
+    f.append(lp["avg_goals"] / 4.0)
 
     # Derived features
     fb_h = (row.get("forebet_home_pct") or 33) / 100.0
+    fb_d = (row.get("forebet_draw_pct") or 33) / 100.0
     fb_a = (row.get("forebet_away_pct") or 33) / 100.0
     f.append(fb_h - fb_a)
     odds_h = row.get("odds_home") or 2.5
     f.append(1.0 / odds_h if odds_h > 1 else 0.5)
 
-    # NEW: Possession and passing (home - away difference)
+    # Additional features (must match game record extraction indices 32-41)
+    league_code = row.get("league", "default")
+    lp = _lookup_league_profile(league_code)
+    # Odds-Forebet value gap (home)
+    odds_implied_h = 1.0 / odds_h if odds_h > 1 else 0.4
+    f.append(fb_h - odds_implied_h)  # odds_fb_value_home
+
+    # Draw concentration
+    f.append(fb_d * 2 - 1)  # draw_concentration
+
+    # Goals vs league average
+    exp_total = (row.get("home_avg_goals_for") or 1.3) + (row.get("away_avg_goals_for") or 1.1)
+    f.append(exp_total - lp["avg_goals"])  # goals_vs_league
+
+    # Home advantage signal
+    f.append(fb_h - fb_a - (lp["home_win_rate"] - (1 - lp["home_win_rate"] - lp["draw_rate"])))
+
+    # Prob entropy (uncertainty)
+    probs = [max(fb_h, 0.01), max(fb_d, 0.01), max(fb_a, 0.01)]
+    f.append(-sum(p * math.log(p) for p in probs) / math.log(3))
+
+    # Odds-implied overround
+    odds_d = row.get("odds_draw") or 3.2
+    odds_a = row.get("odds_away") or 3.0
+    f.append((1.0 / odds_h + 1.0 / odds_d + 1.0 / odds_a) - 1.0 if odds_h > 1 else 0.0)
+
+    # Favorite strength
+    f.append(max(fb_h, fb_d, fb_a))
+
+    # Gap between favorite and underdog
+    sorted_probs = sorted([fb_h, fb_d, fb_a])
+    f.append(sorted_probs[2] - sorted_probs[0])
+
+    # Possession and passing (home - away difference)
     h_poss = row.get("home_possession_pct") or 50
     a_poss = row.get("away_possession_pct") or 50
     f.append(h_poss - a_poss)
@@ -194,139 +228,157 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     a_acc = row.get("away_pass_accuracy_pct") or 75
     f.append(h_acc - a_acc)
 
-    # NEW: Attacking pressure
-    h_att = row.get("home_total_attacks_pg") or 50
-    a_att = row.get("away_total_attacks_pg") or 50
-    f.append(h_att - a_att)
-
-    h_dang = row.get("home_dangerous_attacks_pg") or 25
-    a_dang = row.get("away_dangerous_attacks_pg") or 25
-    f.append(h_dang - a_dang)
-
-    # NEW: Set pieces and discipline
-    h_corners = row.get("home_corners_avg") or 5
-    a_corners = row.get("away_corners_avg") or 5
-    f.append(h_corners - a_corners)
-
-    h_fouls = row.get("home_fouls_avg") or 10
-    a_fouls = row.get("away_fouls_avg") or 10
-    f.append(h_fouls - a_fouls)
-
-    h_cards = row.get("home_yellow_cards_avg") or 2
-    a_cards = row.get("away_yellow_cards_avg") or 2
-    f.append(h_cards - a_cards)
-
-    # NEW: Shots quality
-    h_sot = row.get("home_shots_ontarget_pct") or 40
-    a_sot = row.get("away_shots_ontarget_pct") or 40
-    f.append(h_sot - a_sot)
-
-    h_cs = row.get("home_clean_sheets_pct") or 30
-    a_cs = row.get("away_clean_sheets_pct") or 30
-    f.append(h_cs - a_cs)
-
     return np.array(f, dtype=np.float32)
+
+
+def _lookup_league_profile(league_code: str) -> dict:
+    """Look up league profile by code for game records."""
+    profiles = {
+        "Br1": {"avg_goals": 2.47, "draw_rate": 0.21, "home_win_rate": 0.52},
+        "Br2": {"avg_goals": 2.61, "draw_rate": 0.27, "home_win_rate": 0.43},
+        "Br3": {"avg_goals": 2.27, "draw_rate": 0.31, "home_win_rate": 0.42},
+        "Ar1": {"avg_goals": 2.26, "draw_rate": 0.29, "home_win_rate": 0.49},
+        "Cl1": {"avg_goals": 2.77, "draw_rate": 0.22, "home_win_rate": 0.48},
+        "Us1": {"avg_goals": 2.71, "draw_rate": 0.36, "home_win_rate": 0.36},
+        "Ec1": {"avg_goals": 2.31, "draw_rate": 0.19, "home_win_rate": 0.44},
+        "Pe1": {"avg_goals": 2.44, "draw_rate": 0.28, "home_win_rate": 0.49},
+        "Uy1": {"avg_goals": 1.86, "draw_rate": 0.57, "home_win_rate": 0.14},
+        "Se1": {"avg_goals": 3.47, "draw_rate": 0.13, "home_win_rate": 0.40},
+        "Se2": {"avg_goals": 3.05, "draw_rate": 0.25, "home_win_rate": 0.42},
+        "Fi1": {"avg_goals": 2.50, "draw_rate": 0.25, "home_win_rate": 0.47},
+        "Ma1": {"avg_goals": 3.00, "draw_rate": 0.25, "home_win_rate": 0.52},
+        "Co1": {"avg_goals": 2.52, "draw_rate": 0.30, "home_win_rate": 0.45},
+        "Pa1": {"avg_goals": 3.25, "draw_rate": 0.29, "home_win_rate": 0.29},
+        "MX1": {"avg_goals": 2.74, "draw_rate": 0.26, "home_win_rate": 0.45},
+    }
+    return profiles.get(league_code, {"avg_goals": 2.8, "draw_rate": 0.25, "home_win_rate": 0.45})
 
 
 def extract_features_from_game_record(r: dict) -> np.ndarray:
     """Build feature vector from a game/ historical record."""
     f = np.zeros(len(FEATURE_NAMES), dtype=np.float32)
-    
-    # Get available data from game record
+
     predicted_avg_goals = r.get("predicted_avg_goals")
     prob_home = r.get("prob_home")
     prob_draw = r.get("prob_draw")
     prob_away = r.get("prob_away")
     odds = r.get("odds")
     league_code = r.get("league_code") or r.get("short_code") or r.get("league", "default")
-    
-    # Form features - not available in game data, use neutral defaults
-    f[0] = 1.2  # home_form_pts
-    f[1] = 1.2  # away_form_pts
-    f[2] = 0.0  # form_diff
-    
-    # Position features - not available, use neutral defaults
-    f[3] = 0.5  # home_pos_score
-    f[4] = 0.5  # away_pos_score
-    f[5] = 0.0  # pos_diff
-    
-    # Goal averages - not available, use league-typical defaults
-    f[6] = 1.3  # home_gf_avg
-    f[7] = 1.0  # home_ga_avg
-    f[8] = 1.1  # away_gf_avg
-    f[9] = 1.2  # away_ga_avg
-    f[10] = 0.3  # home_gd_per_game
-    f[11] = -0.1  # away_gd_per_game
-    
-    # Expected goals from predicted_avg_goals
-    if predicted_avg_goals is not None and predicted_avg_goals > 0:
-        avg = float(predicted_avg_goals)
-        f[12] = avg * 0.55  # exp_home_goals
-        f[13] = avg * 0.45  # exp_away_goals
-        f[14] = avg  # exp_total_goals
+
+    # --- Form features (unavailable → neutral) ---
+    f[0] = 1.2
+    f[1] = 1.2
+    f[2] = 0.0
+
+    # --- Position features (unavailable → neutral) ---
+    f[3] = 0.5
+    f[4] = 0.5
+    f[5] = 0.0
+
+    # --- Goal averages from predicted_avg_goals (derive home/away split) ---
+    avg = float(predicted_avg_goals) if predicted_avg_goals and predicted_avg_goals > 0 else 2.3
+    # Use forebet probs to split expected goals between home and away
+    if prob_home is not None and prob_away is not None and (prob_home + prob_away) > 0:
+        home_share = prob_home / (prob_home + prob_away)
     else:
-        f[12] = 1.2
-        f[13] = 1.1
-        f[14] = 2.3
-    
-    # H2H - not available
+        home_share = 0.55
+    exp_h = avg * home_share
+    exp_a = avg * (1 - home_share)
+    # Derive GF/GA estimates from expected goals
+    h_gf = exp_h * 1.15  # home advantage factor
+    h_ga = exp_a
+    a_gf = exp_a * 1.05
+    a_ga = exp_h
+    f[6] = h_gf
+    f[7] = h_ga
+    f[8] = a_gf
+    f[9] = a_ga
+    f[10] = (h_gf - h_ga) / max(h_ga, 0.1)
+    f[11] = (a_gf - a_ga) / max(a_ga, 0.1)
+
+    # --- Expected goals ---
+    f[12] = exp_h
+    f[13] = exp_a
+    f[14] = avg
+
+    # --- H2H (unavailable) ---
     f[15] = 0
     f[16] = 0
     f[17] = 0
     f[18] = 5
-    
-    # League profile
-    f[19] = 2.8  # league_avg_goals
-    f[20] = 0.25  # league_draw_rate
-    f[21] = 0.45  # league_home_win_rate
-    
-    # Forebet probabilities from game data
-    if prob_home is not None:
-        f[22] = float(prob_home) / 100.0
-    if prob_draw is not None:
-        f[23] = float(prob_draw) / 100.0
-    if prob_away is not None:
-        f[24] = float(prob_away) / 100.0
-    
-    # Odds
-    if odds is not None and odds > 1:
-        f[25] = float(odds)  # odds_home (using main odds as proxy)
-        f[26] = float(odds) * 1.4  # odds_draw (typical ratio)
-        f[27] = float(odds) * 1.3  # odds_away (typical ratio)
+
+    # --- League profile from lookup ---
+    lp = _lookup_league_profile(league_code)
+    f[19] = lp["avg_goals"]
+    f[20] = lp["draw_rate"]
+    f[21] = lp["home_win_rate"]
+
+    # --- Forebet probabilities (most informative features) ---
+    f[22] = (prob_home or 33) / 100.0
+    f[23] = (prob_draw or 33) / 100.0
+    f[24] = (prob_away or 33) / 100.0
+
+    # --- Odds (infer draw/away odds from home odds using typical ratios) ---
+    if odds and odds > 1:
+        f[25] = float(odds)
+        # Infer draw odds: typical ratio is 1.3-1.5x home odds
+        implied_home = 1.0 / odds
+        implied_rest = 1.0 - implied_home
+        if prob_draw and prob_away and (prob_draw + prob_away) > 0:
+            draw_share = prob_draw / (prob_draw + prob_away)
+        else:
+            draw_share = 0.42
+        implied_draw = implied_rest * draw_share
+        implied_away = implied_rest * (1 - draw_share)
+        f[26] = 1.0 / max(implied_draw, 0.05) if implied_draw > 0 else 3.2
+        f[27] = 1.0 / max(implied_away, 0.05) if implied_away > 0 else 3.0
     else:
         f[25] = 2.5
         f[26] = 3.2
         f[27] = 3.0
-    
-    # Volatility
+
+    # --- Volatility ---
     f[28] = 0.15
-    
-    # League encoding
-    f[29] = float(hash(league_code) % 1000) / 1000.0
-    
-    # Derived features
-    fb_h = f[22]
-    fb_a = f[24]
-    f[30] = fb_h - fb_a  # prob_diff_home_away
+
+    # --- League encoding (use profile-based features instead of hash noise) ---
+    f[29] = lp["avg_goals"] / 4.0  # normalized avg goals
+
+    # --- Derived features ---
+    f[30] = f[22] - f[24]  # prob_diff_home_away
     f[31] = 1.0 / f[25] if f[25] > 1 else 0.5  # implied_home_prob
 
-    # NEW: Possession and passing (neutral defaults for game records)
-    f[32] = 0.0   # poss_diff
-    f[33] = 0.0   # passes_pg_diff
-    f[34] = 0.0   # pass_acc_diff
+    # --- Additional features (must match DB row extraction indices 32-41) ---
+    # Odds-Forebet value gap (home)
+    odds_implied_h = 1.0 / f[25] if f[25] > 1 else 0.4
+    f[32] = f[22] - odds_implied_h  # odds_fb_value_home
 
-    # NEW: Attacking pressure
-    f[35] = 0.0   # attacks_pg_diff
-    f[36] = 0.0   # dang_attacks_pg_diff
+    # Draw concentration
+    f[33] = f[23] * 2 - 1  # draw_concentration (centered at 0)
 
-    # NEW: Set pieces and discipline
-    f[37] = 0.0   # corners_diff
-    f[38] = 0.0   # fouls_diff
-    f[39] = 0.0   # cards_diff
+    # Goals vs league average
+    f[34] = avg - lp["avg_goals"]  # goals_vs_league
 
-    # NEW: Shots quality
-    f[40] = 0.0   # shots_ot_pct_diff
-    f[41] = 0.0   # clean_sheets_diff
+    # Home advantage signal
+    f[35] = f[22] - f[24] - (lp["home_win_rate"] - (1 - lp["home_win_rate"] - lp["draw_rate"]))
+
+    # Prob entropy (uncertainty)
+    probs = [max(f[22], 0.01), max(f[23], 0.01), max(f[24], 0.01)]
+    f[36] = -sum(p * math.log(p) for p in probs) / math.log(3)
+
+    # Odds-implied overround
+    f[37] = (1.0 / f[25] + 1.0 / f[26] + 1.0 / f[27]) - 1.0 if f[25] > 1 else 0.0
+
+    # Favorite strength
+    f[38] = max(f[22], f[23], f[24])
+
+    # Gap between favorite and underdog
+    sorted_probs = sorted([f[22], f[23], f[24]])
+    f[39] = sorted_probs[2] - sorted_probs[0]
+
+    # Possession/passing (unavailable in game records → neutral)
+    f[40] = 0.0
+    f[41] = 0.0
+    f[42] = 0.0
 
     return f
 
@@ -911,11 +963,11 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
 #   We dominate DC (93.2%)
 #   Both weak on DNB (22%)
 MARKET_WEIGHT_PROFILES = {
-    "1X2":  {"poisson": 0.25, "ml": 0.05, "forebet": 0.70},
-    "O/U":  {"poisson": 0.35, "ml": 0.10, "forebet": 0.55},
-    "BTTS": {"poisson": 0.30, "ml": 0.05, "forebet": 0.65},
-    "DC":   {"poisson": 0.60, "ml": 0.15, "forebet": 0.25},
-    "DNB":  {"poisson": 0.35, "ml": 0.05, "forebet": 0.60},
+    "1X2":  {"poisson": 0.20, "ml": 0.25, "forebet": 0.55},
+    "O/U":  {"poisson": 0.30, "ml": 0.20, "forebet": 0.50},
+    "BTTS": {"poisson": 0.25, "ml": 0.25, "forebet": 0.50},
+    "DC":   {"poisson": 0.50, "ml": 0.20, "forebet": 0.30},
+    "DNB":  {"poisson": 0.25, "ml": 0.25, "forebet": 0.50},
 }
 
 
@@ -1007,14 +1059,10 @@ def ensemble_predict(
             if ml_total >= 5 and ml_acc.get("use_ml"):
                 ml_effective_weight = w_ml
             elif ml_total >= 5 and not ml_acc.get("use_ml"):
-                ml_effective_weight = 0.0
+                ml_effective_weight = w_ml * 0.3  # reduce but don't kill ML
             else:
-                # Unknown league - only use ML if global CV accuracy is proven strong
-                cv_acc = getattr(ml_model, "cv_accuracy_1x2", 0.0)
-                if cv_acc >= 0.55:
-                    ml_effective_weight = min(w_ml, 0.15)
-                else:
-                    ml_effective_weight = 0.0
+                # Unknown league — use ML at full weight if model is trained
+                ml_effective_weight = w_ml
         except Exception:
             ml_effective_weight = w_ml
 

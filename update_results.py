@@ -173,7 +173,7 @@ def main():
     
     log(f"Found {len(unfinished)} reports with unfinished matches")
     
-    # Collect all Forebet URLs to scrape
+    # Collect all Forebet URLs to scrape (deduplicated, preserved order)
     all_urls = []
     for item in unfinished:
         for link in item["report"]["links"]:
@@ -182,10 +182,31 @@ def main():
     
     log(f"Need to check {len(all_urls)} Forebet URLs for results")
     
-    # Limit to most recent 50 URLs to avoid timeout
-    if len(all_urls) > 50:
-        log(f"Limiting to most recent 50 URLs (of {len(all_urls)})")
-        all_urls = all_urls[-50:]
+    # ── Persistent cursor so we advance through ALL unfinished URLs across
+    # runs instead of always re-checking the same tail 50. Each run processes
+    # the next batch of BATCH_SIZE (oldest-first); the offset is saved so the
+    # following run picks up where this one left off. ──
+    BATCH_SIZE = 50
+    CURSOR_PATH = Path(__file__).parent / "results_cursor.json"
+    _total = len(all_urls)
+    _offset = 0
+    if CURSOR_PATH.exists():
+        try:
+            _offset = int(json.loads(CURSOR_PATH.read_text()).get("offset", 0))
+        except Exception:
+            _offset = 0
+    if _offset >= _total:
+        _offset = 0  # wrapped past the end -> start fresh
+    _batch = all_urls[_offset:_offset + BATCH_SIZE]
+    _next_offset = _offset + len(_batch)
+    # If we've now covered everything, reset cursor for next cycle;
+    # otherwise save the advanced offset.
+    if _next_offset >= _total:
+        _next_offset = 0
+    CURSOR_PATH.write_text(json.dumps({"offset": _next_offset}))
+    log(f"Processing batch {_offset+1}-{_offset+len(_batch)} of {_total} "
+        f"(cursor -> {_next_offset})")
+    all_urls = _batch
     
     # Scrape results from Forebet
     from forebet_scraper import scrape_url
