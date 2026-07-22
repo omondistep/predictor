@@ -1,0 +1,7 @@
+# Sample links.txt format
+# https://forebet.com/match/Bandeirante-SP-vs-Linense-SP-20240720
+# https://forebet.com/match/KAMAZ-vs-FK-Nizhny-Novgorod-20240720
+
+# Add actual match URLs here
+https://forebet.com/match/example1
+https://forebet.com/match/example2
