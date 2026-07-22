@@ -85,6 +85,35 @@ CREATE TABLE IF NOT EXISTS matches (
     actual_result TEXT,
     reviewed INTEGER DEFAULT 0,
 
+    -- Half-time scores
+    ht_home_goals INTEGER,
+    ht_away_goals INTEGER,
+
+    -- Injury/suspension data (scraped from /en/injured-players)
+    home_injured_total INTEGER DEFAULT 0,
+    home_forwards_out INTEGER DEFAULT 0,
+    home_midfielders_out INTEGER DEFAULT 0,
+    home_defenders_out INTEGER DEFAULT 0,
+    home_key_players_out INTEGER DEFAULT 0,
+    home_suspended INTEGER DEFAULT 0,
+    away_injured_total INTEGER DEFAULT 0,
+    away_forwards_out INTEGER DEFAULT 0,
+    away_midfielders_out INTEGER DEFAULT 0,
+    away_defenders_out INTEGER DEFAULT 0,
+    away_key_players_out INTEGER DEFAULT 0,
+    away_suspended INTEGER DEFAULT 0,
+
+    -- FBref xG data
+    home_squad_xg REAL,
+    home_squad_xga REAL,
+    home_squad_xgd REAL,
+    away_squad_xg REAL,
+    away_squad_xga REAL,
+    away_squad_xgd REAL,
+
+    home_xg_proxy REAL,
+    away_xg_proxy REAL,
+
     created_at TEXT DEFAULT (datetime('now')),
     reviewed_at TEXT
 );
@@ -274,6 +303,30 @@ _MIGRATIONS = [
     ("matches", "away_total_shots", "INTEGER"),
     ("matches", "home_clean_sheets", "INTEGER"),
     ("matches", "away_clean_sheets", "INTEGER"),
+    ("matches", "ht_home_goals", "INTEGER"),
+    ("matches", "ht_away_goals", "INTEGER"),
+    ("matches", "home_injured_total", "INTEGER DEFAULT 0"),
+    ("matches", "home_forwards_out", "INTEGER DEFAULT 0"),
+    ("matches", "home_midfielders_out", "INTEGER DEFAULT 0"),
+    ("matches", "home_defenders_out", "INTEGER DEFAULT 0"),
+    ("matches", "home_key_players_out", "INTEGER DEFAULT 0"),
+    ("matches", "home_suspended", "INTEGER DEFAULT 0"),
+    ("matches", "away_injured_total", "INTEGER DEFAULT 0"),
+    ("matches", "away_forwards_out", "INTEGER DEFAULT 0"),
+    ("matches", "away_midfielders_out", "INTEGER DEFAULT 0"),
+    ("matches", "away_defenders_out", "INTEGER DEFAULT 0"),
+    ("matches", "away_key_players_out", "INTEGER DEFAULT 0"),
+    ("matches", "away_suspended", "INTEGER DEFAULT 0"),
+    # FBref xG data
+    ("matches", "home_squad_xg", "REAL"),
+    ("matches", "home_squad_xga", "REAL"),
+    ("matches", "home_squad_xgd", "REAL"),
+    ("matches", "away_squad_xg", "REAL"),
+    ("matches", "away_squad_xga", "REAL"),
+    ("matches", "away_squad_xgd", "REAL"),
+    # Proxy xG (computed from Forebet shot/attack data)
+    ("matches", "home_xg_proxy", "REAL"),
+    ("matches", "away_xg_proxy", "REAL"),
     ("calibration_log", "method_used", "TEXT"),
     ("calibration_log", "market", "TEXT"),
     ("calibration_log", "stake", "REAL"),
@@ -350,7 +403,12 @@ def save_prediction(data: dict) -> int:
             our_stake, our_market, method_used,
             poisson_prob_home, poisson_prob_draw, poisson_prob_away,
             ml_prob_home, ml_prob_draw, ml_prob_away,
-            forebet_prob_home, forebet_prob_draw, forebet_prob_away
+            forebet_prob_home, forebet_prob_draw, forebet_prob_away,
+            ht_home_goals, ht_away_goals,
+            home_injured_total, home_forwards_out, home_midfielders_out,
+            home_defenders_out, home_key_players_out, home_suspended,
+            away_injured_total, away_forwards_out, away_midfielders_out,
+            away_defenders_out, away_key_players_out, away_suspended
         ) VALUES (
             :id, :forebet_url, :home_team, :away_team, :league,
             :match_date, :match_time,
@@ -387,13 +445,126 @@ def save_prediction(data: dict) -> int:
             :our_stake, :our_market, :method_used,
             :poisson_prob_home, :poisson_prob_draw, :poisson_prob_away,
             :ml_prob_home, :ml_prob_draw, :ml_prob_away,
-            :forebet_prob_home, :forebet_prob_draw, :forebet_prob_away
+            :forebet_prob_home, :forebet_prob_draw, :forebet_prob_away,
+            :ht_home_goals, :ht_away_goals,
+            :home_injured_total, :home_forwards_out, :home_midfielders_out,
+            :home_defenders_out, :home_key_players_out, :home_suspended,
+            :away_injured_total, :away_forwards_out, :away_midfielders_out,
+            :away_defenders_out, :away_key_players_out, :away_suspended
         )
     """, data)
     conn.commit()
     match_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     conn.close()
     return match_id
+
+
+def update_injury_data(match_id: int, home_summary: dict, away_summary: dict):
+    """Update injury data for an existing match prediction."""
+    conn = get_db()
+    conn.execute("""
+        UPDATE matches SET
+            home_injured_total = ?,
+            home_forwards_out = ?,
+            home_midfielders_out = ?,
+            home_defenders_out = ?,
+            home_key_players_out = ?,
+            home_suspended = ?,
+            away_injured_total = ?,
+            away_forwards_out = ?,
+            away_midfielders_out = ?,
+            away_defenders_out = ?,
+            away_key_players_out = ?,
+            away_suspended = ?
+        WHERE id = ?
+    """, (
+        home_summary.get("total_injured", 0),
+        home_summary.get("forwards_out", 0),
+        home_summary.get("midfielders_out", 0),
+        home_summary.get("defenders_out", 0),
+        home_summary.get("key_players_out", 0),
+        home_summary.get("suspended", 0),
+        away_summary.get("total_injured", 0),
+        away_summary.get("forwards_out", 0),
+        away_summary.get("midfielders_out", 0),
+        away_summary.get("defenders_out", 0),
+        away_summary.get("key_players_out", 0),
+        away_summary.get("suspended", 0),
+        match_id,
+    ))
+    conn.commit()
+    conn.close()
+
+
+def populate_injury_data():
+    """Scrape injuries and update all unreviewed matches with injury data."""
+    from forebet_scraper import scrape_injuries, get_team_injury_summary
+    injuries = scrape_injuries()
+    if not injuries:
+        print("  No injury data scraped")
+        return 0
+
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT id, home_team, away_team FROM matches
+        WHERE reviewed = 0 AND home_injured_total = 0
+    """).fetchall()
+    conn.close()
+
+    updated = 0
+    for row in rows:
+        home_summary = get_team_injury_summary(injuries, row["home_team"])
+        away_summary = get_team_injury_summary(injuries, row["away_team"])
+        if home_summary["total_injured"] > 0 or away_summary["total_injured"] > 0:
+            update_injury_data(row["id"], home_summary, away_summary)
+            updated += 1
+
+    print(f"  Updated injury data for {updated} matches")
+    return updated
+
+
+def compute_proxy_xg(match_id: int, data: dict):
+    """Compute proxy xG from Forebet shot/attack stats and save to DB.
+    
+    Uses: shots_pg, shots_on_target_pct, dangerous_attacks_pg, possession_pct
+    Formula: xG = shots * SOT% * league_avg_sot_conversion * attack_quality * possession_weight
+    
+    Calibration constants from 2661 historical matches:
+      - SOT conversion rate: 0.4025 goals per shot on target
+      - Average dangerous attacks: 48.1 per game
+    """
+    SOT_CONV = 0.4025
+    AVG_DANG = 48.1
+
+    def _proxy_xg(shots_pg, sot_pct, dang_pg, poss_pct):
+        if not shots_pg or not sot_pct:
+            return None
+        sot = shots_pg * (sot_pct / 100.0)
+        quality = min((dang_pg or AVG_DANG) / AVG_DANG, 2.0)
+        poss_w = 0.7 + 0.6 * ((poss_pct or 50) / 100.0)
+        return round(sot * SOT_CONV * quality * poss_w, 4)
+
+    hxg = _proxy_xg(
+        data.get("home_total_shots_pg"),
+        data.get("home_shots_ontarget_pct"),
+        data.get("home_dangerous_attacks_pg"),
+        data.get("home_possession_pct"),
+    )
+    axg = _proxy_xg(
+        data.get("away_total_shots_pg"),
+        data.get("away_shots_ontarget_pct"),
+        data.get("away_dangerous_attacks_pg"),
+        data.get("away_possession_pct"),
+    )
+
+    if hxg is not None or axg is not None:
+        conn = get_db()
+        conn.execute(
+            "UPDATE matches SET home_xg_proxy = ?, away_xg_proxy = ? WHERE id = ?",
+            (hxg, axg, match_id),
+        )
+        conn.commit()
+        conn.close()
 
 
 def get_unreviewed_matches(limit: int = 50) -> list:

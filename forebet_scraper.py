@@ -1479,3 +1479,131 @@ def scrape_and_save(url: str) -> dict:
     else:
         print("no data", file=sys.stderr)
     return data
+
+
+# ---------------------------------------------------------------------------
+# Injured players scraper
+# ---------------------------------------------------------------------------
+
+class InjuryScraper:
+    """Scrape injured/suspended players from Forebet's injured-players page.
+
+    Returns a dict keyed by team name, each containing a list of player dicts:
+        {team_name: [{"player": "Name (P)", "position": "D/M/F",
+                       "games_played": int, "injury": str, "status": str}, ...]}
+    """
+
+    INJURY_URL = "https://www.forebet.com/en/injured-players"
+
+    def __init__(self, timeout: int = 20):
+        self.timeout = timeout
+        self.soup = None
+
+    def fetch(self) -> bool:
+        try:
+            scraper = cloudscraper.create_scraper(
+                browser={"browser": "chrome", "platform": "linux", "mobile": False}
+            )
+            resp = scraper.get(self.INJURY_URL, timeout=self.timeout)
+            if resp.status_code == 200:
+                self.soup = BeautifulSoup(resp.text, "html.parser")
+                return True
+        except Exception:
+            pass
+        return False
+
+    def parse(self) -> dict:
+        """Parse the injured players page into a team-keyed dict."""
+        if not self.soup:
+            return {}
+        result = {}
+        tables = self.soup.find_all("table", class_="suspended")
+        for table in tables:
+            rows = table.find_all("tr")
+            current_team = None
+            for row in rows:
+                # Team name row: <td colspan="4"><h4>Team Name</h4></td>
+                h4 = row.find("h4")
+                if h4:
+                    current_team = h4.get_text(strip=True)
+                    if current_team not in result:
+                        result[current_team] = []
+                    continue
+
+                # Skip header rows
+                if "susp_heading" in (row.get("class") or []):
+                    continue
+
+                # Data rows: Player | Games played | Injury | Status
+                cells = row.find_all("td")
+                if len(cells) >= 4 and current_team:
+                    player_text = cells[0].get_text(strip=True)
+                    gp_text = cells[1].get_text(strip=True)
+                    injury_text = cells[2].get_text(strip=True)
+                    status_text = cells[3].get_text(strip=True)
+
+                    # Extract position from player name: "Name (D)" -> position="D"
+                    position = ""
+                    pos_match = re.search(r"\(([DMFA])\)\s*$", player_text)
+                    if pos_match:
+                        position = pos_match.group(1)
+                        player_text = player_text[:pos_match.start()].strip()
+
+                    gp = 0
+                    try:
+                        gp = int(gp_text)
+                    except (ValueError, TypeError):
+                        pass
+
+                    result[current_team].append({
+                        "player": player_text,
+                        "position": position,
+                        "games_played": gp,
+                        "injury": injury_text,
+                        "status": status_text,
+                    })
+        return result
+
+    def scrape(self) -> dict:
+        """Fetch and parse the injured players page."""
+        if self.fetch():
+            return self.parse()
+        return {}
+
+
+def scrape_injuries() -> dict:
+    """Convenience function to scrape injured players."""
+    scraper = InjuryScraper()
+    return scraper.scrape()
+
+
+def get_team_injury_summary(injuries: dict, team_name: str) -> dict:
+    """Summarize injury impact for a specific team.
+
+    Returns counts by position and total, plus key-player-missing flags.
+    """
+    players = injuries.get(team_name, [])
+    summary = {
+        "total_injured": len(players),
+        "forwards_out": 0,
+        "midfielders_out": 0,
+        "defenders_out": 0,
+        "keepers_out": 0,
+        "key_players_out": 0,  # players with >20 games played
+        "suspended": 0,
+    }
+    for p in players:
+        pos = p.get("position", "")
+        if pos == "F":
+            summary["forwards_out"] += 1
+        elif pos == "M":
+            summary["midfielders_out"] += 1
+        elif pos == "D":
+            summary["defenders_out"] += 1
+        elif pos == "G" or pos == "K":
+            summary["keepers_out"] += 1
+        if p.get("games_played", 0) > 20:
+            summary["key_players_out"] += 1
+        if "Suspended" in p.get("status", ""):
+            summary["suspended"] += 1
+    return summary

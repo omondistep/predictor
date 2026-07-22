@@ -194,6 +194,10 @@ def step_calibrate() -> dict:
     if retrain_needed:
         print("  Retrain condition met. Retraining ML model...")
         retrained = auto_retrain(force=False)
+    else:
+        # Always retrain ML model to benefit from new reviewed data
+        print("  Triggering ML model retrain to incorporate new results...")
+        retrained = auto_retrain(force=True)
 
     return {
         "status": "done",

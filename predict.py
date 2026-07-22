@@ -3960,6 +3960,15 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
 
     log(f"Processing {len(match_urls)} Forebet match links...\n")
 
+    # Scrape injuries page once (shared across all matches)
+    from forebet_scraper import scrape_injuries, get_team_injury_summary
+    log("Scraping injury data...")
+    injuries = scrape_injuries()
+    if injuries:
+        log(f"  Found injury data for {len(injuries)} teams")
+    else:
+        log("  No injury data available")
+
     results = []
     for i, url in enumerate(match_urls, 1):
         log(f"[{i}/{len(match_urls)}]", end=" ")
@@ -4042,6 +4051,13 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # Store in DB (map analysis keys to DB column names)
         poisson_probs = pred.get("_poisson_probs", (None, None, None))
         ml_pred = pred.get("_ml")
+
+        # Get injury summaries for this match
+        home_team = data.get("home_team", "")
+        away_team = data.get("away_team", "")
+        home_summary = get_team_injury_summary(injuries, home_team) if injuries else {}
+        away_summary = get_team_injury_summary(injuries, away_team) if injuries else {}
+
         db_data = {
             **data,
             "our_prediction": pred["pick"],
@@ -4056,8 +4072,26 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "ml_prob_home": ml_pred.get("ml_prob_home") if ml_pred else None,
             "ml_prob_draw": ml_pred.get("ml_prob_draw") if ml_pred else None,
             "ml_prob_away": ml_pred.get("ml_prob_away") if ml_pred else None,
+            # Injury data (map summary keys → DB column names)
+            "home_injured_total": home_summary.get("total_injured", 0),
+            "home_forwards_out": home_summary.get("forwards_out", 0),
+            "home_midfielders_out": home_summary.get("midfielders_out", 0),
+            "home_defenders_out": home_summary.get("defenders_out", 0),
+            "home_key_players_out": home_summary.get("key_players_out", 0),
+            "home_suspended": home_summary.get("suspended", 0),
+            "away_injured_total": away_summary.get("total_injured", 0),
+            "away_forwards_out": away_summary.get("forwards_out", 0),
+            "away_midfielders_out": away_summary.get("midfielders_out", 0),
+            "away_defenders_out": away_summary.get("defenders_out", 0),
+            "away_key_players_out": away_summary.get("key_players_out", 0),
+            "away_suspended": away_summary.get("suspended", 0),
         }
         match_id = save_prediction(db_data)
+
+        # Compute proxy xG from Forebet shot/attack data
+        if match_id:
+            from database import compute_proxy_xg
+            compute_proxy_xg(match_id, data)
 
         # Update DB with result if match is finished
         if actual_hg is not None and actual_ag is not None and match_id:
@@ -4119,6 +4153,11 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "correct_pick": correct_pick,
             "ht_home_goals": data.get("ht_home_goals"),
             "ht_away_goals": data.get("ht_away_goals"),
+            # Injury data
+            "home_injured": home_summary.get("total_injured", 0),
+            "away_injured": away_summary.get("total_injured", 0),
+            "home_key_out": home_summary.get("key_players_out", 0),
+            "away_key_out": away_summary.get("key_players_out", 0),
             # Raw data for table display
             "home_form": data.get("home_form", ""),
             "away_form": data.get("away_form", ""),
@@ -4584,6 +4623,7 @@ def main():
         epilog="""
 Modes:
   predict.py links.txt              Scrape Forebet links → predict → save to DB
+  predict.py results                Update existing reports with match results (no duplicates)
   predict.py --review               Review past predictions vs actual results
   predict.py --learn <url>           Automated learning from results page
   predict.py --auto-learn            Run continuous learning pipeline (results + calibrate + retrain)
@@ -4620,6 +4660,12 @@ Options:
 
     ensure_alias()
     init_db()
+
+    # Handle "results" as a special positional command (pr results)
+    if args.file and args.file.lower() == "results":
+        from update_results import main as update_results_main
+        update_results_main()
+        return
 
     # Auto-run calibration learning on prediction runs (analyze bias + check retrain)
     # Disabled by default: step_scrape_results is slow and blocks predictions.

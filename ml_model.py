@@ -31,7 +31,7 @@ import numpy as np
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif
-from sklearn.model_selection import cross_val_score, TimeSeriesSplit, train_test_split
+from sklearn.model_selection import cross_val_score, TimeSeriesSplit
 from sklearn.calibration import CalibratedClassifierCV
 
 warnings.filterwarnings("ignore")
@@ -84,6 +84,30 @@ FEATURE_NAMES = [
     "favorite_strength", "gap_favorite_underdog",
     # Possession and passing
     "poss_diff", "passes_pg_diff", "pass_acc_diff",
+    # Shots
+    "home_shots_pg", "away_shots_pg", "shots_diff",
+    "home_sot_pct", "away_sot_pct", "sot_diff",
+    # Corners, fouls, cards
+    "home_corners_avg", "away_corners_avg", "corners_diff",
+    "home_fouls_avg", "away_fouls_avg", "fouls_diff",
+    "home_yellows_avg", "away_yellows_avg", "yellows_diff",
+    # Half-time goals
+    "ht_home_goals", "ht_away_goals", "ht_total_goals",
+    # Dangerous attacks
+    "home_dang_attacks", "away_dang_attacks", "dang_attacks_diff",
+    # Injury/suspension features
+    "home_injured_total", "away_injured_total", "injured_diff",
+    "home_forwards_out", "away_forwards_out", "forwards_out_diff",
+    "home_midfielders_out", "away_midfielders_out", "midfielders_out_diff",
+    "home_defenders_out", "away_defenders_out", "defenders_out_diff",
+    "home_key_players_out", "away_key_players_out", "key_players_out_diff",
+    "home_suspended", "away_suspended", "suspended_diff",
+    # Missing data indicators
+    "home_form_missing", "away_form_missing",
+    "home_goals_missing", "away_goals_missing",
+    "h2h_missing",
+    # Proxy xG (computed from Forebet shot/attack data)
+    "home_xg_proxy", "away_xg_proxy", "xg_proxy_diff",
 ]
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
@@ -227,6 +251,99 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     h_acc = row.get("home_pass_accuracy_pct") or 75
     a_acc = row.get("away_pass_accuracy_pct") or 75
     f.append(h_acc - a_acc)
+
+    # Shots
+    h_shots = row.get("home_total_shots_pg") or 12.0
+    a_shots = row.get("away_total_shots_pg") or 10.0
+    f.append(h_shots)
+    f.append(a_shots)
+    f.append(h_shots - a_shots)
+    h_sot = row.get("home_shots_ontarget_pct") or 35
+    a_sot = row.get("away_shots_ontarget_pct") or 30
+    f.append(h_sot)
+    f.append(a_sot)
+    f.append(h_sot - a_sot)
+
+    # Corners
+    h_corners = row.get("home_corners_avg") or 5.0
+    a_corners = row.get("away_corners_avg") or 4.5
+    f.append(h_corners)
+    f.append(a_corners)
+    f.append(h_corners - a_corners)
+
+    # Fouls
+    h_fouls = row.get("home_fouls_avg") or 11.0
+    a_fouls = row.get("away_fouls_avg") or 11.0
+    f.append(h_fouls)
+    f.append(a_fouls)
+    f.append(h_fouls - a_fouls)
+
+    # Yellow cards
+    h_yellows = row.get("home_yellow_cards_avg") or 1.8
+    a_yellows = row.get("away_yellow_cards_avg") or 1.8
+    f.append(h_yellows)
+    f.append(a_yellows)
+    f.append(h_yellows - a_yellows)
+
+    # Half-time goals
+    ht_h = row.get("ht_home_goals")
+    ht_a = row.get("ht_away_goals")
+    f.append(ht_h if ht_h is not None else -1.0)
+    f.append(ht_a if ht_a is not None else -1.0)
+    f.append((ht_h + ht_a) if ht_h is not None and ht_a is not None else -1.0)
+
+    # Dangerous attacks
+    h_dang = row.get("home_dangerous_attacks_pg") or 12.0
+    a_dang = row.get("away_dangerous_attacks_pg") or 10.0
+    f.append(h_dang)
+    f.append(a_dang)
+    f.append(h_dang - a_dang)
+
+    # Injury/suspension features
+    h_inj = row.get("home_injured_total") or 0
+    a_inj = row.get("away_injured_total") or 0
+    f.append(h_inj)
+    f.append(a_inj)
+    f.append(h_inj - a_inj)
+    h_for = row.get("home_forwards_out") or 0
+    a_for = row.get("away_forwards_out") or 0
+    f.append(h_for)
+    f.append(a_for)
+    f.append(h_for - a_for)
+    h_mid = row.get("home_midfielders_out") or 0
+    a_mid = row.get("away_midfielders_out") or 0
+    f.append(h_mid)
+    f.append(a_mid)
+    f.append(h_mid - a_mid)
+    h_def = row.get("home_defenders_out") or 0
+    a_def = row.get("away_defenders_out") or 0
+    f.append(h_def)
+    f.append(a_def)
+    f.append(h_def - a_def)
+    h_key = row.get("home_key_players_out") or 0
+    a_key = row.get("away_key_players_out") or 0
+    f.append(h_key)
+    f.append(a_key)
+    f.append(h_key - a_key)
+    h_sus = row.get("home_suspended") or 0
+    a_sus = row.get("away_suspended") or 0
+    f.append(h_sus)
+    f.append(a_sus)
+    f.append(h_sus - a_sus)
+
+    # Missing data indicators
+    f.append(1.0 if not row.get("home_form") else 0.0)
+    f.append(1.0 if not row.get("away_form") else 0.0)
+    f.append(1.0 if not row.get("home_avg_goals_for") else 0.0)
+    f.append(1.0 if not row.get("away_avg_goals_for") else 0.0)
+    f.append(1.0 if not row.get("h2h_matches") else 0.0)
+
+    # Proxy xG (computed from Forebet shot/attack data)
+    hxg = row.get("home_xg_proxy") or 0
+    axg = row.get("away_xg_proxy") or 0
+    f.append(hxg)
+    f.append(axg)
+    f.append(hxg - axg)
 
     return np.array(f, dtype=np.float32)
 
@@ -380,6 +497,67 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
     f[41] = 0.0
     f[42] = 0.0
 
+    # Shots (neutral defaults for game records)
+    f[43] = 12.0   # home_shots_pg
+    f[44] = 10.0   # away_shots_pg
+    f[45] = 2.0    # shots_diff
+    f[46] = 35.0   # home_sot_pct
+    f[47] = 30.0   # away_sot_pct
+    f[48] = 5.0    # sot_diff
+
+    # Corners, fouls, cards
+    f[49] = 5.0    # home_corners_avg
+    f[50] = 4.5    # away_corners_avg
+    f[51] = 0.5    # corners_diff
+    f[52] = 11.0   # home_fouls_avg
+    f[53] = 11.0   # away_fouls_avg
+    f[54] = 0.0    # fouls_diff
+    f[55] = 1.8    # home_yellows_avg
+    f[56] = 1.8    # away_yellows_avg
+    f[57] = 0.0    # yellows_diff
+
+    # Half-time goals (unavailable in game records)
+    f[58] = -1.0   # ht_home_goals
+    f[59] = -1.0   # ht_away_goals
+    f[60] = -1.0   # ht_total_goals
+
+    # Dangerous attacks
+    f[61] = 12.0   # home_dang_attacks
+    f[62] = 10.0   # away_dang_attacks
+    f[63] = 2.0    # dang_attacks_diff
+
+    # Injury/suspension features (unavailable in game records → neutral)
+    f[64] = 0.0    # home_injured_total
+    f[65] = 0.0    # away_injured_total
+    f[66] = 0.0    # injured_diff
+    f[67] = 0.0    # home_forwards_out
+    f[68] = 0.0    # away_forwards_out
+    f[69] = 0.0    # forwards_out_diff
+    f[70] = 0.0    # home_midfielders_out
+    f[71] = 0.0    # away_midfielders_out
+    f[72] = 0.0    # midfielders_out_diff
+    f[73] = 0.0    # home_defenders_out
+    f[74] = 0.0    # away_defenders_out
+    f[75] = 0.0    # defenders_out_diff
+    f[76] = 0.0    # home_key_players_out
+    f[77] = 0.0    # away_key_players_out
+    f[78] = 0.0    # key_players_out_diff
+    f[79] = 0.0    # home_suspended
+    f[80] = 0.0    # away_suspended
+    f[81] = 0.0    # suspended_diff
+
+    # Missing data indicators (game records always missing form/goals/h2h)
+    f[82] = 1.0  # home_form_missing
+    f[83] = 1.0  # away_form_missing
+    f[84] = 1.0  # home_goals_missing
+    f[85] = 1.0  # away_goals_missing
+    f[86] = 1.0  # h2h_missing
+
+    # Proxy xG (unavailable in game records → zero)
+    f[87] = 0.0    # home_xg_proxy
+    f[88] = 0.0    # away_xg_proxy
+    f[89] = 0.0    # xg_proxy_diff
+
     return f
 
 
@@ -445,12 +623,14 @@ class MLPredictor:
     def train(self, X: np.ndarray, y_1x2: np.ndarray, y_ou: np.ndarray,
               sample_weights: Optional[np.ndarray] = None,
               calibration_method: Optional[str] = "sigmoid",
-              calibration_split: float = 0.15):
+              calibration_split: float = 0.15,
+              dates: Optional[list] = None):
         """Train all models with optional sample weights and probability calibration.
 
         When calibration_method is set, holds out 'calibration_split' fraction
         of data to fit Platt scaling (sigmoid) or isotonic regression, producing
-        better-calibrated probabilities.
+        better-calibrated probabilities. Uses chronological split when dates are
+        provided to prevent future data leakage into calibration set.
         """
         n = len(X)
         if n < 100:
@@ -465,17 +645,28 @@ class MLPredictor:
         X_train, X_calib, y1_train, y1_calib, y2_train, y2_calib = None, None, None, None, None, None
         sw_train = None
         if calibration_method and n >= 200:
-            stratify = y_1x2 if len(np.unique(y_1x2)) >= 3 else None
-            split_result = train_test_split(
-                X_scaled, y_1x2, y_ou,
-                test_size=calibration_split,
-                random_state=42,
-                stratify=stratify,
-            )
-            X_train, X_calib, y1_train, y1_calib, y2_train, y2_calib = split_result
+            # Chronological split: take last calibration_split fraction as calibration
+            # This prevents future information leakage
+            cal_size = int(n * calibration_split)
+            if dates and len(dates) == n:
+                # Sort by date, then take last cal_size as calibration
+                sorted_indices = sorted(range(n), key=lambda i: dates[i] or datetime(2020, 1, 1))
+                train_indices = sorted_indices[:n - cal_size]
+                cal_indices = sorted_indices[n - cal_size:]
+            else:
+                # Fallback: take last cal_size rows (roughly chronological if data was appended in order)
+                train_indices = list(range(n - cal_size))
+                cal_indices = list(range(n - cal_size, n))
+
+            X_train = X_scaled[train_indices]
+            X_calib = X_scaled[cal_indices]
+            y1_train = y_1x2[train_indices]
+            y1_calib = y_1x2[cal_indices]
+            y2_train = y_ou[train_indices]
+            y2_calib = y_ou[cal_indices]
             if sample_weights is not None:
-                sw_train = sample_weights[:len(X_train)]
-            print(f"   Training: {len(X_train)}, Calibration: {len(X_calib)}")
+                sw_train = sample_weights[train_indices]
+            print(f"   Training: {len(X_train)}, Calibration: {len(X_calib)} (chronological)")
         else:
             X_train = X_scaled
             y1_train = y_1x2
@@ -1168,11 +1359,12 @@ def ensemble_predict(
 def load_training_data(with_weights: bool = False) -> Tuple:
     """Load training data from game dataset + history.db.
     
-    When with_weights=True, returns (X, y1, y2, sample_weights) with
+    When with_weights=True, returns (X, y1, y2, sample_weights, dates) with
     time decay weights (improvement 5: recent matches weighted more).
     DB records get higher base weight since they have richer features.
+    dates is a list of datetime objects for chronological splitting.
     """
-    X_list, y1_list, y2_list = [], [], []
+    X_list, y1_list, y2_list, date_list = [], [], [], []
     weight_list = []
     cutoff = datetime.now() - timedelta(days=365)
 
@@ -1192,10 +1384,19 @@ def load_training_data(with_weights: bool = False) -> Tuple:
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                # Parse date for chronological ordering
+                match_date_str = r.get("date", "")
+                match_date = None
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%Y/%m/%d"):
+                    try:
+                        match_date = datetime.strptime(match_date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                date_list.append(match_date or datetime(2020, 1, 1))
                 # Time decay weight - game data gets base weight 1.0
                 if with_weights:
-                    match_date = r.get("date", "")
-                    w = _time_decay_weight(match_date, cutoff)
+                    w = _time_decay_weight(match_date_str, cutoff)
                     weight_list.append(w)
             except Exception:
                 continue
@@ -1232,9 +1433,19 @@ def load_training_data(with_weights: bool = False) -> Tuple:
                 y1_list.append(t1)
                 y2_list.append(t2)
                 db_count += 1
+                # Parse date for chronological ordering
+                match_date_str = r.get("match_date", "")
+                match_date = None
+                for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d/%m/%y", "%Y/%m/%d"):
+                    try:
+                        match_date = datetime.strptime(match_date_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+                date_list.append(match_date or datetime(2020, 1, 1))
                 # DB records get higher weight (2.5x) due to richer features
                 if with_weights:
-                    w = _time_decay_weight(r.get("match_date", ""), cutoff) * 2.5
+                    w = _time_decay_weight(match_date_str, cutoff) * 2.5
                     weight_list.append(w)
             except Exception:
                 continue
@@ -1247,9 +1458,9 @@ def load_training_data(with_weights: bool = False) -> Tuple:
     if with_weights and weight_list:
         sw = np.array(weight_list, dtype=np.float32)
         sw = sw / sw.mean()  # Normalize so mean weight = 1.0
-        return X, y1, y2, sw
+        return X, y1, y2, sw, date_list
     
-    return X, y1, y2
+    return X, y1, y2, date_list
 
 
 def _time_decay_weight(date_str: str, cutoff: datetime, half_life_days: int = 90) -> float:
@@ -1295,10 +1506,10 @@ def train(force: bool = True):
     Uses Platt scaling (sigmoid) calibration by default when sufficient data exists.
     """
     result = load_training_data(with_weights=True)
-    if len(result) == 4:
-        X, y1, y2, sw = result
+    if len(result) == 5:
+        X, y1, y2, sw, dates = result
     else:
-        X, y1, y2 = result
+        X, y1, y2, dates = result
         sw = None
 
     if len(X) < 100:
@@ -1310,7 +1521,7 @@ def train(force: bool = True):
     ml = MLPredictor()
     # Use sigmoid calibration when enough data, fall back otherwise
     cal_method = "sigmoid" if len(X) >= 200 else None
-    ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method)
+    ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method, dates=dates)
     ml.save()
 
     print(f"\nTraining complete: {ml.training_examples} examples, "
@@ -1347,7 +1558,8 @@ def main():
             print("No trained model found. Run with --train first.")
 
     if args.analyze and not args.train:
-        X, y1, _ = load_training_data()
+        result = load_training_data()
+        X, y1 = result[0], result[1]
         if len(X) > 0:
             analyze_feature_importance(X, y1)
 

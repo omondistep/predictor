@@ -1,1 +1,1 @@
-{"is_trained": true, "training_examples": 18162, "accuracy_1x2": 0.605219689461513, "accuracy_ou": 0.6208016738244687, "cv_accuracy_1x2": 0.45697503671071954, "cv_accuracy_ou": 0.5477973568281939, "calibration_method": "sigmoid"}
+{"is_trained": true, "training_examples": 18187, "accuracy_1x2": 0.5994941441689119, "accuracy_ou": 0.6005388464287678, "cv_accuracy_1x2": 0.4551253849538055, "cv_accuracy_ou": 0.5466344038715354, "calibration_method": "sigmoid"}
