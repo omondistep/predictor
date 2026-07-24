@@ -447,12 +447,12 @@ CONF_LABELS = ["Near Certain", "High", "Medium-High", "Medium", "Low"]
 # ── Auto-calibrated thresholds (improvement 10) ──
 # These get updated from history.db calibration data on each run
 CALIBRATED_THRESHOLDS = {
-    "near_certain": 0.58,
-    "near_certain_margin": 0.12,
-    "high": 0.50,
-    "high_margin": 0.10,
-    "medium_high": 0.42,
-    "medium_high_margin": 0.06,
+    "near_certain": 0.68,
+    "near_certain_margin": 0.15,
+    "high": 0.55,
+    "high_margin": 0.12,
+    "medium_high": 0.44,
+    "medium_high_margin": 0.08,
     "medium": 0.38,
     "medium_margin": 0.04,
     "draw_medium_high": 0.36,
@@ -547,7 +547,7 @@ def _auto_calibrate_thresholds():
         conn.close()
 
         adjusted = 0
-        min_samples = 25  # Increased from 10 — need 25+ records per level
+        min_samples = 15  # Lowered from 25 — adjust sooner
         target_map = {
             "Near Certain": 0.78,
             "High": 0.65,
@@ -567,13 +567,13 @@ def _auto_calibrate_thresholds():
             # Never loosen (lower thresholds) automatically — that introduces risk
             if actual_pct < target - 0.03:
                 if conf == "Near Certain":
-                    CALIBRATED_THRESHOLDS["near_certain"] = min(0.72, CALIBRATED_THRESHOLDS["near_certain"] + 0.02)
+                    CALIBRATED_THRESHOLDS["near_certain"] = min(0.78, CALIBRATED_THRESHOLDS["near_certain"] + 0.04)
                     adjusted += 1
                 elif conf == "High":
-                    CALIBRATED_THRESHOLDS["high"] = min(0.65, CALIBRATED_THRESHOLDS["high"] + 0.02)
+                    CALIBRATED_THRESHOLDS["high"] = min(0.65, CALIBRATED_THRESHOLDS["high"] + 0.04)
                     adjusted += 1
                 elif conf == "Medium-High":
-                    CALIBRATED_THRESHOLDS["medium_high"] = min(0.55, CALIBRATED_THRESHOLDS["medium_high"] + 0.02)
+                    CALIBRATED_THRESHOLDS["medium_high"] = min(0.55, CALIBRATED_THRESHOLDS["medium_high"] + 0.03)
                     adjusted += 1
                 elif conf == "Medium":
                     CALIBRATED_THRESHOLDS["medium"] = min(0.50, CALIBRATED_THRESHOLDS["medium"] + 0.02)
@@ -1040,11 +1040,14 @@ def pick_from_odds(odds: tuple, our_prob: float, label_h: str, label_a: str):
 
 
 def _value_to_conf(value: float, odds: float) -> str:
-    if odds < 1.25:
+    nc = CALIBRATED_THRESHOLDS["near_certain"]
+    hi = CALIBRATED_THRESHOLDS["high"]
+    mh = CALIBRATED_THRESHOLDS["medium_high"]
+    if odds < 1.25 and value > nc:
         return "Near Certain"
-    if odds < 1.50 or value > 0.30:
+    if odds < 1.50 or value > hi:
         return "High"
-    if odds < 1.70 or value > 0.15:
+    if odds < 1.70 or value > mh:
         return "Medium-High"
     if value > 0.05:
         return "Medium"
@@ -1799,11 +1802,17 @@ def analyze_ml_only(data: dict) -> dict:
         return round(1 / max(prob, min_p), 2)
 
     # ── 1X2 with draw signal ──
+    nc_thresh = CALIBRATED_THRESHOLDS["near_certain"]
+    nc_margin = CALIBRATED_THRESHOLDS["near_certain_margin"]
     for name, prob in [("Home win", ph), ("Away win", pa)]:
-        if prob >= 0.58: conf = "Near Certain"
-        elif prob >= 0.48: conf = "High"
-        elif prob >= 0.38: conf = "Medium-High"
-        elif prob >= 0.30: conf = "Medium"
+        if prob >= nc_thresh and abs(ph - pa) >= nc_margin:
+            conf = "Near Certain"
+        elif prob >= CALIBRATED_THRESHOLDS["high"]:
+            conf = "High"
+        elif prob >= CALIBRATED_THRESHOLDS["medium_high"]:
+            conf = "Medium-High"
+        elif prob >= CALIBRATED_THRESHOLDS["medium"]:
+            conf = "Medium"
         else: conf = "Low"
         add("1X2", name, conf, f"ML model {prob:.0%}", model_prob=prob,
             odds=prob_to_odds(prob))

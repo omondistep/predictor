@@ -54,13 +54,20 @@ for r in results:
         """, (match_id,)).fetchone()
 
         if match:
-            our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
+            market = match["our_market"] or ""
+            pick = match["our_prediction"] or ""
+
+            # DNB draws are pushes (stake returned), not losses
+            our_correct = None
+            if market == "DNB" and result_label == "Draw":
+                our_correct = None  # Push
+            else:
+                our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
+
             fb_correct = 1 if match["forebet_pred"] and _prediction_correct(match["forebet_pred"], home_goals, away_goals) else 0
 
             # Pick the relevant odds for this market
             odds = None
-            market = match["our_market"] or ""
-            pick = match["our_prediction"] or ""
             if market == "1X2":
                 odds_map = {"Home win": match["odds_home"], "Draw": match["odds_draw"], "Away win": match["odds_away"]}
                 odds = odds_map.get(pick)
@@ -73,22 +80,24 @@ for r in results:
             elif market == "DC":
                 odds = match["odds_home"]
 
-            conn.execute("""
-                INSERT INTO calibration_log
-                    (league, match_id, our_prediction, actual_result,
-                     correct, confidence, forebet_pred, forebet_correct,
-                     method_used, market, stake, odds)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                match["league"], match_id, match["our_prediction"], result_label,
-                our_correct, match["our_confidence"], match["forebet_pred"], fb_correct,
-                match["method_used"], match["our_market"],
-                match["our_stake"], odds
-            ))
-            _update_league_stats(conn, match["league"])
-            # We need to pass dict to _update_component_accuracy
-            match_dict = dict(match)
-            _update_component_accuracy(conn, match_dict, our_correct)
+            # Skip DNB pushes — no correct/incorrect, stake returned
+            if our_correct is not None:
+                conn.execute("""
+                    INSERT INTO calibration_log
+                        (league, match_id, our_prediction, actual_result,
+                         correct, confidence, forebet_pred, forebet_correct,
+                         method_used, market, stake, odds)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    match["league"], match_id, match["our_prediction"], result_label,
+                    our_correct, match["our_confidence"], match["forebet_pred"], fb_correct,
+                    match["method_used"], match["our_market"],
+                    match["our_stake"], odds
+                ))
+                _update_league_stats(conn, match["league"])
+                # We need to pass dict to _update_component_accuracy
+                match_dict = dict(match)
+                _update_component_accuracy(conn, match_dict, our_correct)
 
         updated += 1
         if updated % 25 == 0:

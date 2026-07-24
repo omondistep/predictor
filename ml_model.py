@@ -33,6 +33,8 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif
 from sklearn.model_selection import cross_val_score, TimeSeriesSplit
 from sklearn.calibration import CalibratedClassifierCV
+import xgboost as xgb
+import lightgbm as lgb
 
 warnings.filterwarnings("ignore")
 
@@ -56,6 +58,8 @@ MODELS_DIR.mkdir(parents=True, exist_ok=True)
 FEATURE_NAMES = [
     # Form features
     "home_form_pts", "away_form_pts", "form_diff",
+    # Time-weighted form (from game system - more recent results weighted higher)
+    "home_form_pts_tw", "away_form_pts_tw", "form_diff_tw",
     # Position features
     "home_pos_score", "away_pos_score", "pos_diff",
     # Goal average features
@@ -108,6 +112,24 @@ FEATURE_NAMES = [
     "h2h_missing",
     # Proxy xG (computed from Forebet shot/attack data)
     "home_xg_proxy", "away_xg_proxy", "xg_proxy_diff",
+    # ── NEW: Venue-specific performance (from game system) ──
+    "home_home_gf_avg", "home_home_ga_avg",  # Home team's performance at home
+    "away_away_gf_avg", "away_away_ga_avg",  # Away team's performance away
+    # ── NEW: Attack strength engineered features ──
+    "home_attack_strength", "away_attack_strength", "attack_ratio",
+    # ── NEW: Form components (W/D/L counts from form string) ──
+    "home_wins_l6", "home_draws_l6", "home_losses_l6",
+    "away_wins_l6", "away_draws_l6", "away_losses_l6",
+    # ── NEW: Combined strength scores ──
+    "home_strength_score", "away_strength_score",
+    # ── NEW: Actual xG data (from Forebet squad xG) ──
+    "home_xg", "away_xg", "home_xga", "away_xga",
+    # ── NEW: Raw possession/pass values ──
+    "home_possession", "away_possession",
+    "home_pass_acc", "away_pass_acc",
+    # ── NEW: Clean sheets and scoring consistency ──
+    "home_clean_sheets_pct", "away_clean_sheets_pct",
+    "home_scored_pct", "away_scored_pct",
 ]
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
@@ -119,6 +141,40 @@ def _ppg(form_str: str) -> float:
     pts = sum(3 if c == "W" else 1 if c == "D" else 0 for c in form_str if c in "WDL")
     n = sum(1 for c in form_str if c in "WDL")
     return pts / n if n >= 3 else 1.2
+
+
+def _form_wdl(form_str: str) -> tuple:
+    """Extract W/D/L counts from form string (e.g., 'WWDWL' -> (3, 1, 1))."""
+    w = sum(1 for c in form_str if c == "W")
+    d = sum(1 for c in form_str if c == "D")
+    l = sum(1 for c in form_str if c == "L")
+    return w, d, l
+
+
+def _time_weighted_form(form_str: str) -> float:
+    """Compute time-weighted form giving more weight to recent results.
+    
+    From game system: recent form is more predictive than older form.
+    Uses exponential decay: most recent match gets weight 1.0, 
+    second most recent gets 0.8, etc.
+    """
+    if not form_str:
+        return 1.2  # Default neutral form
+    
+    form_results = [c for c in form_str if c in "WDL"]
+    if not form_results:
+        return 1.2
+    
+    # Exponential decay weights (most recent = highest weight)
+    weights = [0.85 ** i for i in range(len(form_results))]
+    total_weight = sum(weights)
+    
+    weighted_pts = 0.0
+    for i, c in enumerate(form_results):
+        pts = 3 if c == "W" else 1 if c == "D" else 0
+        weighted_pts += pts * weights[i]
+    
+    return weighted_pts / total_weight if total_weight > 0 else 1.2
 
 
 def _compute_attack_defense(home_gf, home_ga, away_gf, away_ga):
@@ -133,15 +189,25 @@ def _compute_attack_defense(home_gf, home_ga, away_gf, away_ga):
 
 
 def extract_features_from_db_row(row: dict) -> np.ndarray:
-    """Build feature vector from a history.db row dict."""
+    """Build feature vector from a history.db row dict.
+    
+    Enhanced with time-weighted form features from game system.
+    """
     f = []
 
-    # Form features
+    # Form features (basic and time-weighted)
     hfp = _ppg(row.get("home_form", ""))
     afp = _ppg(row.get("away_form", ""))
     f.append(hfp)
     f.append(afp)
     f.append(hfp - afp)
+    
+    # Time-weighted form (from game system - more recent results weighted higher)
+    hfp_tw = _time_weighted_form(row.get("home_form", ""))
+    afp_tw = _time_weighted_form(row.get("away_form", ""))
+    f.append(hfp_tw)
+    f.append(afp_tw)
+    f.append(hfp_tw - afp_tw)
 
     # Position features
     hp = row.get("home_pos") or 10
@@ -345,6 +411,58 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(axg)
     f.append(hxg - axg)
 
+    # ── NEW: Venue-specific performance ──
+    h_home_gf = row.get("home_home_avg_goals_for") or h_gf
+    h_home_ga = row.get("home_home_avg_goals_against") or h_ga
+    a_away_gf = row.get("away_away_avg_goals_for") or a_gf
+    a_away_ga = row.get("away_away_avg_goals_against") or a_ga
+    f.append(h_home_gf)
+    f.append(h_home_ga)
+    f.append(a_away_gf)
+    f.append(a_away_ga)
+
+    # ── NEW: Attack strength engineered features ──
+    home_attack = h_gf * a_ga  # Home attack vs away defense
+    away_attack = a_gf * h_ga  # Away attack vs home defense
+    attack_ratio = home_attack / max(away_attack, 0.01)
+    f.append(home_attack)
+    f.append(away_attack)
+    f.append(attack_ratio)
+
+    # ── NEW: Form components (W/D/L counts) ──
+    hw, hd, hl = _form_wdl(row.get("home_form", ""))
+    aw, ad, al = _form_wdl(row.get("away_form", ""))
+    f.append(hw)
+    f.append(hd)
+    f.append(hl)
+    f.append(aw)
+    f.append(ad)
+    f.append(al)
+
+    # ── NEW: Combined strength scores ──
+    home_strength = (h_gf - h_ga) * 0.3 + (hfp - 1.5) * 0.3 + (1 - (hp - 1) / 19) * 0.2 + (fb_h - 0.33) * 0.2
+    away_strength = (a_gf - a_ga) * 0.3 + (afp - 1.5) * 0.3 + (1 - (ap - 1) / 19) * 0.2 + (fb_a - 0.33) * 0.2
+    f.append(home_strength)
+    f.append(away_strength)
+
+    # ── NEW: Actual xG data ──
+    f.append(row.get("home_squad_xg") or 0)
+    f.append(row.get("away_squad_xg") or 0)
+    f.append(row.get("home_squad_xga") or 0)
+    f.append(row.get("away_squad_xga") or 0)
+
+    # ── NEW: Raw possession/pass values ──
+    f.append(h_poss)
+    f.append(a_poss)
+    f.append(h_acc)
+    f.append(a_acc)
+
+    # ── NEW: Clean sheets and scoring consistency ──
+    f.append(row.get("home_clean_sheets_pct") or 0)
+    f.append(row.get("away_clean_sheets_pct") or 0)
+    f.append(row.get("home_scored_pct") or 0)
+    f.append(row.get("away_scored_pct") or 0)
+
     return np.array(f, dtype=np.float32)
 
 
@@ -372,7 +490,10 @@ def _lookup_league_profile(league_code: str) -> dict:
 
 
 def extract_features_from_game_record(r: dict) -> np.ndarray:
-    """Build feature vector from a game/ historical record."""
+    """Build feature vector from a game/ historical record.
+    
+    Enhanced with time-weighted form features from game system.
+    """
     f = np.zeros(len(FEATURE_NAMES), dtype=np.float32)
 
     predicted_avg_goals = r.get("predicted_avg_goals")
@@ -386,11 +507,16 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
     f[0] = 1.2
     f[1] = 1.2
     f[2] = 0.0
+    
+    # --- Time-weighted form (unavailable → neutral) ---
+    f[3] = 1.2
+    f[4] = 1.2
+    f[5] = 0.0
 
     # --- Position features (unavailable → neutral) ---
-    f[3] = 0.5
-    f[4] = 0.5
-    f[5] = 0.0
+    f[6] = 0.5
+    f[7] = 0.5
+    f[8] = 0.0
 
     # --- Goal averages from predicted_avg_goals (derive home/away split) ---
     avg = float(predicted_avg_goals) if predicted_avg_goals and predicted_avg_goals > 0 else 2.3
@@ -406,38 +532,38 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
     h_ga = exp_a
     a_gf = exp_a * 1.05
     a_ga = exp_h
-    f[6] = h_gf
-    f[7] = h_ga
-    f[8] = a_gf
-    f[9] = a_ga
-    f[10] = (h_gf - h_ga) / max(h_ga, 0.1)
-    f[11] = (a_gf - a_ga) / max(a_ga, 0.1)
+    f[9] = h_gf
+    f[10] = h_ga
+    f[11] = a_gf
+    f[12] = a_ga
+    f[13] = (h_gf - h_ga) / max(h_ga, 0.1)
+    f[14] = (a_gf - a_ga) / max(a_ga, 0.1)
 
     # --- Expected goals ---
-    f[12] = exp_h
-    f[13] = exp_a
-    f[14] = avg
+    f[15] = exp_h
+    f[16] = exp_a
+    f[17] = avg
 
     # --- H2H (unavailable) ---
-    f[15] = 0
-    f[16] = 0
-    f[17] = 0
-    f[18] = 5
+    f[18] = 0
+    f[19] = 0
+    f[20] = 0
+    f[21] = 5
 
     # --- League profile from lookup ---
     lp = _lookup_league_profile(league_code)
-    f[19] = lp["avg_goals"]
-    f[20] = lp["draw_rate"]
-    f[21] = lp["home_win_rate"]
+    f[22] = lp["avg_goals"]
+    f[23] = lp["draw_rate"]
+    f[24] = lp["home_win_rate"]
 
     # --- Forebet probabilities (most informative features) ---
-    f[22] = (prob_home or 33) / 100.0
-    f[23] = (prob_draw or 33) / 100.0
-    f[24] = (prob_away or 33) / 100.0
+    f[25] = (prob_home or 33) / 100.0
+    f[26] = (prob_draw or 33) / 100.0
+    f[27] = (prob_away or 33) / 100.0
 
     # --- Odds (infer draw/away odds from home odds using typical ratios) ---
     if odds and odds > 1:
-        f[25] = float(odds)
+        f[28] = float(odds)
         # Infer draw odds: typical ratio is 1.3-1.5x home odds
         implied_home = 1.0 / odds
         implied_rest = 1.0 - implied_home
@@ -447,116 +573,116 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
             draw_share = 0.42
         implied_draw = implied_rest * draw_share
         implied_away = implied_rest * (1 - draw_share)
-        f[26] = 1.0 / max(implied_draw, 0.05) if implied_draw > 0 else 3.2
-        f[27] = 1.0 / max(implied_away, 0.05) if implied_away > 0 else 3.0
+        f[29] = 1.0 / max(implied_draw, 0.05) if implied_draw > 0 else 3.2
+        f[30] = 1.0 / max(implied_away, 0.05) if implied_away > 0 else 3.0
     else:
-        f[25] = 2.5
-        f[26] = 3.2
-        f[27] = 3.0
+        f[28] = 2.5
+        f[29] = 3.2
+        f[30] = 3.0
 
     # --- Volatility ---
-    f[28] = 0.15
+    f[31] = 0.15
 
     # --- League encoding (use profile-based features instead of hash noise) ---
-    f[29] = lp["avg_goals"] / 4.0  # normalized avg goals
+    f[32] = lp["avg_goals"] / 4.0  # normalized avg goals
 
     # --- Derived features ---
-    f[30] = f[22] - f[24]  # prob_diff_home_away
-    f[31] = 1.0 / f[25] if f[25] > 1 else 0.5  # implied_home_prob
+    f[33] = f[25] - f[27]  # prob_diff_home_away
+    f[34] = 1.0 / f[28] if f[28] > 1 else 0.5  # implied_home_prob
 
-    # --- Additional features (must match DB row extraction indices 32-41) ---
+    # --- Additional features (must match DB row extraction indices 35-44) ---
     # Odds-Forebet value gap (home)
-    odds_implied_h = 1.0 / f[25] if f[25] > 1 else 0.4
-    f[32] = f[22] - odds_implied_h  # odds_fb_value_home
+    odds_implied_h = 1.0 / f[28] if f[28] > 1 else 0.4
+    f[35] = f[25] - odds_implied_h  # odds_fb_value_home
 
     # Draw concentration
-    f[33] = f[23] * 2 - 1  # draw_concentration (centered at 0)
+    f[36] = f[26] * 2 - 1  # draw_concentration (centered at 0)
 
     # Goals vs league average
-    f[34] = avg - lp["avg_goals"]  # goals_vs_league
+    f[37] = avg - lp["avg_goals"]  # goals_vs_league
 
     # Home advantage signal
-    f[35] = f[22] - f[24] - (lp["home_win_rate"] - (1 - lp["home_win_rate"] - lp["draw_rate"]))
+    f[38] = f[25] - f[27] - (lp["home_win_rate"] - (1 - lp["home_win_rate"] - lp["draw_rate"]))
 
     # Prob entropy (uncertainty)
-    probs = [max(f[22], 0.01), max(f[23], 0.01), max(f[24], 0.01)]
-    f[36] = -sum(p * math.log(p) for p in probs) / math.log(3)
+    probs = [max(f[25], 0.01), max(f[26], 0.01), max(f[27], 0.01)]
+    f[39] = -sum(p * math.log(p) for p in probs) / math.log(3)
 
     # Odds-implied overround
-    f[37] = (1.0 / f[25] + 1.0 / f[26] + 1.0 / f[27]) - 1.0 if f[25] > 1 else 0.0
+    f[40] = (1.0 / f[28] + 1.0 / f[29] + 1.0 / f[30]) - 1.0 if f[28] > 1 else 0.0
 
     # Favorite strength
-    f[38] = max(f[22], f[23], f[24])
+    f[41] = max(f[25], f[26], f[27])
 
     # Gap between favorite and underdog
-    sorted_probs = sorted([f[22], f[23], f[24]])
-    f[39] = sorted_probs[2] - sorted_probs[0]
+    sorted_probs = sorted([f[25], f[26], f[27]])
+    f[42] = sorted_probs[2] - sorted_probs[0]
 
     # Possession/passing (unavailable in game records → neutral)
-    f[40] = 0.0
-    f[41] = 0.0
-    f[42] = 0.0
+    f[43] = 0.0
+    f[44] = 0.0
+    f[45] = 0.0
 
     # Shots (neutral defaults for game records)
-    f[43] = 12.0   # home_shots_pg
-    f[44] = 10.0   # away_shots_pg
-    f[45] = 2.0    # shots_diff
-    f[46] = 35.0   # home_sot_pct
-    f[47] = 30.0   # away_sot_pct
-    f[48] = 5.0    # sot_diff
+    f[46] = 12.0   # home_shots_pg
+    f[47] = 10.0   # away_shots_pg
+    f[48] = 2.0    # shots_diff
+    f[49] = 35.0   # home_sot_pct
+    f[50] = 30.0   # away_sot_pct
+    f[51] = 5.0    # sot_diff
 
     # Corners, fouls, cards
-    f[49] = 5.0    # home_corners_avg
-    f[50] = 4.5    # away_corners_avg
-    f[51] = 0.5    # corners_diff
-    f[52] = 11.0   # home_fouls_avg
-    f[53] = 11.0   # away_fouls_avg
-    f[54] = 0.0    # fouls_diff
-    f[55] = 1.8    # home_yellows_avg
-    f[56] = 1.8    # away_yellows_avg
-    f[57] = 0.0    # yellows_diff
+    f[52] = 5.0    # home_corners_avg
+    f[53] = 4.5    # away_corners_avg
+    f[54] = 0.5    # corners_diff
+    f[55] = 11.0   # home_fouls_avg
+    f[56] = 11.0   # away_fouls_avg
+    f[57] = 0.0    # fouls_diff
+    f[58] = 1.8    # home_yellows_avg
+    f[59] = 1.8    # away_yellows_avg
+    f[60] = 0.0    # yellows_diff
 
     # Half-time goals (unavailable in game records)
-    f[58] = -1.0   # ht_home_goals
-    f[59] = -1.0   # ht_away_goals
-    f[60] = -1.0   # ht_total_goals
+    f[61] = -1.0   # ht_home_goals
+    f[62] = -1.0   # ht_away_goals
+    f[63] = -1.0   # ht_total_goals
 
     # Dangerous attacks
-    f[61] = 12.0   # home_dang_attacks
-    f[62] = 10.0   # away_dang_attacks
-    f[63] = 2.0    # dang_attacks_diff
+    f[64] = 12.0   # home_dang_attacks
+    f[65] = 10.0   # away_dang_attacks
+    f[66] = 2.0    # dang_attacks_diff
 
     # Injury/suspension features (unavailable in game records → neutral)
-    f[64] = 0.0    # home_injured_total
-    f[65] = 0.0    # away_injured_total
-    f[66] = 0.0    # injured_diff
-    f[67] = 0.0    # home_forwards_out
-    f[68] = 0.0    # away_forwards_out
-    f[69] = 0.0    # forwards_out_diff
-    f[70] = 0.0    # home_midfielders_out
-    f[71] = 0.0    # away_midfielders_out
-    f[72] = 0.0    # midfielders_out_diff
-    f[73] = 0.0    # home_defenders_out
-    f[74] = 0.0    # away_defenders_out
-    f[75] = 0.0    # defenders_out_diff
-    f[76] = 0.0    # home_key_players_out
-    f[77] = 0.0    # away_key_players_out
-    f[78] = 0.0    # key_players_out_diff
-    f[79] = 0.0    # home_suspended
-    f[80] = 0.0    # away_suspended
-    f[81] = 0.0    # suspended_diff
+    f[67] = 0.0    # home_injured_total
+    f[68] = 0.0    # away_injured_total
+    f[69] = 0.0    # injured_diff
+    f[70] = 0.0    # home_forwards_out
+    f[71] = 0.0    # away_forwards_out
+    f[72] = 0.0    # forwards_out_diff
+    f[73] = 0.0    # home_midfielders_out
+    f[74] = 0.0    # away_midfielders_out
+    f[75] = 0.0    # midfielders_out_diff
+    f[76] = 0.0    # home_defenders_out
+    f[77] = 0.0    # away_defenders_out
+    f[78] = 0.0    # defenders_out_diff
+    f[79] = 0.0    # home_key_players_out
+    f[80] = 0.0    # away_key_players_out
+    f[81] = 0.0    # key_players_out_diff
+    f[82] = 0.0    # home_suspended
+    f[83] = 0.0    # away_suspended
+    f[84] = 0.0    # suspended_diff
 
     # Missing data indicators (game records always missing form/goals/h2h)
-    f[82] = 1.0  # home_form_missing
-    f[83] = 1.0  # away_form_missing
-    f[84] = 1.0  # home_goals_missing
-    f[85] = 1.0  # away_goals_missing
-    f[86] = 1.0  # h2h_missing
+    f[85] = 1.0  # home_form_missing
+    f[86] = 1.0  # away_form_missing
+    f[87] = 1.0  # home_goals_missing
+    f[88] = 1.0  # away_goals_missing
+    f[89] = 1.0  # h2h_missing
 
     # Proxy xG (unavailable in game records → zero)
-    f[87] = 0.0    # home_xg_proxy
-    f[88] = 0.0    # away_xg_proxy
-    f[89] = 0.0    # xg_proxy_diff
+    f[90] = 0.0    # home_xg_proxy
+    f[91] = 0.0    # away_xg_proxy
+    f[92] = 0.0    # xg_proxy_diff
 
     return f
 
@@ -580,24 +706,34 @@ def extract_targets_from_game_record(r: dict) -> Tuple[int, int]:
 # ---------------------------------------------------------------------------
 
 class MLPredictor:
-    """ML-based predictor with RandomForest + GradientBoosting.
+    """ML-based predictor with RandomForest + GradientBoosting + XGBoost + LightGBM.
 
-    Supports probability calibration via Platt scaling (sigmoid) or
-    isotonic regression, learned from a held-out calibration set.
+    Uses 4-model ensemble for better generalization. Supports probability
+    calibration via Platt scaling (sigmoid) or isotonic regression.
     """
 
     def __init__(self):
+        # 1X2 models
         self.rf_model_1x2: Optional[RandomForestClassifier] = None
         self.gb_model_1x2: Optional[GradientBoostingClassifier] = None
+        self.xgb_model_1x2: Optional[xgb.XGBClassifier] = None
+        self.lgb_model_1x2: Optional[lgb.LGBMClassifier] = None
+        # O/U models
         self.rf_model_ou: Optional[RandomForestClassifier] = None
         self.gb_model_ou: Optional[GradientBoostingClassifier] = None
+        self.xgb_model_ou: Optional[xgb.XGBClassifier] = None
+        self.lgb_model_ou: Optional[lgb.LGBMClassifier] = None
         self.scaler: Optional[StandardScaler] = None
 
-        # Calibrated versions (wrapping the base models)
+        # Calibrated versions
         self.cal_rf_1x2: Optional[CalibratedClassifierCV] = None
         self.cal_gb_1x2: Optional[CalibratedClassifierCV] = None
+        self.cal_xgb_1x2: Optional[CalibratedClassifierCV] = None
+        self.cal_lgb_1x2: Optional[CalibratedClassifierCV] = None
         self.cal_rf_ou: Optional[CalibratedClassifierCV] = None
         self.cal_gb_ou: Optional[CalibratedClassifierCV] = None
+        self.cal_xgb_ou: Optional[CalibratedClassifierCV] = None
+        self.cal_lgb_ou: Optional[CalibratedClassifierCV] = None
 
         self.is_trained = False
         self.training_examples = 0
@@ -705,105 +841,154 @@ class MLPredictor:
         )
         self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
+        # XGBoost for 1X2
+        print(f"Training XGBoost for 1X2 ({len(X_train)} examples)...")
+        self.xgb_model_1x2 = xgb.XGBClassifier(
+            n_estimators=300, max_depth=6, learning_rate=0.05,
+            subsample=0.85, colsample_bytree=0.85, min_child_weight=5,
+            random_state=42, n_jobs=-1, eval_metric="mlogloss",
+            use_label_encoder=False,
+        )
+        self.xgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
+
+        # LightGBM for 1X2
+        print(f"Training LightGBM for 1X2 ({len(X_train)} examples)...")
+        self.lgb_model_1x2 = lgb.LGBMClassifier(
+            n_estimators=300, max_depth=8, learning_rate=0.05,
+            subsample=0.85, colsample_bytree=0.85, min_child_samples=10,
+            random_state=42, n_jobs=-1, verbose=-1,
+        )
+        self.lgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
+
+        # XGBoost for O/U
+        print(f"Training XGBoost for O/U ({len(X_train)} examples)...")
+        self.xgb_model_ou = xgb.XGBClassifier(
+            n_estimators=250, max_depth=5, learning_rate=0.08,
+            subsample=0.85, colsample_bytree=0.85, min_child_weight=5,
+            random_state=42, n_jobs=-1, eval_metric="mlogloss",
+            use_label_encoder=False,
+        )
+        self.xgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
+
+        # LightGBM for O/U
+        print(f"Training LightGBM for O/U ({len(X_train)} examples)...")
+        self.lgb_model_ou = lgb.LGBMClassifier(
+            n_estimators=250, max_depth=7, learning_rate=0.08,
+            subsample=0.85, colsample_bytree=0.85, min_child_samples=10,
+            random_state=42, n_jobs=-1, verbose=-1,
+        )
+        self.lgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
+
         # Probability calibration on held-out set
         if calibration_method and X_calib is not None and len(X_calib) >= 50:
             print(f"   Calibrating probabilities using {calibration_method}...")
+            # 1X2 calibration
             self.cal_rf_1x2 = self._calibrate_classifier(
                 self.rf_model_1x2, X_calib, y1_calib, method=calibration_method)
             self.cal_gb_1x2 = self._calibrate_classifier(
                 self.gb_model_1x2, X_calib, y1_calib, method=calibration_method)
+            self.cal_xgb_1x2 = self._calibrate_classifier(
+                self.xgb_model_1x2, X_calib, y1_calib, method=calibration_method)
+            self.cal_lgb_1x2 = self._calibrate_classifier(
+                self.lgb_model_1x2, X_calib, y1_calib, method=calibration_method)
+            # O/U calibration
             self.cal_rf_ou = self._calibrate_classifier(
                 self.rf_model_ou, X_calib, y2_calib, method=calibration_method)
             self.cal_gb_ou = self._calibrate_classifier(
                 self.gb_model_ou, X_calib, y2_calib, method=calibration_method)
-            n_cal = sum(1 for c in [self.cal_rf_1x2, self.cal_gb_1x2,
-                                    self.cal_rf_ou, self.cal_gb_ou] if c is not None)
-            print(f"   Calibrated {n_cal}/4 classifiers")
+            self.cal_xgb_ou = self._calibrate_classifier(
+                self.xgb_model_ou, X_calib, y2_calib, method=calibration_method)
+            self.cal_lgb_ou = self._calibrate_classifier(
+                self.lgb_model_ou, X_calib, y2_calib, method=calibration_method)
+            n_cal = sum(1 for c in [self.cal_rf_1x2, self.cal_gb_1x2, self.cal_xgb_1x2, self.cal_lgb_1x2,
+                                    self.cal_rf_ou, self.cal_gb_ou, self.cal_xgb_ou, self.cal_lgb_ou] if c is not None)
+            print(f"   Calibrated {n_cal}/8 classifiers")
             self.calibration_method = calibration_method
         else:
-            self.cal_rf_1x2 = None
-            self.cal_gb_1x2 = None
-            self.cal_rf_ou = None
-            self.cal_gb_ou = None
+            self.cal_rf_1x2 = self.cal_gb_1x2 = self.cal_xgb_1x2 = self.cal_lgb_1x2 = None
+            self.cal_rf_ou = self.cal_gb_ou = self.cal_xgb_ou = self.cal_lgb_ou = None
             self.calibration_method = None
 
         self.is_trained = True
         self.training_examples = n
 
-        # Cross-validation accuracy (improvement 2)
+        # Cross-validation accuracy
         try:
             tscv = TimeSeriesSplit(n_splits=3)
-            cv_scores_1x2_rf = cross_val_score(self.rf_model_1x2, X_scaled, y_1x2, cv=tscv, scoring='accuracy')
-            cv_scores_1x2_gb = cross_val_score(self.gb_model_1x2, X_scaled, y_1x2, cv=tscv, scoring='accuracy')
-            cv_scores_ou_rf = cross_val_score(self.rf_model_ou, X_scaled, y_ou, cv=tscv, scoring='accuracy')
-            cv_scores_ou_gb = cross_val_score(self.gb_model_ou, X_scaled, y_ou, cv=tscv, scoring='accuracy')
-            print(f"   CV RF 1X2: {cv_scores_1x2_rf.mean():.3f} (+/-{cv_scores_1x2_rf.std() * 2:.3f})")
-            print(f"   CV GB 1X2: {cv_scores_1x2_gb.mean():.3f} (+/-{cv_scores_1x2_gb.std() * 2:.3f})")
-            print(f"   CV RF O/U: {cv_scores_ou_rf.mean():.3f} (+/-{cv_scores_ou_rf.std() * 2:.3f})")
-            print(f"   CV GB O/U: {cv_scores_ou_gb.mean():.3f} (+/-{cv_scores_ou_gb.std() * 2:.3f})")
-            self.cv_accuracy_1x2 = max(cv_scores_1x2_rf.mean(), cv_scores_1x2_gb.mean())
-            self.cv_accuracy_ou = max(cv_scores_ou_rf.mean(), cv_scores_ou_gb.mean())
+            models_1x2 = [("RF", self.rf_model_1x2), ("GB", self.gb_model_1x2),
+                          ("XGB", self.xgb_model_1x2), ("LGB", self.lgb_model_1x2)]
+            models_ou = [("RF", self.rf_model_ou), ("GB", self.gb_model_ou),
+                         ("XGB", self.xgb_model_ou), ("LGB", self.lgb_model_ou)]
+
+            best_cv_1x2, best_cv_ou = 0.0, 0.0
+            for name, model in models_1x2:
+                scores = cross_val_score(model, X_scaled, y_1x2, cv=tscv, scoring='accuracy')
+                print(f"   CV {name} 1X2: {scores.mean():.3f} (+/-{scores.std() * 2:.3f})")
+                best_cv_1x2 = max(best_cv_1x2, scores.mean())
+            for name, model in models_ou:
+                scores = cross_val_score(model, X_scaled, y_ou, cv=tscv, scoring='accuracy')
+                print(f"   CV {name} O/U: {scores.mean():.3f} (+/-{scores.std() * 2:.3f})")
+                best_cv_ou = max(best_cv_ou, scores.mean())
+
+            self.cv_accuracy_1x2 = best_cv_1x2
+            self.cv_accuracy_ou = best_cv_ou
         except Exception as e:
             print(f"   CV skipped: {e}")
             self.cv_accuracy_1x2 = 0.0
             self.cv_accuracy_ou = 0.0
 
-        # In-sample accuracy (for reference)
-        rf_acc = (self.rf_model_1x2.predict(X_scaled) == y_1x2).mean()
-        gb_acc = (self.gb_model_1x2.predict(X_scaled) == y_1x2).mean()
-        self.accuracy_1x2 = max(rf_acc, gb_acc)
+        # In-sample accuracy
+        all_1x2 = [self.rf_model_1x2, self.gb_model_1x2, self.xgb_model_1x2, self.lgb_model_1x2]
+        all_ou = [self.rf_model_ou, self.gb_model_ou, self.xgb_model_ou, self.lgb_model_ou]
+        self.accuracy_1x2 = max((m.predict(X_scaled) == y_1x2).mean() for m in all_1x2)
+        self.accuracy_ou = max((m.predict(X_scaled) == y_ou).mean() for m in all_ou)
 
-        rf_acc_ou = (self.rf_model_ou.predict(X_scaled) == y_ou).mean()
-        gb_acc_ou = (self.gb_model_ou.predict(X_scaled) == y_ou).mean()
-        self.accuracy_ou = max(rf_acc_ou, gb_acc_ou)
-
-        print(f"   In-sample RF 1X2: {rf_acc:.3f}, GB 1X2: {gb_acc:.3f}")
-        print(f"   In-sample RF O/U: {rf_acc_ou:.3f}, GB O/U: {gb_acc_ou:.3f}")
+        accs_1x2 = [(m.__class__.__name__, (m.predict(X_scaled) == y_1x2).mean()) for m in all_1x2]
+        accs_ou = [(m.__class__.__name__, (m.predict(X_scaled) == y_ou).mean()) for m in all_ou]
+        print(f"   In-sample 1X2: {', '.join(f'{n}={a:.3f}' for n, a in accs_1x2)}")
+        print(f"   In-sample O/U: {', '.join(f'{n}={a:.3f}' for n, a in accs_ou)}")
 
     def predict_proba_1x2(self, X: np.ndarray) -> np.ndarray:
         """Return ensemble probabilities for [away, draw, home].
 
-        Uses calibrated models when available for better-calibrated probabilities.
+        Uses calibrated models when available. Averages 4 models (RF, GB, XGB, LGB).
         """
         X_scaled = self.scaler.transform(X)
 
-        # Use calibrated models if available
-        if self.cal_rf_1x2 is not None and self.cal_gb_1x2 is not None:
-            rf_proba = self.cal_rf_1x2.predict_proba(X_scaled)
-            gb_proba = self.cal_gb_1x2.predict_proba(X_scaled)
-        elif self.cal_rf_1x2 is not None:
-            rf_proba = self.cal_rf_1x2.predict_proba(X_scaled)
-            gb_proba = self.gb_model_1x2.predict_proba(X_scaled)
-        elif self.cal_gb_1x2 is not None:
-            rf_proba = self.rf_model_1x2.predict_proba(X_scaled)
-            gb_proba = self.cal_gb_1x2.predict_proba(X_scaled)
-        else:
-            rf_proba = self.rf_model_1x2.predict_proba(X_scaled)
-            gb_proba = self.gb_model_1x2.predict_proba(X_scaled)
+        def _get_proba(model, cal_model):
+            if cal_model is not None:
+                return cal_model.predict_proba(X_scaled)
+            return model.predict_proba(X_scaled)
 
-        return (rf_proba + gb_proba) / 2.0
+        probas = [
+            _get_proba(self.rf_model_1x2, self.cal_rf_1x2),
+            _get_proba(self.gb_model_1x2, self.cal_gb_1x2),
+            _get_proba(self.xgb_model_1x2, self.cal_xgb_1x2),
+            _get_proba(self.lgb_model_1x2, self.cal_lgb_1x2),
+        ]
+
+        return sum(probas) / len(probas)
 
     def predict_proba_ou(self, X: np.ndarray) -> np.ndarray:
         """Return ensemble probabilities for [under, over].
 
-        Uses calibrated models when available for better-calibrated probabilities.
+        Uses calibrated models when available. Averages 4 models (RF, GB, XGB, LGB).
         """
         X_scaled = self.scaler.transform(X)
 
-        if self.cal_rf_ou is not None and self.cal_gb_ou is not None:
-            rf_proba = self.cal_rf_ou.predict_proba(X_scaled)
-            gb_proba = self.cal_gb_ou.predict_proba(X_scaled)
-        elif self.cal_rf_ou is not None:
-            rf_proba = self.cal_rf_ou.predict_proba(X_scaled)
-            gb_proba = self.gb_model_ou.predict_proba(X_scaled)
-        elif self.cal_gb_ou is not None:
-            rf_proba = self.rf_model_ou.predict_proba(X_scaled)
-            gb_proba = self.cal_gb_ou.predict_proba(X_scaled)
-        else:
-            rf_proba = self.rf_model_ou.predict_proba(X_scaled)
-            gb_proba = self.gb_model_ou.predict_proba(X_scaled)
+        def _get_proba(model, cal_model):
+            if cal_model is not None:
+                return cal_model.predict_proba(X_scaled)
+            return model.predict_proba(X_scaled)
 
-        return (rf_proba + gb_proba) / 2.0
+        probas = [
+            _get_proba(self.rf_model_ou, self.cal_rf_ou),
+            _get_proba(self.gb_model_ou, self.cal_gb_ou),
+            _get_proba(self.xgb_model_ou, self.cal_xgb_ou),
+            _get_proba(self.lgb_model_ou, self.cal_lgb_ou),
+        ]
+
+        return sum(probas) / len(probas)
 
     def predict_from_row(self, row: dict) -> dict:
         """Predict using one row of features."""
@@ -830,17 +1015,19 @@ class MLPredictor:
         joblib.dump(self.scaler, path / "scaler.joblib")
         joblib.dump(self.rf_model_1x2, path / "rf_1x2.joblib")
         joblib.dump(self.gb_model_1x2, path / "gb_1x2.joblib")
+        joblib.dump(self.xgb_model_1x2, path / "xgb_1x2.joblib")
+        joblib.dump(self.lgb_model_1x2, path / "lgb_1x2.joblib")
         joblib.dump(self.rf_model_ou, path / "rf_ou.joblib")
         joblib.dump(self.gb_model_ou, path / "gb_ou.joblib")
+        joblib.dump(self.xgb_model_ou, path / "xgb_ou.joblib")
+        joblib.dump(self.lgb_model_ou, path / "lgb_ou.joblib")
         # Save calibrated models if they exist
-        if self.cal_rf_1x2 is not None:
-            joblib.dump(self.cal_rf_1x2, path / "cal_rf_1x2.joblib")
-        if self.cal_gb_1x2 is not None:
-            joblib.dump(self.cal_gb_1x2, path / "cal_gb_1x2.joblib")
-        if self.cal_rf_ou is not None:
-            joblib.dump(self.cal_rf_ou, path / "cal_rf_ou.joblib")
-        if self.cal_gb_ou is not None:
-            joblib.dump(self.cal_gb_ou, path / "cal_gb_ou.joblib")
+        for name, model in [("cal_rf_1x2", self.cal_rf_1x2), ("cal_gb_1x2", self.cal_gb_1x2),
+                            ("cal_xgb_1x2", self.cal_xgb_1x2), ("cal_lgb_1x2", self.cal_lgb_1x2),
+                            ("cal_rf_ou", self.cal_rf_ou), ("cal_gb_ou", self.cal_gb_ou),
+                            ("cal_xgb_ou", self.cal_xgb_ou), ("cal_lgb_ou", self.cal_lgb_ou)]:
+            if model is not None:
+                joblib.dump(model, path / f"{name}.joblib")
         meta = {
             "is_trained": self.is_trained,
             "training_examples": self.training_examples,
@@ -849,6 +1036,7 @@ class MLPredictor:
             "cv_accuracy_1x2": getattr(self, 'cv_accuracy_1x2', 0.0),
             "cv_accuracy_ou": getattr(self, 'cv_accuracy_ou', 0.0),
             "calibration_method": getattr(self, 'calibration_method', None),
+            "models": ["RF", "GB", "XGB", "LGB"],
         }
         with open(path / "meta.json", "w") as f:
             json.dump(meta, f)
@@ -878,6 +1066,22 @@ class MLPredictor:
             ml.gb_model_1x2 = joblib.load(path / "gb_1x2.joblib")
             ml.rf_model_ou = joblib.load(path / "rf_ou.joblib")
             ml.gb_model_ou = joblib.load(path / "gb_ou.joblib")
+            # Load XGBoost/LightGBM if they exist (backward compatible)
+            xgb_1x2_path = path / "xgb_1x2.joblib"
+            lgb_1x2_path = path / "lgb_1x2.joblib"
+            if xgb_1x2_path.exists():
+                ml.xgb_model_1x2 = joblib.load(xgb_1x2_path)
+                ml.lgb_model_1x2 = joblib.load(lgb_1x2_path)
+                ml.xgb_model_ou = joblib.load(path / "xgb_ou.joblib")
+                ml.lgb_model_ou = joblib.load(path / "lgb_ou.joblib")
+            else:
+                print("[ML] XGBoost/LightGBM not found — retraining with all 4 models...")
+                try:
+                    shutil.rmtree(path, ignore_errors=True)
+                    return train()
+                except Exception as e2:
+                    print(f"[ML] Retraining failed: {e2}")
+                    return None
         except Exception as e:
             print(f"[ML] Model files incompatible with current environment ({e}). Retraining...")
             try:
@@ -890,8 +1094,12 @@ class MLPredictor:
         cal_paths = {
             "cal_rf_1x2": "cal_rf_1x2.joblib",
             "cal_gb_1x2": "cal_gb_1x2.joblib",
+            "cal_xgb_1x2": "cal_xgb_1x2.joblib",
+            "cal_lgb_1x2": "cal_lgb_1x2.joblib",
             "cal_rf_ou": "cal_rf_ou.joblib",
             "cal_gb_ou": "cal_gb_ou.joblib",
+            "cal_xgb_ou": "cal_xgb_ou.joblib",
+            "cal_lgb_ou": "cal_lgb_ou.joblib",
         }
         for attr, fname in cal_paths.items():
             fpath = path / fname
@@ -982,11 +1190,15 @@ def prob_over(exp_h: float, exp_a: float, threshold: float = 2.5) -> float:
 
 def compute_attack_defense_strength(
     home_gf: float, home_ga: float, away_gf: float, away_ga: float,
-    league_avg_goals: float, home_adv: float = 1.15,
+    league_avg_goals: float, home_adv: float = 1.10,
     form_len_h: int = 6, form_len_a: int = 6,
 ) -> Tuple[float, float]:
     """Compute expected goals using attack/defense strength (Dixon-Coles style).
-    Regresses toward league mean when form sample is small."""
+    Regresses toward league mean when form sample is small.
+    
+    Improved home_advantage from 1.15 to 1.10 to reduce home bias.
+    Actual home win rate is ~41%, so home advantage should be modest.
+    """
     league_avg = league_avg_goals / 2.0
     # Shrink team-specific gf/ga toward the league mean by sample size BEFORE
     # deriving strength. This prevents raw season averages (e.g. 2.4 gf) from
@@ -1091,13 +1303,28 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
         p_draw = prob_draw(exp_h, exp_a)
         p_away = 1.0 - p_home - p_draw
 
-        # Legacy draw inflation
-        goal_diff = abs(exp_h - exp_a)
-        if goal_diff < 0.4:
-            draw_boost = (0.4 - goal_diff) / 0.4 * 0.05
-            p_draw += draw_boost
-            p_home *= (1.0 - draw_boost) / (p_home + p_away + 1e-10)
-            p_away = 1.0 - p_home - p_draw
+    # Draw probability adjustment based on expected goals proximity
+    # When expected goals are close (balanced match), draw probability should be higher
+    # This fixes the issue where Poisson underestimates draws in balanced matches
+    goal_diff = abs(exp_h - exp_a)
+    avg_goals = (exp_h + exp_a) / 2.0
+    
+    # Draw adjustment: balanced matches (goal_diff < 0.3) with low expected goals
+    # should have higher draw probability
+    if goal_diff < 0.3 and avg_goals < 2.5:
+        # Boost draw probability by 5-10% based on how balanced the match is
+        draw_boost = (0.3 - goal_diff) / 0.3 * 0.08
+        # Reduce home/away proportionally
+        p_home *= (1.0 - draw_boost)
+        p_away *= (1.0 - draw_boost)
+        p_draw += draw_boost * (p_home + p_away)
+    
+    # Also boost draws when expected goals are very low (< 2.0)
+    if avg_goals < 2.0:
+        low_goals_boost = (2.0 - avg_goals) / 2.0 * 0.05
+        p_home *= (1.0 - low_goals_boost)
+        p_away *= (1.0 - low_goals_boost)
+        p_draw += low_goals_boost * (p_home + p_away)
 
     # Normalize
     total = p_home + p_draw + p_away
