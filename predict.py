@@ -24,7 +24,8 @@ from pathlib import Path
 from database import (
     get_db, init_db, save_prediction, get_unreviewed_matches, update_result,
     get_calibration_summary, get_predictions_for_review, get_league_accuracy,
-    store_market_results, get_market_accuracy, get_market_accuracy_history
+    store_market_results, get_market_accuracy, get_market_accuracy_history,
+    add_pending_result,
 )
 from calibration_learner import retrain_from_results, apply_calibration
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
@@ -2512,6 +2513,20 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         if best_12_conf == "Near Certain":
             best_12_conf = "High"
 
+    # League reliability damping for 1X2: unreliable leagues
+    # produce false-confidence picks — cap them down
+    if _ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0:
+        if _ld["accuracy"] < 45:
+            # Very unreliable: Near Certain → High, High → Medium-High
+            if best_12_conf == "Near Certain":
+                best_12_conf = "High"
+            if best_12_conf == "High":
+                best_12_conf = "Medium-High"
+        elif _ld["accuracy"] < 65:
+            # Unreliable: High → Medium-High
+            if best_12_conf == "High":
+                best_12_conf = "Medium-High"
+
     if best_12_conf != "Low":
         best_12 = top_pick
         parts = [f"model {p_home:.0%}/{p_draw:.0%}/{p_away:.0%}", f"exp {exp_h:.1f}-{exp_a:.1f}"]
@@ -3270,7 +3285,8 @@ def log(msg, end="\n"):
     print(msg, end=end, file=sys.stderr, flush=True)
 
 
-def _write_html(results, all_urls, compare_forebet, high_only):
+def _write_html(results, all_urls, compare_forebet, high_only,
+                _save_to=None, _title_suffix=""):
     """Generate an HTML report of predictions and update index."""
     import webbrowser
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -3595,7 +3611,7 @@ def _write_html(results, all_urls, compare_forebet, high_only):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Predictions — {now}</title>
+<title>Predictions{_title_suffix} — {now}</title>
 <style>
 * {{ margin:0; padding:0; box-sizing:border-box; }}
 body {{ font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0f172a; color:#e2e8f0; padding:20px; }}
@@ -3771,69 +3787,40 @@ function applyFilters() {{
 </body>
 </html>"""
 
-    # ── Save numbered report (dedupe by match id) ──
-    pred_dir = Path("predictions")
+    # ── Save HTML ──
+    pred_dir = Path(__file__).parent / "predictions"
     pred_dir.mkdir(exist_ok=True)
 
-    # Build the set of match ids for this run. Forebet match URLs end in a
-    # numeric id (e.g. ...-2428062); use that as the stable unique identifier
-    # so re-running the same URL(s) reuses the existing report instead of
-    # creating a duplicate.
-    import re as _re
-    current_ids = set()
-    for r in (results or []):
-        mid = r.get("match_id")
-        if mid:
-            current_ids.add(str(mid))
-    # Fallback: derive id from the trailing digits of each URL
-    for u in (all_urls or []):
-        m = _re.search(r"/(\d+)(?:[/?]|$)", u)
-        if m:
-            current_ids.add(m.group(1))
+    if _save_to:
+        # Direct save (e.g. high-confidence report)
+        _save_to.write_text(html)
+        return _save_to
 
-    # Find next available number
-    existing = sorted(pred_dir.glob("*.html"))
-    existing_nums = []
-    for f in existing:
-        if f.name == "index.html":
-            continue
-        try:
-            existing_nums.append(int(f.stem))
-        except ValueError:
-            pass
+    report_path = pred_dir / "latest.html"
 
-    # Reuse an existing report that already contains the exact same match set
-    report_path = None
-    if current_ids:
-        for f in existing:
-            if f.name == "index.html":
-                continue
-            try:
-                int(f.stem)
-            except ValueError:
-                continue
-            content = f.read_text(encoding="utf-8", errors="ignore")
-            file_ids = set(_re.findall(r'data-match-id="(\d+)"', content))
-            if current_ids and file_ids == current_ids:
-                report_path = f
-                break
-
-    if report_path is None:
-        next_num = max(existing_nums, default=0) + 1
-        report_path = pred_dir / f"{next_num:03d}.html"
+    # Archive previous latest if it exists
+    if report_path.exists():
+        archive_dir = pred_dir / "archive"
+        archive_dir.mkdir(exist_ok=True)
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        report_path.rename(archive_dir / f"{ts}.html")
 
     report_path.write_text(html)
-    if report_path.stem in {str(n) for n in existing_nums}:
-        log(f"HTML report (reused): {report_path.resolve()}")
-    else:
-        log(f"HTML report: {report_path.resolve()}")
+    log(f"HTML report: {report_path.resolve()}")
 
-    # ── Update index.html ──
-    _update_index(pred_dir, now)
+    # ── High-confidence-only report ──
+    high_results = [r for r in results if r["confidence"] in ("Near Certain", "High")]
+    high_path = None
+    if high_results and len(high_results) < len(results):
+        high_path = pred_dir / "high.html"
+        _write_html(high_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=high_path, _title_suffix=" (High Confidence)")
+        log(f"High-confidence report: {high_path.resolve()}")
 
     # ── Auto-open in browser ──
-    index_path = pred_dir / "index.html"
-    webbrowser.open(str(index_path.resolve()))
+    webbrowser.open(str(report_path.resolve()))
+    if high_path:
+        webbrowser.open(str(high_path.resolve()))
 
     return report_path
 
@@ -4102,6 +4089,12 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             from database import compute_proxy_xg
             compute_proxy_xg(match_id, data)
 
+        # Track unfinished matches for later result scraping
+        if match_id and actual_hg is None:
+            url = data.get("forebet_url", "")
+            if url:
+                add_pending_result(match_id, url, home_team, away_team)
+
         # Update DB with result if match is finished
         if actual_hg is not None and actual_ag is not None and match_id:
             update_result(match_id, actual_hg, actual_ag)
@@ -4250,7 +4243,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 extra_width += 1
         return len(clean) + extra_width
 
-    for r in results:
+    for i, r in enumerate(results, 1):
         preds_made += 1
 
         # ── Minimal summary line ──
@@ -4268,7 +4261,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             match_info += f"  •  {league}"
         if date:
             match_info += f"  •  {date}"
-        print(f"\033[1m{match_info}\033[0m")
+        print(f"\n\033[1m{i}. {match_info}\033[0m")
 
         # Line 2: Result (if finished)
         if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
@@ -4335,7 +4328,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                     print(f"    {line}")
 
         # Line 4: HTML path
-        print(f"→ predictions/{report_path.stem}.html")
+        print(f"→ predictions/latest.html")
     print(f"\nSaved to database: history.db")
 
     # Schedule retrain ~18h after games finish

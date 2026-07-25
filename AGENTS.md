@@ -1,11 +1,15 @@
 # Predictor Instructions
 
-## Quick Commands
+## Core Commands
 
 | Command | Description |
 |---------|-------------|
 | `pr <file>` | Run predictions for matches in a link file |
-| `pr results` | Update existing reports with match results (no duplicates) |
+| `pr <url>` | Predict a single match URL |
+| `pr results` | Scrape Forebet for scores, update DB + HTML reports |
+| `pr --high-only <file>` | Only show High / Near Certain picks |
+| `pr --no-ml <file>` | Classic Poisson only (no ML ensemble) |
+| `pr --json <file>` | JSON output |
 
 ## Workflow
 
@@ -18,30 +22,65 @@ pr upcoming.txt       # Run upcoming matches
 
 ### 2. Update results (after matches finish)
 ```bash
-pr results            # Scrape Forebet for scores, update HTML reports + index
+pr results            # Scrape Forebet for scores → update DB + HTML → auto-learn
 ```
 
-This avoids re-running `pr links.txt` which would create duplicate entries.
+### 3. Learn from results (manual, if needed)
+```bash
+pr --calibrate            # Show accuracy stats per confidence level and league
+```
 
-### 3. View reports
-- Reports are saved in `predictions/` as numbered HTML files (001.html, 002.html...)
-- `predictions/index.html` shows the last 100 reports with accuracy stats
-- Reports auto-open in browser after generation
+### 4. View reports
+- Report saved to `predictions/latest.html` (overwritten each run, old versions in `predictions/archive/`)
+- `predictions/high.html` — Near Certain + High picks only (auto-opened in browser)
+
+## How It All Fits Together
+
+```
+pr links.txt               → Predictions saved to history.db + HTML reports
+                           → data/pending_results.json updated with new matches
+                           → Cron scheduled to retrain model in 18h
+
+pr results                 → Reads data/pending_results.json
+                           → Scrapes Forebet for finished scores
+                           → Updates history.db + HTML files
+                           → Removes completed entries from pending file
+                           → Auto-learn: analyze bias + retrain ML if 50+ new examples
+
+Cron (scheduled by pr)     → Runs retrain_from_results() after 18h
+                           → Isotonic regression on latest data
+```
+
+**Key point:** `pr results` does NOT trigger learning. It only updates data. Learning happens via `pr --learn-calibration` or the cron job scheduled by `pr links.txt`.
 
 ## Aliases
 
 | Alias | What it does |
 |-------|--------------|
 | `pr` | Runs predict.py with venv Python |
-| `pr-results` | Runs update_results.py to update existing reports |
 
-## How `pr results` works
+## Key Files
 
-1. Scans all HTML reports in `predictions/` for matches without results
-2. Extracts Forebet URLs from each report
-3. Re-scrapes those pages for updated scores
-4. Updates the DB with actual scores
-5. Injects `RESULT:` lines into existing HTML files
-6. Regenerates `index.html`
+| File | Purpose |
+|------|---------|
+| `history.db` | All predictions + results + calibration data |
+| `data/pending_results.json` | Matches still needing result updates |
+| `data/links.txt` | Forebet URLs to predict |
+| `predictions/` | HTML reports (numbered) |
+| `calibration_params.json` | Isotonic regression calibration params |
+| `ml_models/ml_predictor/` | Trained ML model components |
 
-Run this periodically after matches finish instead of re-running predictions.
+## Auto-Retrain (Cron)
+
+A cron job is automatically scheduled when you run predictions. It retrains the model 18 hours later.
+
+```bash
+crontab -l                    # View scheduled jobs
+tail -f /tmp/retrain.log      # Watch retrain logs
+```
+
+## DB Quick Stats
+
+```bash
+sqlite3 history.db "SELECT COUNT(*) as total, SUM(CASE WHEN actual_home_goals IS NOT NULL THEN 1 ELSE 0 END) as with_results FROM matches;"
+```

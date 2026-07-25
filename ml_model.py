@@ -993,6 +993,18 @@ class MLPredictor:
     def predict_from_row(self, row: dict) -> dict:
         """Predict using one row of features."""
         fv = extract_features_from_db_row(row).reshape(1, -1)
+        try:
+            expected = getattr(self.scaler, "n_features_in_", None)
+        except Exception:
+            expected = None
+        if expected is not None and int(fv.shape[1]) != int(expected):
+            import logging
+            logging.getLogger("predictor").warning(
+                "ML feature mismatch: got %d features, scaler expects %d — "
+                "falling back to Poisson-only for this match. Retrain the model "
+                "after feature-set changes.", int(fv.shape[1]), int(expected)
+            )
+            return {}
         p_1x2 = self.predict_proba_1x2(fv)[0]
         p_ou = self.predict_proba_ou(fv)[0]
         return {

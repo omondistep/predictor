@@ -1306,6 +1306,55 @@ def log_retrain(triggered_by: str, examples_before: int, examples_after: int,
     conn.close()
 
 
+# ── Pending results tracking ─────────────────────────────────────
+# A lightweight JSON file that tracks which matches still need their
+# results scraped.  Every predict run appends; update_results removes
+# entries once scores are written to the DB.
+
+PENDING_PATH = DB_DIR / "data" / "pending_results.json"
+
+
+def _load_pending() -> list:
+    if PENDING_PATH.exists():
+        try:
+            return json.loads(PENDING_PATH.read_text())
+        except Exception:
+            return []
+    return []
+
+
+def _save_pending(entries: list):
+    PENDING_PATH.parent.mkdir(parents=True, exist_ok=True)
+    PENDING_PATH.write_text(json.dumps(entries, indent=2))
+
+
+def add_pending_result(match_id: int, forebet_url: str, home_team: str, away_team: str):
+    """Add a match to the pending-results tracker (idempotent by URL)."""
+    entries = _load_pending()
+    if any(e.get("forebet_url") == forebet_url for e in entries):
+        return
+    entries.append({
+        "match_id": match_id,
+        "forebet_url": forebet_url,
+        "home_team": home_team,
+        "away_team": away_team,
+        "added": datetime.now().isoformat(),
+    })
+    _save_pending(entries)
+
+
+def remove_pending_result(forebet_url: str):
+    """Remove a match from the pending-results tracker."""
+    entries = _load_pending()
+    entries = [e for e in entries if e.get("forebet_url") != forebet_url]
+    _save_pending(entries)
+
+
+def get_pending_results() -> list:
+    """Return all pending result entries."""
+    return _load_pending()
+
+
 # Auto-initialize on import
 if not DB_PATH.exists():
     init_db()
