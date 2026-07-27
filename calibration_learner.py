@@ -100,7 +100,7 @@ def analyze_calibration(min_samples: int = 10, days_back: int = 365):
     rows = conn.execute("""
         SELECT m.id, m.league, c.market, c.our_prediction,
                m.actual_home_goals, m.actual_away_goals,
-               c.confidence, c.correct,
+               c.confidence, c.correct, c.model_prob,
                m.poisson_prob_home, m.poisson_prob_draw, m.poisson_prob_away,
                m.ml_prob_home, m.ml_prob_draw, m.ml_prob_away,
                m.forebet_prob_home, m.forebet_prob_draw, m.forebet_prob_away,
@@ -166,19 +166,22 @@ def analyze_calibration(min_samples: int = 10, days_back: int = 365):
             m_thresh = re.search(r"(\d+\.?\d*)", pred)
             if m_thresh:
                 thresh = float(m_thresh.group(1))
-            # We don't store model prob for O/U directly in DB, compute from odds
             actual_ou = "Over" if (hg + ag) > thresh else "Under"
             actual_correct = 1 if (pred.startswith("Over") and actual_ou == "Over") or \
                                    (pred.startswith("Under") and actual_ou == "Under") else 0
-            # Estimate implied probability from odds as proxy for model prob
-            odds_o25 = r.get("odds_over25")
-            odds_u25 = r.get("odds_under25")
-            if pred.startswith("Over") and odds_o25 and odds_o25 > 1:
-                model_prob = 1.0 / odds_o25
-            elif pred.startswith("Under") and odds_u25 and odds_u25 > 1:
-                model_prob = 1.0 / odds_u25
-            else:
-                model_prob = 0.5
+            # Use the model_prob stored in calibration_log (from predict.py),
+            # which is the actual Poisson/ML probability for this pick.
+            # Fall back to odds-implied probability only when missing.
+            model_prob = r.get("model_prob")
+            if not model_prob or model_prob <= 0:
+                odds_o25 = r.get("odds_over25")
+                odds_u25 = r.get("odds_under25")
+                if pred.startswith("Over") and odds_o25 and odds_o25 > 1:
+                    model_prob = 1.0 / odds_o25
+                elif pred.startswith("Under") and odds_u25 and odds_u25 > 1:
+                    model_prob = 1.0 / odds_u25
+                else:
+                    model_prob = 0.5
 
             if model_prob > 0:
                 bucket_key = (league, market, f"Over{int(thresh)}", _bucket_prob(model_prob))
@@ -190,7 +193,11 @@ def analyze_calibration(min_samples: int = 10, days_back: int = 365):
             pred = r["our_prediction"] or ""
             actual_btts = "Yes" if hg > 0 and ag > 0 else "No"
             actual_correct = 1 if pred == actual_btts else 0
-            model_prob = 0.5
+            # Use the model_prob stored in calibration_log (from predict.py),
+            # which is the blended Poisson/Forebet probability for this pick.
+            model_prob = r.get("model_prob")
+            if not model_prob or model_prob <= 0:
+                model_prob = 0.5
             if model_prob > 0:
                 bucket_key = (league, market, pred, _bucket_prob(model_prob))
                 buckets_btts[bucket_key]["preds"].append(model_prob)
@@ -581,7 +588,7 @@ def calibration_report(min_samples: int = 10, verbose: bool = True):
     """Generate a comprehensive calibration quality report."""
     conn = get_db()
     rows = conn.execute("""
-        SELECT c.market, c.our_prediction, c.correct,
+        SELECT c.market, c.our_prediction, c.correct, c.model_prob,
                m.league, m.poisson_prob_home, m.poisson_prob_draw, m.poisson_prob_away
         FROM calibration_log c
         JOIN matches m ON m.id = c.match_id
@@ -610,7 +617,10 @@ def calibration_report(min_samples: int = 10, verbose: bool = True):
                         "Away win": r["poisson_prob_away"]}
                 p = pmap.get(pred)
             else:
-                p = 0.5
+                # Use stored model_prob from calibration_log
+                p = r.get("model_prob")
+                if not p or p <= 0:
+                    p = 0.5
             if p and p > 0:
                 probs.append(p)
                 corrects.append(r["correct"])

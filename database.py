@@ -728,7 +728,7 @@ def _update_component_accuracy(conn, match: dict, our_correct: int):
         else:
             _upsert_comp("ml", our_correct)
         # Track forebet component when ensemble used
-        if "forebet" in method or "fb=" in method:
+        if "forebet" in method or "fb=" in method or "fb-weights" in method:
             _upsert_comp("forebet", our_correct)
     else:
         _upsert_comp("poisson", our_correct)
@@ -1063,6 +1063,138 @@ def get_dynamic_weights(league: str = None, market: str = None, min_samples: int
                 weights[k] /= tw
 
     return weights
+
+
+def train_weights_from_history(market: str = "1X2", min_samples: int = 10):
+    """Train ensemble weights from historical predictions.
+    
+    For each league, computes per-source accuracy from calibration_log
+    and updates component_accuracy table. This allows the model to learn
+    which source (Forebet, Poisson, ML) is most accurate per league.
+    
+    Returns dict with summary of changes.
+    """
+    conn = get_db()
+    
+    # Get all leagues with enough 1X2 predictions
+    leagues = conn.execute("""
+        SELECT league, COUNT(*) as total,
+               SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as ensemble_correct,
+               SUM(CASE WHEN forebet_correct = 1 THEN 1 ELSE 0 END) as forebet_correct,
+               SUM(CASE WHEN forebet_correct IS NOT NULL THEN 1 ELSE 0 END) as has_forebet
+        FROM calibration_log
+        WHERE market = ? AND actual_result IS NOT NULL
+        GROUP BY league
+        HAVING total >= ?
+    """, (market, min_samples)).fetchall()
+    
+    updated = 0
+    results = {}
+    
+    for row in leagues:
+        league = row["league"]
+        total = row["total"]
+        ens_correct = row["ensemble_correct"] or 0
+        fb_correct = row["forebet_correct"] or 0
+        has_fb = row["has_forebet"] or 0
+        
+        # Skip if no forebet data
+        if has_fb < min_samples:
+            continue
+        
+        # Compute accuracies
+        ens_acc = ens_correct / total if total > 0 else 0
+        fb_acc = fb_correct / has_fb if has_fb > 0 else 0
+        
+        # Infer Poisson+ML contribution
+        # If ensemble matches forebet pick and both correct: forebet contributed
+        # If ensemble differs from forebet and ensemble correct: poisson/ml contributed
+        # Simple approximation: poisson_ml_acc = (ensemble_correct - forebet_contribution) / total
+        # where forebet_contribution = forebet_correct * (overlap with ensemble)
+        
+        # Get overlap: how often ensemble pick matches forebet pick
+        # forebet_pred can be: "1" (home), "2" (away), "X" (draw), or "H", "A", "D"
+        overlap_row = conn.execute("""
+            SELECT COUNT(*) as overlap,
+                   SUM(CASE WHEN correct = 1 THEN 1 ELSE 0 END) as overlap_correct
+            FROM calibration_log
+            WHERE market = ? AND league = ? 
+              AND actual_result IS NOT NULL
+              AND forebet_pred IS NOT NULL
+              AND (
+                (forebet_pred IN ('H', '1') AND our_prediction = 'Home win')
+                OR (forebet_pred IN ('D', 'X') AND our_prediction = 'Draw')
+                OR (forebet_pred IN ('A', '2') AND our_prediction = 'Away win')
+              )
+        """, (market, league)).fetchone()
+        
+        overlap = overlap_row["overlap"] or 0
+        overlap_correct = overlap_row["overlap_correct"] or 0
+        
+        # When ensemble agrees with forebet, forebet accuracy = overlap_correct/overlap
+        # When ensemble disagrees, poisson/ml accuracy = (ens_correct - overlap_correct)/(total - overlap)
+        fb_when_agree = overlap_correct / overlap if overlap > 0 else fb_acc
+        
+        # Poisson/ML accuracy: when ensemble pick != forebet pick, the ensemble is driven by poisson/ml
+        non_fb_total = total - overlap
+        non_fb_correct = ens_correct - overlap_correct
+        pm_acc = non_fb_correct / non_fb_total if non_fb_total > 0 else ens_acc
+        
+        # Also compute: what's the ensemble accuracy when it disagrees with forebet?
+        # This tells us how well poisson/ml perform independently
+        ensemble_vs_forebet_acc = non_fb_correct / non_fb_total if non_fb_total > 0 else 0
+        
+        # Ensure we have minimum accuracy (don't let 0% destroy a source)
+        fb_acc_eff = max(fb_acc, 0.15)
+        pm_acc_eff = max(pm_acc, 0.15)
+        
+        # Compute optimal weights (proportional to accuracy)
+        total_acc = fb_acc_eff + pm_acc_eff
+        w_fb_raw = fb_acc_eff / total_acc
+        w_pm_raw = pm_acc_eff / total_acc
+        
+        # Split poisson/ml 50/50 (we don't have separate tracking yet)
+        w_poisson = w_pm_raw * 0.55
+        w_ml = w_pm_raw * 0.45
+        w_forebet = w_fb_raw
+        
+        # Store in component_accuracy
+        conn.execute("""
+            INSERT OR REPLACE INTO component_accuracy
+                (component, league, market, total, correct, last_updated)
+            VALUES (?, ?, ?, ?, ?, datetime('now'))
+        """, ("forebet", league, market, has_fb, fb_correct))
+        
+        # For poisson+ml, we approximate from ensemble performance when forebet wasn't the driver
+        if non_fb_total > 0:
+            conn.execute("""
+                INSERT OR REPLACE INTO component_accuracy
+                    (component, league, market, total, correct, last_updated)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, ("poisson", league, market, non_fb_total, int(pm_acc * non_fb_total)))
+            conn.execute("""
+                INSERT OR REPLACE INTO component_accuracy
+                    (component, league, market, total, correct, last_updated)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
+            """, ("ml", league, market, non_fb_total, int(pm_acc * non_fb_total)))
+        
+        results[league] = {
+            "total": total,
+            "forebet_acc": round(fb_acc * 100, 1),
+            "poisson_ml_acc": round(pm_acc * 100, 1),
+            "ensemble_acc": round(ens_acc * 100, 1),
+            "weights": {
+                "forebet": round(w_forebet, 3),
+                "poisson": round(w_poisson, 3),
+                "ml": round(w_ml, 3)
+            }
+        }
+        updated += 1
+    
+    conn.commit()
+    conn.close()
+    
+    return {"leagues_updated": updated, "details": results}
 
 
 def record_ml_league_result(league: str, market: str, ml_correct: bool, poisson_correct: bool):

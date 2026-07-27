@@ -130,7 +130,38 @@ FEATURE_NAMES = [
     # ── NEW: Clean sheets and scoring consistency ──
     "home_clean_sheets_pct", "away_clean_sheets_pct",
     "home_scored_pct", "away_scored_pct",
+    # ── NEW: Common opponent scoring analysis (from Forebet insights) ──
+    "home_common_scoring_rate",    # % of common opponents home team scored against
+    "away_common_scoring_rate",    # % of common opponents away team scored against
+    "home_common_defense_vuln",    # Avg goals conceded vs common opponents
+    "away_common_defense_vuln",    # Avg goals conceded vs common opponents
+    "common_btts_rate",            # BTTS rate against common opponents
+    "common_over25_rate",          # O2.5 rate against common opponents
+    "home_hidden_strength",        # 1 if team scores ≥80% despite poor record
+    "away_hidden_strength",        # 1 if team scores ≥80% despite poor record
 ]
+
+# ── Feature categories: market-derived vs independent ──
+# MARKET features are derived from odds/forebet — they encode what the market
+# already knows. The model should NOT rely on these to make predictions,
+# because the market is already efficient at incorporating this information.
+# INDEPENDENT features come from team performance data and capture
+# information the market may miss.
+MARKET_FEATURES = frozenset({
+    25, 26, 27,   # fb_home_pct, fb_draw_pct, fb_away_pct
+    28, 29, 30,   # odds_home, odds_draw, odds_away
+    33,           # prob_diff_home_away (= fb_home - fb_away)
+    34,           # implied_home_prob (= 1/odds_home)
+    35,           # odds_fb_value_home (= fb_home - implied_home)
+    36,           # draw_concentration (= fb_draw*2 - 1)
+    38,           # home_advantage_signal (fb-based)
+    39,           # prob_entropy (Shannon entropy of fb probs)
+    40,           # odds_implied_overround (= sum(1/odds) - 1)
+    41,           # favorite_strength (= max of fb probs)
+    42,           # gap_favorite_underdog (= sorted fb range)
+})
+INDEPENDENT_FEATURES = frozenset(i for i in range(len(FEATURE_NAMES))
+                                  if i not in MARKET_FEATURES)
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
 TARGET_OU = "target_ou"        # 0=under, 1=over
@@ -440,8 +471,8 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(al)
 
     # ── NEW: Combined strength scores ──
-    home_strength = (h_gf - h_ga) * 0.3 + (hfp - 1.5) * 0.3 + (1 - (hp - 1) / 19) * 0.2 + (fb_h - 0.33) * 0.2
-    away_strength = (a_gf - a_ga) * 0.3 + (afp - 1.5) * 0.3 + (1 - (ap - 1) / 19) * 0.2 + (fb_a - 0.33) * 0.2
+    home_strength = (h_gf - h_ga) * 0.4 + (hfp - 1.5) * 0.35 + (1 - (hp - 1) / 19) * 0.25
+    away_strength = (a_gf - a_ga) * 0.4 + (afp - 1.5) * 0.35 + (1 - (ap - 1) / 19) * 0.25
     f.append(home_strength)
     f.append(away_strength)
 
@@ -462,6 +493,112 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(row.get("away_clean_sheets_pct") or 0)
     f.append(row.get("home_scored_pct") or 0)
     f.append(row.get("away_scored_pct") or 0)
+
+    # ── NEW: Common opponent scoring analysis ──
+    # These features capture insights from Forebet analysis:
+    # - Scoring consistency against shared opponents
+    # - Defensive vulnerability against shared opponents
+    # - BTTS and O/U rates against shared opponents
+    # - Hidden strength (scoring despite poor record)
+    home_form_str = row.get("home_form") or ""
+    away_form_str = row.get("away_form") or ""
+    home_form_details = row.get("home_form_details") or []
+    away_form_details = row.get("away_form_details") or []
+
+    if home_form_details and away_form_details:
+        # Build opponent maps
+        home_opp_map = {}
+        for m in home_form_details:
+            opp = m.get("opponent", "")
+            if opp:
+                if opp not in home_opp_map:
+                    home_opp_map[opp] = []
+                home_opp_map[opp].append(m)
+
+        away_opp_map = {}
+        for m in away_form_details:
+            opp = m.get("opponent", "")
+            if opp:
+                if opp not in away_opp_map:
+                    away_opp_map[opp] = []
+                away_opp_map[opp].append(m)
+
+        common_opps = set(home_opp_map.keys()) & set(away_opp_map.keys())
+
+        if common_opps:
+            home_scored_count = 0
+            home_conceded_total = 0
+            away_scored_count = 0
+            away_conceded_total = 0
+            btts_count = 0
+            over25_count = 0
+            total_matches = 0
+
+            for opp in common_opps:
+                h_matches = home_opp_map[opp]
+                a_matches = away_opp_map[opp]
+
+                # Use most recent match against each common opponent
+                h_match = max(h_matches, key=lambda m: m.get("date", ""))
+                a_match = max(a_matches, key=lambda m: m.get("date", ""))
+
+                h_gf = h_match.get("gf", 0)
+                h_ga = h_match.get("ga", 0)
+                a_gf = a_match.get("gf", 0)
+                a_ga = a_match.get("ga", 0)
+
+                # Scoring consistency
+                if h_gf > 0:
+                    home_scored_count += 1
+                if a_gf > 0:
+                    away_scored_count += 1
+
+                # Defensive vulnerability
+                home_conceded_total += h_ga
+                away_conceded_total += a_ga
+
+                # BTTS check
+                if h_gf > 0 and a_gf > 0:
+                    btts_count += 1
+
+                # O/U check
+                total_goals = h_gf + h_ga + a_gf + a_ga
+                if total_goals > 2.5:
+                    over25_count += 1
+
+                total_matches += 1
+
+            if total_matches > 0:
+                home_scoring_rate = home_scored_count / total_matches
+                away_scoring_rate = away_scored_count / total_matches
+                home_defense_vuln = home_conceded_total / total_matches
+                away_defense_vuln = away_conceded_total / total_matches
+                btts_rate = btts_count / total_matches
+                over25_rate = over25_count / total_matches
+
+                # Hidden strength: team scores ≥80% despite poor record (≥3 losses)
+                home_losses = sum(1 for c in home_form_str if c == "L")
+                away_losses = sum(1 for c in away_form_str if c == "L")
+                home_hidden = 1.0 if (home_scoring_rate >= 0.8 and home_losses >= 3) else 0.0
+                away_hidden = 1.0 if (away_scoring_rate >= 0.8 and away_losses >= 3) else 0.0
+
+                f.append(home_scoring_rate)
+                f.append(away_scoring_rate)
+                f.append(home_defense_vuln)
+                f.append(away_defense_vuln)
+                f.append(btts_rate)
+                f.append(over25_rate)
+                f.append(home_hidden)
+                f.append(away_hidden)
+            else:
+                # No common opponents found
+                f.extend([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        else:
+            # No common opponents found
+            f.extend([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    else:
+        # No form details available
+        f.extend([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
     return np.array(f, dtype=np.float32)
 
@@ -735,6 +872,9 @@ class MLPredictor:
         self.cal_xgb_ou: Optional[CalibratedClassifierCV] = None
         self.cal_lgb_ou: Optional[CalibratedClassifierCV] = None
 
+        # Feature selection: indices of features used for training/prediction
+        self.feature_indices: Optional[np.ndarray] = None
+
         self.is_trained = False
         self.training_examples = 0
         self.accuracy_1x2 = 0.0
@@ -760,18 +900,25 @@ class MLPredictor:
               sample_weights: Optional[np.ndarray] = None,
               calibration_method: Optional[str] = "sigmoid",
               calibration_split: float = 0.15,
-              dates: Optional[list] = None):
+              dates: Optional[list] = None,
+              feature_indices: Optional[np.ndarray] = None):
         """Train all models with optional sample weights and probability calibration.
 
-        When calibration_method is set, holds out 'calibration_split' fraction
-        of data to fit Platt scaling (sigmoid) or isotonic regression, producing
-        better-calibrated probabilities. Uses chronological split when dates are
-        provided to prevent future data leakage into calibration set.
+        When feature_indices is provided, only those features are used for
+        training. This prevents the model from over-relying on market odds.
         """
         n = len(X)
         if n < 100:
             print(f"Warning: only {n} training examples, need at least 100")
             return
+
+        # Apply feature selection
+        if feature_indices is not None and len(feature_indices) < X.shape[1]:
+            self.feature_indices = feature_indices
+            X = X[:, feature_indices]
+            print(f"   Using {len(feature_indices)}/{len(FEATURE_NAMES)} selected features")
+        else:
+            self.feature_indices = None
 
         # Scale features
         self.scaler = StandardScaler()
@@ -811,23 +958,23 @@ class MLPredictor:
 
         print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
         self.rf_model_1x2 = RandomForestClassifier(
-            n_estimators=400, max_depth=15, min_samples_leaf=8,
-            min_samples_split=20, class_weight="balanced_subsample",
+            n_estimators=300, max_depth=8, min_samples_leaf=15,
+            min_samples_split=30, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for 1X2 ({len(X_train)} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
-            n_estimators=300, max_depth=6, min_samples_leaf=8,
-            learning_rate=0.05, subsample=0.85, random_state=42,
+            n_estimators=250, max_depth=4, min_samples_leaf=12,
+            learning_rate=0.05, subsample=0.80, random_state=42,
             max_features="sqrt",
         )
         self.gb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training RandomForest for O/U ({len(X_train)} examples)...")
         self.rf_model_ou = RandomForestClassifier(
-            n_estimators=300, max_depth=12, min_samples_leaf=10,
+            n_estimators=250, max_depth=6, min_samples_leaf=20,
             class_weight="balanced_subsample", random_state=42, n_jobs=-1,
             max_features="sqrt",
         )
@@ -835,8 +982,8 @@ class MLPredictor:
 
         print(f"Training GradientBoosting for O/U ({len(X_train)} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
-            n_estimators=200, max_depth=5, min_samples_leaf=10,
-            learning_rate=0.08, subsample=0.85, random_state=42,
+            n_estimators=180, max_depth=4, min_samples_leaf=12,
+            learning_rate=0.06, subsample=0.80, random_state=42,
             max_features="sqrt",
         )
         self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
@@ -844,8 +991,8 @@ class MLPredictor:
         # XGBoost for 1X2
         print(f"Training XGBoost for 1X2 ({len(X_train)} examples)...")
         self.xgb_model_1x2 = xgb.XGBClassifier(
-            n_estimators=300, max_depth=6, learning_rate=0.05,
-            subsample=0.85, colsample_bytree=0.85, min_child_weight=5,
+            n_estimators=250, max_depth=4, learning_rate=0.05,
+            subsample=0.80, colsample_bytree=0.80, min_child_weight=10,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
             use_label_encoder=False,
         )
@@ -854,8 +1001,8 @@ class MLPredictor:
         # LightGBM for 1X2
         print(f"Training LightGBM for 1X2 ({len(X_train)} examples)...")
         self.lgb_model_1x2 = lgb.LGBMClassifier(
-            n_estimators=300, max_depth=8, learning_rate=0.05,
-            subsample=0.85, colsample_bytree=0.85, min_child_samples=10,
+            n_estimators=250, max_depth=5, learning_rate=0.05,
+            subsample=0.80, colsample_bytree=0.80, min_child_samples=20,
             random_state=42, n_jobs=-1, verbose=-1,
         )
         self.lgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
@@ -863,8 +1010,8 @@ class MLPredictor:
         # XGBoost for O/U
         print(f"Training XGBoost for O/U ({len(X_train)} examples)...")
         self.xgb_model_ou = xgb.XGBClassifier(
-            n_estimators=250, max_depth=5, learning_rate=0.08,
-            subsample=0.85, colsample_bytree=0.85, min_child_weight=5,
+            n_estimators=200, max_depth=4, learning_rate=0.06,
+            subsample=0.80, colsample_bytree=0.80, min_child_weight=10,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
             use_label_encoder=False,
         )
@@ -873,8 +1020,8 @@ class MLPredictor:
         # LightGBM for O/U
         print(f"Training LightGBM for O/U ({len(X_train)} examples)...")
         self.lgb_model_ou = lgb.LGBMClassifier(
-            n_estimators=250, max_depth=7, learning_rate=0.08,
-            subsample=0.85, colsample_bytree=0.85, min_child_samples=10,
+            n_estimators=200, max_depth=5, learning_rate=0.06,
+            subsample=0.80, colsample_bytree=0.80, min_child_samples=20,
             random_state=42, n_jobs=-1, verbose=-1,
         )
         self.lgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
@@ -993,6 +1140,9 @@ class MLPredictor:
     def predict_from_row(self, row: dict) -> dict:
         """Predict using one row of features."""
         fv = extract_features_from_db_row(row).reshape(1, -1)
+        # Apply feature selection if model was trained with a subset
+        if self.feature_indices is not None:
+            fv = fv[:, self.feature_indices]
         try:
             expected = getattr(self.scaler, "n_features_in_", None)
         except Exception:
@@ -1049,6 +1199,7 @@ class MLPredictor:
             "cv_accuracy_ou": getattr(self, 'cv_accuracy_ou', 0.0),
             "calibration_method": getattr(self, 'calibration_method', None),
             "models": ["RF", "GB", "XGB", "LGB"],
+            "feature_indices": self.feature_indices.tolist() if self.feature_indices is not None else None,
         }
         with open(path / "meta.json", "w") as f:
             json.dump(meta, f)
@@ -1131,6 +1282,9 @@ class MLPredictor:
         ml.cv_accuracy_1x2 = meta.get("cv_accuracy_1x2", 0.0)
         ml.cv_accuracy_ou = meta.get("cv_accuracy_ou", 0.0)
         ml.calibration_method = meta.get("calibration_method", None)
+        # Load feature selection indices (None means use all features)
+        fi = meta.get("feature_indices")
+        ml.feature_indices = np.array(fi, dtype=np.int32) if fi else None
         return ml
 
 
@@ -1393,7 +1547,7 @@ def poisson_predict(data: dict, profile: dict, use_dixon_coles: bool = True) -> 
 #   We dominate DC (93.2%)
 #   Both weak on DNB (22%)
 MARKET_WEIGHT_PROFILES = {
-    "1X2":  {"poisson": 0.20, "ml": 0.25, "forebet": 0.55},
+    "1X2":  {"poisson": 0.40, "ml": 0.35, "forebet": 0.25},  # Forebet reduced: learn from results
     "O/U":  {"poisson": 0.30, "ml": 0.20, "forebet": 0.50},
     "BTTS": {"poisson": 0.25, "ml": 0.25, "forebet": 0.50},
     "DC":   {"poisson": 0.50, "ml": 0.20, "forebet": 0.30},
@@ -1443,8 +1597,8 @@ def ensemble_predict(
     market_defaults = MARKET_WEIGHT_PROFILES.get(market, {"poisson": 0.50, "ml": 0.20, "forebet": 0.30})
 
     if dynamic_weights:
-        # Blend 50% dynamic (learned) + 50% market profile (proven track records)
-        blend = 0.50
+        # Blend 80% dynamic (learned) + 20% market profile (proven track records)
+        blend = 0.80
         w_poisson = dynamic_weights.get("poisson", market_defaults["poisson"]) * blend + market_defaults["poisson"] * (1 - blend)
         w_ml = dynamic_weights.get("ml", market_defaults["ml"]) * blend + market_defaults["ml"] * (1 - blend)
         w_fb = dynamic_weights.get("forebet", market_defaults["forebet"]) * blend + market_defaults["forebet"] * (1 - blend)
@@ -1727,16 +1881,82 @@ def _time_decay_weight(date_str: str, cutoff: datetime, half_life_days: int = 90
         return 0.7
 
 
-def analyze_feature_importance(X: np.ndarray, y: np.ndarray):
-    """Compute mutual information for each feature."""
+def analyze_feature_importance(X: np.ndarray, y1: np.ndarray, y2: np.ndarray = None):
+    """Compute mutual information for each feature across both targets."""
     try:
-        mi = mutual_info_classif(X, y, random_state=42)
-        ranked = sorted(zip(FEATURE_NAMES, mi), key=lambda x: -x[1])
-        print(f"\nTop 15 features by mutual information:")
-        for name, score in ranked[:15]:
-            print(f"  {name:25s} {score:.4f}")
+        mi_1x2 = mutual_info_classif(X, y1, random_state=42)
+        mi_ou = mutual_info_classif(X, y2, random_state=42) if y2 is not None else mi_1x2
+        mi = np.maximum(mi_1x2, mi_ou)
+        ranked = sorted(zip(FEATURE_NAMES, mi, mi_1x2, mi_ou), key=lambda x: -x[1])
+        independent_count = sum(1 for name, _, _, _ in ranked[:50] if name not in {FEATURE_NAMES[i] for i in MARKET_FEATURES})
+        print(f"\nTop 15 features by mutual information (max of 1X2/O/U):")
+        for name, score, mi_h, mi_o in ranked[:15]:
+            tag = " [MKT]" if name in {FEATURE_NAMES[i] for i in MARKET_FEATURES} else ""
+            print(f"  {name:30s} {score:.4f}  (1X2:{mi_h:.4f} O/U:{mi_o:.4f}){tag}")
+        print(f"  ... independent in top 50: {independent_count}/50")
     except Exception as e:
         print(f"Feature importance analysis skipped: {e}")
+
+
+def select_features(X: np.ndarray, y1: np.ndarray, y2: np.ndarray,
+                    max_features: int = 50, min_independent: int = 30,
+                    ) -> np.ndarray:
+    """Select the most predictive features while ensuring independent features
+    are well-represented.
+
+    Strategy:
+      1. Compute mutual information for both 1X2 and O/U targets.
+      2. Rank all features by max(mi_1x2, mi_ou).
+      3. Greedily select top features, but require at least `min_independent`
+         features from the INDEPENDENT set (not market-derived).
+      4. Return the selected feature indices.
+
+    This prevents the model from over-relying on market odds, which are
+    already efficient and don't add predictive value beyond what the
+    market already prices in.
+    """
+    n_features = X.shape[1]
+    if n_features <= max_features:
+        return np.arange(n_features)
+
+    # Compute mutual information for both targets
+    try:
+        mi_1x2 = mutual_info_classif(X, y1, random_state=42)
+        mi_ou = mutual_info_classif(X, y2, random_state=42)
+    except Exception:
+        return np.arange(min(max_features, n_features))
+
+    # Score = max MI across both targets
+    mi_score = np.maximum(mi_1x2, mi_ou)
+
+    # Separate independent and market features by MI score
+    independent_ranked = sorted(
+        [(i, mi_score[i]) for i in INDEPENDENT_FEATURES if i < n_features],
+        key=lambda x: -x[1])
+    market_ranked = sorted(
+        [(i, mi_score[i]) for i in MARKET_FEATURES if i < n_features],
+        key=lambda x: -x[1])
+
+    selected = set()
+    # First: pick top min_independent independent features
+    for idx, score in independent_ranked[:min_independent]:
+        selected.add(idx)
+
+    # Fill remaining slots from all features (independent + market)
+    all_ranked = sorted(
+        [(i, mi_score[i]) for i in range(n_features)],
+        key=lambda x: -x[1])
+    for idx, score in all_ranked:
+        if len(selected) >= max_features:
+            break
+        selected.add(idx)
+
+    result = np.array(sorted(selected), dtype=np.int32)
+    n_ind = sum(1 for i in result if i in INDEPENDENT_FEATURES)
+    n_mkt = sum(1 for i in result if i in MARKET_FEATURES)
+    print(f"Feature selection: {len(result)}/{n_features} features "
+          f"({n_ind} independent, {n_mkt} market)")
+    return result
 
 
 def train(force: bool = True):
@@ -1755,12 +1975,17 @@ def train(force: bool = True):
         print("Not enough training data. Skipping ML training.")
         return
 
-    analyze_feature_importance(X, y1)
+    analyze_feature_importance(X, y1, y2)
+
+    # Feature selection: pick best features, ensuring independent features
+    # are well-represented so the model doesn't just copy market odds
+    feature_indices = select_features(X, y1, y2, max_features=50, min_independent=30)
 
     ml = MLPredictor()
     # Use sigmoid calibration when enough data, fall back otherwise
     cal_method = "sigmoid" if len(X) >= 200 else None
-    ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method, dates=dates)
+    ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method,
+             dates=dates, feature_indices=feature_indices)
     ml.save()
 
     print(f"\nTraining complete: {ml.training_examples} examples, "
@@ -1798,9 +2023,9 @@ def main():
 
     if args.analyze and not args.train:
         result = load_training_data()
-        X, y1 = result[0], result[1]
+        X, y1, y2 = result[0], result[1], result[2]
         if len(X) > 0:
-            analyze_feature_importance(X, y1)
+            analyze_feature_importance(X, y1, y2)
 
     if args.predict:
         if ml is None:
@@ -1842,6 +2067,139 @@ def main():
                   f"[{ensemble_result['method']}]")
         else:
             print("No trained model available. Run with --train first.")
+
+
+# ─────────────────────────────────────────────
+# ML → FB Model Signal Functions
+# ─────────────────────────────────────────────
+
+# Mapping from feature indices to FB model signal categories
+_SIGNAL_MAP = {
+    "form":        [0, 1, 2, 3, 4, 5, 100, 101, 102, 103, 104, 105],
+    "position":    [6, 7, 8],
+    "goals":       [9, 10, 11, 12, 13, 14, 15, 16, 17],
+    "h2h":         [18, 19, 20, 21],
+    "league":      [22, 23, 24, 31, 32],
+    "draw":        [23, 36, 6, 7, 8, 116, 117, 118, 119],
+    "shots":       [46, 47, 48, 49, 50, 51],
+    "attacks":     [64, 65, 66],
+    "possession":  [43, 44, 45, 112, 113, 114, 115],
+    "ht_goals":    [61, 62, 63],
+    "injuries":    list(range(67, 85)),
+    "venue":       [93, 94, 95, 96],
+    "attack_str":  [97, 98, 99],
+    "xg":          [90, 91, 92, 108, 109, 110, 111],
+    "consistency": [116, 117, 118, 119],
+    "market":      [25, 26, 27, 28, 29, 30, 33, 34, 35, 37, 38, 39, 40, 41, 42],
+}
+
+
+def get_feature_importance_weights(ml_model) -> dict:
+    """Extract feature importances from ML classifiers and map to FB signal weights.
+
+    Returns a dict of signal_name → weight (0.0–1.0) indicating how important
+    each signal category is according to the ML model's learned patterns.
+    """
+    if not ml_model or not ml_model.is_trained:
+        return {k: 1.0 for k in _SIGNAL_MAP}
+
+    # Collect importances from all available classifiers
+    importances = np.zeros(len(FEATURE_NAMES))
+    count = 0
+    for attr in ("rf_model_1x2", "gb_model_1x2", "xgb_model_1x2", "lgb_model_1x2"):
+        clf = getattr(ml_model, attr, None)
+        if clf is not None and hasattr(clf, "feature_importances_"):
+            imp = clf.feature_importances_
+            if len(imp) == len(FEATURE_NAMES):
+                importances += imp
+                count += 1
+    if count == 0:
+        return {k: 1.0 for k in _SIGNAL_MAP}
+    importances /= count
+
+    # If feature selection was applied, map back to full feature space
+    if ml_model.feature_indices is not None:
+        full_imp = np.zeros(len(FEATURE_NAMES))
+        for i, idx in enumerate(ml_model.feature_indices):
+            if i < len(importances):
+                full_imp[idx] = importances[i]
+        importances = full_imp
+
+    # Map to signal categories
+    weights = {}
+    for signal, feat_indices in _SIGNAL_MAP.items():
+        valid = [i for i in feat_indices if i < len(importances)]
+        if valid:
+            weights[signal] = float(np.mean(importances[valid]))
+        else:
+            weights[signal] = 1.0
+
+    # Normalize so max = 1.0
+    max_w = max(weights.values()) if weights else 1.0
+    if max_w > 0:
+        weights = {k: v / max_w for k, v in weights.items()}
+
+    return weights
+
+
+def get_ensemble_agreement(ml_model, data: dict) -> float:
+    """Compute agreement score between ML classifiers (0.0–1.0).
+
+    High agreement (close to 1.0) means all classifiers agree → more reliable.
+    Low agreement (close to 0.0) means classifiers disagree → less reliable.
+    """
+    if not ml_model or not ml_model.is_trained:
+        return 0.5
+
+    try:
+        features = ml_model.extract_features_from_row(data)
+        if ml_model.feature_indices is not None:
+            features = features[ml_model.feature_indices]
+        X = ml_model.scaler.transform([features])
+
+        probs_list = []
+        for attr in ("rf_model_1x2", "gb_model_1x2", "xgb_model_1x2", "lgb_model_1x2"):
+            clf = getattr(ml_model, attr, None)
+            if clf is not None:
+                p = clf.predict_proba(X)[0]
+                probs_list.append(p)
+
+        if len(probs_list) < 2:
+            return 0.5
+
+        # Agreement = 1 - mean pairwise variance across classes
+        probs_arr = np.array(probs_list)
+        variance = np.mean(np.var(probs_arr, axis=0))
+        # Map variance [0, ~0.25] to agreement [1, 0]
+        agreement = max(0.0, 1.0 - 4.0 * variance)
+        return float(agreement)
+    except Exception:
+        return 0.5
+
+
+def get_feature_quality_score(ml_model, data: dict) -> float:
+    """Return a data quality score (0.0–1.0) based on feature completeness.
+
+    Uses ML's feature extraction to detect missing/noisy data.
+    High score = data is complete and reliable.
+    Low score = data is sparse or missing key features.
+    """
+    if not ml_model or not ml_model.is_trained:
+        return 0.85
+
+    try:
+        features = ml_model.extract_features_from_row(data)
+        # Count how many features are zero (missing/Default)
+        total = len(features)
+        missing = np.sum(np.abs(features) < 1e-6)
+        # Also count features that are exactly 0 (explicit missing flags)
+        flags = sum(1 for i in [85, 86, 87, 88, 89] if i < total and features[i] > 0)
+        completeness = 1.0 - (missing / total)
+        flag_penalty = flags * 0.05
+        score = max(0.3, min(1.0, completeness - flag_penalty))
+        return float(score)
+    except Exception:
+        return 0.85
 
 
 if __name__ == "__main__":

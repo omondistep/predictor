@@ -471,13 +471,10 @@ def _get_league_difficulty(league: str) -> dict:
       - reason: str
     """
     try:
-        import re
         from database import get_db
         conn = get_db()
         
-        # Extract league prefix (e.g. "BrC", "Ar3", "Pe2") from the league string
-        m = re.match(r'^([A-Za-z]+\d?)\s', league or '')
-        prefix = m.group(1) if m else ''
+        prefix = _resolve_league_prefix(league)
         
         if prefix:
             # Search calibration_log for all entries starting with this prefix
@@ -514,6 +511,172 @@ def _get_league_difficulty(league: str) -> dict:
         return {"level": level, "accuracy": pct, "matches": cnt, "reason": reason}
     except Exception:
         return {"level": "medium", "accuracy": 0, "matches": 0, "reason": "Could not determine league difficulty"}
+
+
+# Full league name → Forebet prefix mapping (used in calibration_log)
+_LEAGUE_TO_FOREBET_PREFIX = {
+    "romania": "Ro", "argentina": "Ar", "australia": "Au", "brazil": "Br",
+    "bolivia": "Bo", "chile": "Cl", "colombia": "Co", "costa rica": "Cr",
+    "czech": "Cz", "denmark": "Dk", "ecuador": "Ec", "estonia": "Ee",
+    "finland": "Fi", "georgia": "Ge", "guatemala": "Gt", "hungary": "Hu",
+    "ireland": "Ie", "iceland": "Is", "israel": "Il", "kazakhstan": "Kz",
+    "kenya": "Ke", "korea": "Kr", "kuwait": "Kw", "kyrgyzstan": "Kg",
+    "lebanon": "Lb", "lithuania": "Lt", "latvia": "Lv", "moldova": "Md",
+    "mexico": "Mx", "morocco": "Mo", "malawi": "Mw", "macedonia": "Mk",
+    "nicaragua": "Ni", "norway": "No", "panama": "Pa", "peru": "Pe",
+    "paraguay": "Py", "poland": "Pl", "russia": "Ru", "serbia": "Rs",
+    "sweden": "Se", "slovenia": "Si", "slovakia": "Sk", "switzerland": "Ch",
+    "scotland": "Sc", "el salvador": "Sv", "ukraine": "Ua", "usa": "Us",
+    "uruguay": "Uy", "venezuela": "Ve", "zimbabwe": "Zw",
+    "conmebol": "CS", "uefa champions": "CL", "uefa europa": "EL",
+    "conference league": "ECL", "copa libertadores": "CL",
+    "copa sudamericana": "CS", "caribbean": "Ca",
+}
+
+
+def _resolve_league_prefix(league: str) -> str:
+    """Resolve a full league name (e.g. 'Romania Divizia A') to its Forebet prefix (e.g. 'Ro1').
+
+    The calibration_log stores leagues as 'Ro1 Team1 Team2', so we need the
+    short prefix to query it.  Falls back to extracting the first word if no
+    mapping is found.
+    """
+    if not league:
+        return ""
+    t = league.lower().strip()
+
+    # 1. Try known full-name → prefix mapping + optional division number
+    for name, prefix in _LEAGUE_TO_FOREBET_PREFIX.items():
+        if name in t:
+            # Extract division number if present (e.g. "Divizia A" → 1, "Serie B" → 2)
+            div_m = re.search(r'(?:serie|division|liga|league|division)\s*([1-9])', t)
+            div_num = div_m.group(1) if div_m else ""
+            # Some leagues have letter suffixes (e.g. BrC, AuN)
+            letter_m = re.search(r'(?:cup|copa|taça|Shield|NPL|state)', t)
+            letter = ""
+            if "cup" in t or "copa" in t or "taça" in t:
+                letter = "C"
+            elif "npl" in t or "national premier" in t:
+                letter = "N"
+            elif "serie a" in t or "primera" in t or "division 1" in t:
+                div_num = "1"
+            elif "serie b" in t or "segunda" in t or "division 2" in t:
+                div_num = "2"
+            return f"{prefix}{letter or div_num}"
+
+    # 2. Fallback: first word (handles "Ro1 ..." or "Ar3 ..." style inputs)
+    m = re.match(r'^([A-Za-z]+\d?)\s', league or '')
+    if m:
+        return m.group(1)
+    m2 = re.match(r'^([A-Za-z]+\d?)$', league or '')
+    if m2:
+        return m2.group(1)
+    return ""
+
+
+def _get_league_recent_performance(league: str) -> dict:
+    """Return recent (last 3 days) prediction accuracy for a league, broken down by market.
+
+    Returns dict with:
+      - overall: {total, correct, pct}
+      - markets: { "1X2": {total, correct, pct}, "O/U": {...}, "BTTS": {...} }
+      - rating: "hot" | "warm" | "cold" | "unknown"
+      - summary: human-readable string
+    """
+    try:
+        import datetime
+        from database import get_db
+        conn = get_db()
+
+        prefix = _resolve_league_prefix(league)
+        if not prefix:
+            return {"overall": {"total": 0, "correct": 0, "pct": 0},
+                    "markets": {}, "rating": "unknown", "summary": "No league data"}
+
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        rows = conn.execute("""
+            SELECT market, correct
+            FROM calibration_log
+            WHERE league LIKE ? AND created_at >= ?
+        """, (f"{prefix}%", cutoff)).fetchall()
+        conn.close()
+
+        if not rows:
+            return {"overall": {"total": 0, "correct": 0, "pct": 0},
+                    "markets": {}, "rating": "unknown", "summary": "No recent data (7d)"}
+
+        total = len(rows)
+        correct = sum(r["correct"] for r in rows)
+        pct = round(100.0 * correct / total, 1) if total else 0
+
+        markets = {}
+        for mk in ("1X2", "O/U", "BTTS"):
+            mk_rows = [r for r in rows if r["market"] == mk]
+            if mk_rows:
+                mk_total = len(mk_rows)
+                mk_correct = sum(r["correct"] for r in mk_rows)
+                mk_pct = round(100.0 * mk_correct / mk_total, 1)
+                markets[mk] = {"total": mk_total, "correct": mk_correct, "pct": mk_pct}
+
+        if pct >= 65:
+            rating = "hot"
+        elif pct >= 50:
+            rating = "warm"
+        else:
+            rating = "cold"
+
+        mk_parts = []
+        for mk, v in markets.items():
+            mk_parts.append(f"{mk} {v['pct']:.0f}%({v['correct']}/{v['total']})")
+        summary = f"Last 7d: {pct:.0f}% ({correct}/{total})" + (f" | {' '.join(mk_parts)}" if mk_parts else "")
+
+        return {"overall": {"total": total, "correct": correct, "pct": pct},
+                "markets": markets, "rating": rating, "summary": summary}
+    except Exception:
+        return {"overall": {"total": 0, "correct": 0, "pct": 0},
+                "markets": {}, "rating": "unknown", "summary": "Error loading data"}
+
+
+def _get_league_market_accuracy(league: str, market: str) -> dict:
+    """Get accuracy for a specific league+market combo from last 7 days.
+
+    Returns dict with: total, correct, pct (0-100), or empty if insufficient data.
+    """
+    try:
+        import datetime
+        from database import get_db
+        conn = get_db()
+        prefix = _resolve_league_prefix(league)
+        if not prefix:
+            return {"total": 0, "correct": 0, "pct": 0}
+        cutoff = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        row = conn.execute("""
+            SELECT COUNT(*) as total, SUM(correct) as correct
+            FROM calibration_log
+            WHERE league LIKE ? AND market = ? AND created_at >= ?
+        """, (f"{prefix}%", market, cutoff)).fetchone()
+        conn.close()
+        if not row or row["total"] < 5:
+            return {"total": row["total"] if row else 0, "correct": row["correct"] if row else 0, "pct": 0}
+        return {"total": row["total"], "correct": row["correct"],
+                "pct": round(100.0 * row["correct"] / row["total"], 1)}
+    except Exception:
+        return {"total": 0, "correct": 0, "pct": 0}
+
+
+def _kelly_interpretation(kelly_pct: float) -> str:
+    """Human-readable Kelly stake interpretation."""
+    if kelly_pct <= 0:
+        return "No edge"
+    if kelly_pct < 1.0:
+        return "Minimal edge — skip or paper trade"
+    if kelly_pct < 2.0:
+        return "Small edge — fractional stake"
+    if kelly_pct < 3.5:
+        return "Moderate edge — measured bet"
+    if kelly_pct < 5.0:
+        return "Strong edge — confident position"
+    return "Very strong edge — max stake (5% cap)"
 
 
 def _auto_calibrate_thresholds():
@@ -1424,6 +1587,172 @@ def _transitive_common_opponent_analysis(data: dict) -> dict:
     }
 
 
+def _common_opponent_scoring_analysis(data: dict) -> dict:
+    """Analyze scoring consistency and defensive vulnerability against common opponents.
+
+    Key insights from Forebet analysis:
+    1. Scoring consistency: Did each team score against shared opponents?
+    2. Defensive vulnerability: How many goals conceded against common opponents?
+    3. BTTS rate: Did both teams score in common opponent matches?
+    4. O/U rate: Did matches against common opponents go over 2.5 goals?
+
+    Returns dict with:
+    - home_scoring_rate: float (0-1) - % of common opponent matches where home team scored
+    - away_scoring_rate: float (0-1) - % of common opponent matches where away team scored
+    - home_defense_vulnerability: float - avg goals conceded per match vs common opponents
+    - away_defense_vulnerability: float - avg goals conceded per match vs common opponents
+    - btts_rate: float (0-1) - % of common opponent matches where both teams scored
+    - over25_rate: float (0-1) - % of common opponent matches with >2.5 goals
+    - home_scoring_consistency: str - "High"/"Medium"/"Low"
+    - away_scoring_consistency: str - "High"/"Medium"/"Low"
+    - reasoning: list - human-readable insights
+    """
+    home_team = data.get("home_team", "")
+    away_team = data.get("away_team", "")
+
+    home_form = _get_team_form_details(data, "home")
+    away_form = _get_team_form_details(data, "away")
+
+    result = {
+        "home_scoring_rate": 0.0,
+        "away_scoring_rate": 0.0,
+        "home_defense_vulnerability": 0.0,
+        "away_defense_vulnerability": 0.0,
+        "btts_rate": 0.0,
+        "over25_rate": 0.0,
+        "home_scoring_consistency": "Unknown",
+        "away_scoring_consistency": "Unknown",
+        "reasoning": [],
+        "home_team": home_team,
+        "away_team": away_team,
+    }
+
+    if not home_form or not away_form:
+        return result
+
+    # Build opponent maps
+    home_opp_map = {}
+    for m in home_form:
+        opp = m["opponent"]
+        if opp not in home_opp_map:
+            home_opp_map[opp] = []
+        home_opp_map[opp].append(m)
+
+    away_opp_map = {}
+    for m in away_form:
+        opp = m["opponent"]
+        if opp not in away_opp_map:
+            away_opp_map[opp] = []
+        away_opp_map[opp].append(m)
+
+    common_opps = set(home_opp_map.keys()) & set(away_opp_map.keys())
+
+    if not common_opps:
+        return result
+
+    # Analyze scoring against common opponents
+    home_scored_count = 0
+    home_conceded_total = 0
+    away_scored_count = 0
+    away_conceded_total = 0
+    btts_count = 0
+    over25_count = 0
+    total_matches = 0
+
+    for opp in common_opps:
+        h_matches = home_opp_map[opp]
+        a_matches = away_opp_map[opp]
+
+        # Use most recent match against each common opponent
+        h_match = max(h_matches, key=lambda m: m.get("date", ""))
+        a_match = max(a_matches, key=lambda m: m.get("date", ""))
+
+        h_gf = h_match.get("gf", 0)
+        h_ga = h_match.get("ga", 0)
+        a_gf = a_match.get("gf", 0)
+        a_ga = a_match.get("ga", 0)
+
+        # Scoring consistency
+        if h_gf > 0:
+            home_scored_count += 1
+        if a_gf > 0:
+            away_scored_count += 1
+
+        # Defensive vulnerability
+        home_conceded_total += h_ga
+        away_conceded_total += a_ga
+
+        # BTTS check (did both teams score in their respective matches?)
+        if h_gf > 0 and a_gf > 0:
+            btts_count += 1
+
+        # O/U check (combined goals from both matches)
+        total_goals = h_gf + h_ga + a_gf + a_ga
+        if total_goals > 2.5:
+            over25_count += 1
+
+        total_matches += 1
+
+    if total_matches == 0:
+        return result
+
+    # Calculate rates
+    result["home_scoring_rate"] = home_scored_count / total_matches
+    result["away_scoring_rate"] = away_scored_count / total_matches
+    result["home_defense_vulnerability"] = home_conceded_total / total_matches
+    result["away_defense_vulnerability"] = away_conceded_total / total_matches
+    result["btts_rate"] = btts_count / total_matches
+    result["over25_rate"] = over25_count / total_matches
+
+    # Consistency labels
+    result["home_scoring_consistency"] = (
+        "High" if result["home_scoring_rate"] >= 0.8 else
+        "Medium" if result["home_scoring_rate"] >= 0.5 else
+        "Low"
+    )
+    result["away_scoring_consistency"] = (
+        "High" if result["away_scoring_rate"] >= 0.8 else
+        "Medium" if result["away_scoring_rate"] >= 0.5 else
+        "Low"
+    )
+
+    # Generate reasoning
+    result["reasoning"].append(
+        f"[SCORING] vs {len(common_opps)} common opponents: "
+        f"{home_team} scored in {home_scored_count}/{total_matches} ({result['home_scoring_rate']:.0%}), "
+        f"{away_team} scored in {away_scored_count}/{total_matches} ({result['away_scoring_rate']:.0%})"
+    )
+
+    if result["home_defense_vulnerability"] > 1.5 or result["away_defense_vulnerability"] > 1.5:
+        result["reasoning"].append(
+            f"[DEFENSE] Vulnerable defenses: {home_team} concedes {result['home_defense_vulnerability']:.1f}/game, "
+            f"{away_team} concedes {result['away_defense_vulnerability']:.1f}/game vs common opponents"
+        )
+
+    if result["btts_rate"] >= 0.7:
+        result["reasoning"].append(
+            f"[BTTS] High BTTS rate ({result['btts_rate']:.0%}) against common opponents — both teams score consistently"
+        )
+
+    if result["over25_rate"] >= 0.7:
+        result["reasoning"].append(
+            f"[O/U] High O2.5 rate ({result['over25_rate']:.0%}) against common opponents — expect goals"
+        )
+
+    # Hidden strength detection: team that scores despite losing
+    if result["home_scoring_rate"] >= 0.8 and data.get("home_form", "").count("L") >= 3:
+        result["reasoning"].append(
+            f"[HIDDEN] {home_team} scores consistently ({result['home_scoring_rate']:.0%}) despite poor record — dangerous underdog"
+        )
+
+    if result["away_scoring_rate"] >= 0.8 and data.get("away_form", "").count("L") >= 3:
+        result["reasoning"].append(
+            f"[HIDDEN] {away_team} scores consistently ({result['away_scoring_rate']:.0%}) despite poor record — dangerous underdog"
+        )
+
+    return result
+
+
 def _common_opponent_strength(data: dict) -> dict:
     """Derive attack/defense strength multipliers from head-to-head form vs the
     SAME opponents (the fairest available strength comparison).
@@ -1882,13 +2211,13 @@ def analyze_ml_only(data: dict) -> dict:
 
         if vol >= 0.25 and ou_conf in ("Near Certain", "High"):
             ou_conf = "Medium-High"
-        if thresh == 3.5 and "Under" in ou_pick and exp_total > 3.5:
+        if thresh == 3.5 and "Under" in ou_pick and exp_total > 4.0:
             ou_conf = "Low"
         if thresh == 1.5:
             if ou_conf not in ("Near Certain", "High", "Medium-High"):
                 ou_conf = "Medium-High"
-            if exp_total < 2.5: ou_conf = "Low"
-            elif exp_total < 3.0 and ou_conf == "Low":
+            if exp_total < 2.0: ou_conf = "Low"
+            elif exp_total < 2.5 and ou_conf == "Low":
                 ou_conf = "Medium"
 
         add("O/U", ou_pick, ou_conf, f"ML exp {exp_total:.1f}g model {max(p_o,p_u):.0%}" + (" (ML direct)" if thresh == 2.5 else ""),
@@ -2092,6 +2421,136 @@ def analyze_ml_only(data: dict) -> dict:
     }
 
 
+def _get_ml_signal_weights(ml_model) -> dict:
+    """Get ML-derived signal weights for FB model adjustments.
+
+    Returns weights for how much each FB signal should be adjusted
+    based on the ML model's learned feature importances.
+    """
+    try:
+        from ml_model import get_feature_importance_weights
+        return get_feature_importance_weights(ml_model)
+    except Exception:
+        return {}
+
+
+# ── Derby detection ─────────────────────────────────────────────
+# Known derby city/region patterns (lowercase). If both team names
+# contain any matching pattern, the match is flagged as a derby.
+_DERBY_REGIONS = [
+    "newcastle", "sydney", "melbourne", "brisbane", "perth", "adelaide",
+    "hobart", "canberra", "geelong", "gold coast", "sunshine coast",
+    "wollongong", "central coast", "north shore", "western sydney",
+    "eastern suburbs", "inner west", "northern beaches",
+    "manchester", "liverpool", "london", "birmingham", "leeds", "sheffield",
+    "glasgow", "edinburgh", "cardiff", "swansea", "bristol",
+    "madrid", "barcelona", "seville", "valencia", "bilbao",
+    "milan", "rome", "turin", "naples", "florence",
+    "munich", "berlin", "dortmund", "hamburg", "frankfurt",
+    "paris", "marseille", "lyon", "toulouse",
+    "buenos aires", "sao paulo", "rio de janeiro", "bogota", "lima",
+    "istanbul", "ankara", "izmir",
+    "cairo", "alexandria", "cape town", "johannesburg",
+    # Common local derivations
+    "united", "city", "fc", "rovers", "wanderers", "rangers",
+]
+
+# City name extraction patterns (team name → city/region)
+_CITY_PATTERNS = [
+    (r'\b(Newcastle)\b', "newcastle"),
+    (r'\b(Sydney)\b', "sydney"),
+    (r'\b(Melbourne)\b', "melbourne"),
+    (r'\b(Brisbane)\b', "brisbane"),
+    (r'\b(Perth)\b', "perth"),
+    (r'\b(Adelaide)\b', "adelaide"),
+    (r'\b(Geelong)\b', "geelong"),
+    (r'\b(Gold\s*Coast)\b', "gold coast"),
+    (r'\b(Wollongong)\b', "wollongong"),
+    (r'\b(Central\s*Coast)\b', "central coast"),
+    (r'\b(Kahibah)\b', "newcastle"),  # Kahibah is a suburb of Newcastle
+    (r'\b(Belmont)\b', "newcastle"),  # Belmont Swansea is in Newcastle area
+    (r'\b(Swansea)\b', "newcastle"),  # Swansea is near Newcastle
+    (r'\b(Lake\s*Macquarie)\b', "newcastle"),  # Lake Macquarie is in Newcastle area
+    (r'\b(Charlestown)\b', "newcastle"),  # Charlestown is in Newcastle
+    (r'\b(Valentine)\b', "newcastle"),  # Valentine is in Newcastle
+    (r'\b(Edgeworth)\b', "newcastle"),  # Edgeworth is in Newcastle
+    (r'\b(Adamstown)\b', "newcastle"),  # Adamstown is in Newcastle
+    (r'\b(Broadmeadow)\b', "newcastle"),  # Broadmeadow is in Newcastle
+    (r'\b(Cooks\s*Hill)\b', "newcastle"),  # Cooks Hill is in Newcastle
+    (r'\b(Maitland)\b', "newcastle"),  # Maitland is near Newcastle
+    (r'\b(Manchester)\b', "manchester"),
+    (r'\b(Liverpool)\b', "liverpool"),
+    (r'\b(Arsenal)\b', "london"),
+    (r'\b(Tottenham)\b', "london"),
+    (r'\b(West\s*Ham)\b', "london"),
+    (r'\b(Chelsea)\b', "london"),
+    (r'\b(Crystal\s*Palace)\b', "london"),
+    (r'\b(Fulham)\b', "london"),
+    (r'\b(QPR)\b', "london"),
+    (r'\b(Milan)\b', "milan"),
+    (r'\b(Inter)\b', "milan"),
+    (r'\b(Real)\b', "madrid"),
+    (r'\b(Atletico)\b', "madrid"),
+    (r'\b(Barcelona)\b', "barcelona"),
+    (r'\b(Espanyol)\b', "barcelona"),
+    (r'\b(Boca)\b', "buenos aires"),
+    (r'\b(River)\b', "buenos aires"),
+    (r'\b(Corinthians)\b', "sao paulo"),
+    (r'\b(Palmeiras)\b', "sao paulo"),
+    (r'\b(Sao\s*Paulo)\b', "sao paulo"),
+]
+
+
+def _extract_team_region(team_name: str) -> str:
+    """Extract city/region from team name using pattern matching."""
+    import re
+    if not team_name:
+        return ""
+    team_lower = team_name.lower()
+    for pattern, region in _CITY_PATTERNS:
+        if re.search(pattern, team_lower, re.IGNORECASE):
+            return region
+    return ""
+
+
+def _detect_derby(data: dict) -> dict:
+    """Detect if a match is a derby based on team locations.
+
+    Returns dict with:
+    - is_derby: bool
+    - region: str (the shared region)
+    - warning: str (visible warning message)
+    """
+    home_team = data.get("home_team", "")
+    away_team = data.get("away_team", "")
+    league = data.get("league", "")
+
+    home_region = _extract_team_region(home_team)
+    away_region = _extract_team_region(away_team)
+
+    is_derby = False
+    region = ""
+    warning = ""
+
+    if home_region and away_region and home_region == away_region:
+        is_derby = True
+        region = home_region
+        warning = (f"🏟 DERBY: {home_team} vs {away_team} — local rivalry in {region.title()}. "
+                   f"Form matters less in derbies; surprises are common.")
+    elif home_region and away_region and home_region != away_region:
+        # Check if regions are known to be nearby (e.g., Newcastle suburbs)
+        # For now, just flag if same league and both have city patterns
+        pass
+
+    return {
+        "is_derby": is_derby,
+        "region": region,
+        "warning": warning,
+        "home_region": home_region,
+        "away_region": away_region,
+    }
+
+
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """Analyze all markets, recommend highest-conviction pick.
     
@@ -2118,8 +2577,20 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         league_reliability = 0.45
     else:
         league_reliability = 0.7  # unknown → moderately cautious
+
+    # ── Load league-market accuracy for recent performance gating ──
+    _league_mkt_acc = {}
+    for _mk in ("1X2", "O/U", "BTTS"):
+        _acc = _get_league_market_accuracy(data.get("league", ""), _mk)
+        if _acc.get("total", 0) >= 5:
+            _league_mkt_acc[_mk] = _acc
     if _ld.get("level") == "hard":
         reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
+
+    # ── Derby detection: flag local rivalries ──
+    derby = _detect_derby(data)
+    if derby["is_derby"]:
+        reasoning.append(derby["warning"])
 
     hf, af = data.get("home_form", ""), data.get("away_form", "")
     h_ppg = _ppg(hf) if hf else None
@@ -2143,8 +2614,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # single final blend weight between ML/DC base and exp-derived probs.
     signal_blend = 0.0
 
+    # ── ML-derived signal weights (from feature importances) ──
+    ml_signal_weights = _get_ml_signal_weights(ml_model) if ml_model else {}
+    ml_ensemble_agreement = 0.5
+    ml_feature_quality = 0.85
+
     if ml_model:
-        from ml_model import poisson_predict, ensemble_predict
+        from ml_model import poisson_predict, ensemble_predict, get_ensemble_agreement, get_feature_quality_score
         # Use enhanced attack/defense Poisson with Dixon-Coles
         enhanced = poisson_predict(data, profile, use_dixon_coles=True)
         p_home = enhanced["prob_home"]
@@ -2156,6 +2632,10 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         exp_a = enhanced["exp_away_goals"]
         exp_total = exp_h + exp_a
         method_parts.append("dc-poisson")
+
+        # Get ML ensemble agreement and feature quality
+        ml_ensemble_agreement = get_ensemble_agreement(ml_model, data)
+        ml_feature_quality = get_feature_quality_score(ml_model, data)
 
         # ── Common-opponent strength: scale exp by how each team performed vs
         # the SAME opponents (fairer than adding two independent season rates). ──
@@ -2181,16 +2661,27 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         method_parts.append(f"ml({getattr(ml_model, 'cv_accuracy_1x2', 0):.2f})")
         if dynamic_weights:
             method_parts.append("dyn-weights")
+        # Track forebet component separately for accuracy tracking
+        fb_h_raw_check = (data.get("forebet_home_pct") or 0)
+        fb_d_raw_check = (data.get("forebet_draw_pct") or 0)
+        fb_a_raw_check = (data.get("forebet_away_pct") or 0)
+        if fb_h_raw_check + fb_d_raw_check + fb_a_raw_check > 0:
+            method_parts.append("fb-weights")
 
         # ── Form signal: shift expected goals only (probabilities recomputed once at end) ──
+        # ML feature importances weight: higher ML importance → stronger form signal
+        # Derby penalty: form matters less in local derbies (reduces form impact by 40%)
+        _form_weight = ml_signal_weights.get("form", 1.0) if ml_signal_weights else 1.0
+        if derby["is_derby"]:
+            _form_weight *= 0.6  # Reduce form impact in derbies
         fsig = form_analysis.get("signal", 0.0)
         if abs(fsig) >= 0.05:
-            shift = fsig * 0.08
+            shift = fsig * 0.08 * _form_weight
             exp_h -= shift
             exp_a += shift
             exp_h = max(exp_h, 0.05)
             exp_a = max(exp_a, 0.05)
-            signal_blend = min(0.65, signal_blend + abs(fsig))
+            signal_blend = min(0.65, signal_blend + abs(fsig) * _form_weight)
             method_parts.append("form")
 
         # ── Away win probability boost when form strongly favors away ──
@@ -2291,10 +2782,20 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     trans_adjusted = False
     draw_adjusted = False
     trans_signal = 0.0  # default; only overridden when transitivity fires
+
+    # ── Common opponent scoring analysis (BTTS/O/U insights) ──
+    _scoring_analysis = _common_opponent_scoring_analysis(data)
+    if _scoring_analysis["reasoning"]:
+        for r in _scoring_analysis["reasoning"]:
+            reasoning.append(r)
+
     if _trans_analysis and _trans_analysis["reasoning"]:
         trans_signal = _trans_analysis.get("signal", 0.0)
         trans_conf = _trans_analysis.get("confidence", "Low")
         trans_weight = {"High": 0.30, "Medium-High": 0.20, "Medium": 0.12}.get(trans_conf, 0.0)
+        # ML H2H feature importance weight
+        _h2h_weight = ml_signal_weights.get("h2h", 1.0) if ml_signal_weights else 1.0
+        trans_weight *= _h2h_weight
         abs_sig = min(abs(trans_signal), 1.0)
         if trans_weight > 0 and abs_sig >= 0.15:
             shift = trans_weight * abs_sig * 0.15
@@ -2353,7 +2854,19 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _ph /= _tp
         _pd /= _tp
         _pa /= _tp
-    _w = min(0.65, signal_blend)
+    # ML ensemble agreement adjusts blend weight: high agreement → trust signals more
+    _agree_boost = (ml_ensemble_agreement - 0.5) * 0.08  # ±4% max adjustment
+    # ── Ensemble weight adjustment by league-market recent accuracy ──
+    # If ML has been more accurate than Poisson in this league-market recently,
+    # boost the ML blend weight;反之 reduce it
+    _mkt_acc = _league_mkt_acc.get("1X2", {})
+    _ensemble_adj = 0.0
+    if _mkt_acc.get("total", 0) >= 5:
+        if _mkt_acc["pct"] >= 70:
+            _ensemble_adj = 0.04  # ML doing well, trust it more
+        elif _mkt_acc["pct"] < 45:
+            _ensemble_adj = -0.04  # ML struggling, lean toward Poisson
+    _w = min(0.65, signal_blend + _agree_boost + _ensemble_adj)
     p_home = p_home * (1 - _w) + _ph * _w
     p_draw = p_draw * (1 - _w) + _pd * _w
     p_away = p_away * (1 - _w) + _pa * _w
@@ -2439,6 +2952,23 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         conf = _value_adjust(conf, market, pick)
         if conf is None:
             return
+
+        # ── Skip bad league-market combos ──
+        _acc = _league_mkt_acc.get(market, {})
+        if _acc.get("total", 0) >= 10 and _acc.get("pct", 0) < 40:
+            reasoning.append(f"⚠ Skipped {market}: league accuracy {_acc['pct']:.0f}% ({_acc['total']} samples)")
+            return
+
+        # ── Confidence dampening for poor league-markets ──
+        if _acc.get("total", 0) >= 5 and _acc.get("pct", 0) < 55:
+            conf_rank = CONF_RANK.get(conf, 99)
+            if conf_rank <= CONF_RANK["High"]:  # Near Certain or High
+                conf = "Medium-High"
+                reason += f" [damped: {market} {_acc['pct']:.0f}% in league]"
+            elif conf == "Medium-High" and _acc["pct"] < 45:
+                conf = "Medium"
+                reason += f" [damped: {market} {_acc['pct']:.0f}% in league]"
+
         rank = CONF_RANK.get(conf, 99)
         po = _pick_odds(market, pick)
         implied_prob = 1.0 / po if po and po > 1.0 else None
@@ -2470,6 +3000,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     mh_margin = CALIBRATED_THRESHOLDS["medium_high_margin"]
     med_thresh = CALIBRATED_THRESHOLDS["medium"]
     med_margin = CALIBRATED_THRESHOLDS["medium_margin"]
+
+    # ML ensemble agreement adjustment: high agreement → slightly lower thresholds
+    # (easier to reach higher confidence), low agreement → raise thresholds
+    _agree_adj = (ml_ensemble_agreement - 0.5) * 0.03  # ±1.5% max adjustment
+    nc_thresh = max(0.55, nc_thresh - _agree_adj)
+    hi_thresh = max(0.45, hi_thresh - _agree_adj)
+    mh_thresh = max(0.35, mh_thresh - _agree_adj)
 
     # Draws are harder to predict — use tighter thresholds
     if top_pick == "Draw":
@@ -2560,8 +3097,12 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
 
     # Draw tendency signal: flag when Draw is close to primary 1X2 pick
+    # ML draw feature importance weight: higher weight → more sensitive to draw signals
+    _draw_weight = ml_signal_weights.get("draw", 1.0) if ml_signal_weights else 1.0
     _draw_tendency = False
-    if top_pick != "Draw" and p_draw >= 0.28 and margin <= 0.12:
+    _draw_prob_adj = 0.28 - (_draw_weight - 1.0) * 0.05  # Adjust threshold
+    _draw_margin_adj = 0.12 + (_draw_weight - 1.0) * 0.02
+    if top_pick != "Draw" and p_draw >= _draw_prob_adj and margin <= _draw_margin_adj:
         _draw_tendency = True
         reasoning.append(f"⚠ Draw tendency: {p_draw:.0%} vs {top_pick} {top_prob:.0%} (margin {margin:.0%})")
 
@@ -2715,6 +3256,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         data_quality = 0.85
     elif missing_data == 1:
         data_quality = 0.92
+    # Blend with ML feature quality score (ML sees more data dimensions)
+    if ml_feature_quality < 1.0:
+        data_quality = data_quality * 0.7 + ml_feature_quality * 0.3
 
     # ── Draw No Bet (derived from 1X2) — volatility-gated ──
     # Skip DNB entirely in very high volatility (unpredictable leagues)
@@ -2789,10 +3333,21 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             model_prob=dc_prob)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
+    # ML ensemble O/U probability (for 2.5 threshold) — used as blending signal
+    ml_ou_signal = p_over  # ensemble-blended P(Over 2.5)
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
                                       (2.5, "Under 2.5", "Over 2.5"),
                                       (3.5, "Under 3.5", "Over 3.5")]:
-        p_o = prob_over(exp_h, exp_a, thresh)
+        p_o_poisson = prob_over(exp_h, exp_a, thresh)
+        # Blend Poisson with ML ensemble signal (threshold-dependent weight)
+        # 2.5: ML is most relevant (direct match), 1.5/3.5: ML is indirect
+        if thresh == 2.5:
+            ml_w = 0.35
+        elif thresh == 1.5:
+            ml_w = 0.15
+        else:  # 3.5
+            ml_w = 0.25
+        p_o = p_o_poisson * (1 - ml_w) + ml_ou_signal * ml_w
         p_u = 1.0 - p_o
 
         # Use deviation from 50% as signal
@@ -2895,6 +3450,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 if CONF_RANK.get(ou_conf, 99) > CONF_RANK["Medium"]:
                     ou_conf = "Medium"
 
+        # Common opponent O/U boost: if matches against shared opponents had high scoring
+        if thresh == 2.5 and _scoring_analysis["over25_rate"] >= 0.7:
+            # High O2.5 rate against common opponents → boost Over confidence
+            if "Over" in ou_pick and ou_conf in ("Medium", "Medium-High"):
+                ou_conf = "Medium-High" if ou_conf == "Medium" else "High"
+        elif thresh == 2.5 and _scoring_analysis["over25_rate"] <= 0.3 and _scoring_analysis["over25_rate"] > 0:
+            # Low O2.5 rate against common opponents → boost Under confidence
+            if "Under" in ou_pick and ou_conf in ("Medium", "Medium-High"):
+                ou_conf = "Medium-High" if ou_conf == "Medium" else "High"
+
         if ou_conf != "Low":
             ou_reason = f"exp goals {exp_total:.1f} model {p_o:.0%}o/{p_u:.0%}u"
             # Add venue goal stats
@@ -2934,6 +3499,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     if h_btts_rate is not None and a_btts_rate is not None:
         venue_btts = (h_btts_rate / 100.0 + a_btts_rate / 100.0) / 2.0
         p_btss = p_btss * 0.70 + venue_btts * 0.30
+
+    # Common opponent BTTS boost: if both teams scored consistently against shared opponents
+    if _scoring_analysis["btts_rate"] >= 0.7:
+        # High BTTS rate against common opponents → boost BTTS YES probability
+        btts_boost = (_scoring_analysis["btts_rate"] - 0.5) * 0.15  # Max 7.5% boost
+        p_btss = min(p_btss + btts_boost, 0.95)
+    elif _scoring_analysis["btts_rate"] <= 0.3 and _scoring_analysis["btts_rate"] > 0:
+        # Low BTTS rate against common opponents → boost BTTS NO probability
+        btts_no_boost = (0.5 - _scoring_analysis["btts_rate"]) * 0.10
+        p_btss = max(p_btss - btts_no_boost, 0.05)
 
     p_btn = 1.0 - p_btss
 
@@ -3026,6 +3601,25 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         from synthesis import component_agreement
         _synth_consensus, _synth_n_sources = component_agreement(_synth_ctx)
         method_parts.append("synthesis")
+
+        # ── Dynamic market selection: boost/penalize by league-market accuracy ──
+        for c in candidates:
+            _acc = _league_mkt_acc.get(c["market"], {})
+            if _acc.get("total", 0) >= 5 and _acc.get("pct", 0) > 0:
+                # Boost: +0.05 for >70%, +0.03 for >60%, penalty: -0.03 for <45%
+                dv = c.get("decision_value", 0)
+                if _acc["pct"] >= 70:
+                    c["decision_value"] = dv + 0.05
+                elif _acc["pct"] >= 60:
+                    c["decision_value"] = dv + 0.03
+                elif _acc["pct"] < 45:
+                    c["decision_value"] = dv - 0.03
+                c["league_mkt_boost"] = _acc["pct"]
+        # Re-rank after boost
+        non_show_temp = [c for c in candidates if not c.get('_always_show')]
+        non_show_temp.sort(key=lambda c: c.get("decision_value", 0), reverse=True)
+        if non_show_temp:
+            candidates = non_show_temp + [c for c in candidates if c.get('_always_show')]
     except Exception as _syn_err:
         # Fallback: keep the legacy score so the model still produces picks
         for c in candidates:
@@ -3245,6 +3839,13 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             kelly_fraction = edge / (odds_val - 1) if odds_val > 1 else 0
             kelly_stake = round(min(kelly_fraction * 0.25, 0.05), 4)  # Quarter-Kelly, max 5%
 
+    # ── Kelly scaling by league-market accuracy ──
+    # Reduce stake in leagues where this market has poor track record
+    _pm_acc = _league_mkt_acc.get(primary.get("market", ""), {})
+    if _pm_acc.get("total", 0) >= 5 and _pm_acc.get("pct", 0) > 0:
+        _acc_factor = _pm_acc["pct"] / 100.0
+        kelly_stake = round(kelly_stake * _acc_factor, 4)
+
     return {
         "pick": primary["pick"],
         "market": primary["market"],
@@ -3273,6 +3874,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_backup": {"pick": backup["pick"], "market": backup["market"],
                     "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
         "_ml_analysis": analyze_ml_only(data) if use_ml else None,
+        "_derby": derby,
+        "_scoring_analysis": _scoring_analysis,
     }
 
 
@@ -3335,6 +3938,64 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                       rf'<span style="color:{EXP_COLOR};font-weight:700">exp \1</span>', text)
         return text
 
+    def _verdict_signal(r: dict) -> str:
+        """One-line signal: where does the model lean and how strongly."""
+        synth = (r.get("_synthesis_rationale") or "").lower()
+        if "favours home" in synth or "favors home" in synth:
+            return "Home side favoured"
+        if "favours away" in synth or "favors away" in synth:
+            return "Away side favoured"
+        if "draw tendency" in synth or "drawish" in synth:
+            return "Draw-leaning matchup"
+        # fallback: use primary pick direction
+        pk = r.get("pick", "")
+        if pk == "Home win":
+            return "Home-side signal"
+        if pk == "Away win":
+            return "Away-side signal"
+        if pk == "Draw":
+            return "Neutral / draw signal"
+        return "Balanced model signal"
+
+    def _verdict_outlook(r: dict) -> str:
+        """What the model expects in plain terms."""
+        eh, ea = r.get("_exp_goals", (None, None))
+        total = (eh + ea) if eh is not None and ea is not None else None
+        pk = r.get("pick", "")
+        market = r.get("market", "")
+        parts = []
+        if total is not None:
+            parts.append(f"{total:.1f} expected goals total")
+        if market == "O/U":
+            parts.append(f"lean {pk}")
+        elif market == "1X2":
+            parts.append(f"{pk} the likely result")
+        elif market == "BTTS":
+            parts.append(f"{pk} both teams to score")
+        elif market == "DC":
+            parts.append(f"{pk} covers both outcomes")
+        elif market == "DNB":
+            parts.append(f"{pk} avoids the draw")
+        if not parts:
+            return "Check model reasoning"
+        return "; ".join(parts)
+
+    def _verdict_verdict(r: dict) -> str:
+        """The final recommendation in one line."""
+        market = r.get("market", "")
+        pick = r.get("pick", "")
+        conf = r.get("confidence", "")
+        kelly = r.get("kelly_stake", 0)
+        edge = ""
+        if kelly and kelly > 0:
+            edge = f" value present (Kelly {kelly*100:.1f}% — {_kelly_interpretation(kelly*100)})"
+        comps = r.get("_synthesis_ranked") or []
+        top = comps[0] if comps else {}
+        dv = top.get("decision_value")
+        if dv is not None:
+            edge += f" synth {dv:.2f}"
+        return f"{pick} ({market}) · {conf}{edge}"
+
     def _ml_reason_style(line: str) -> str:
         """Return inline CSS for ML-only reasoning lines."""
         if line.startswith("⚠"):
@@ -3354,8 +4015,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         ml = r.get("_ml_analysis")
         if not ml:
             return ""
-        fb_picks = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob") and p["model_prob"] >= 0.70}
-        ml_picks = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob") and p["model_prob"] >= 0.70}
+        fb_picks = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob") and p["model_prob"] >= 0.695}
+        ml_picks = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob") and p["model_prob"] >= 0.695}
         agreed_keys = sorted(set(fb_picks) & set(ml_picks),
                              key=lambda k: (fb_picks[k]["model_prob"] + ml_picks[k]["model_prob"]) / 2,
                              reverse=True)
@@ -3369,7 +4030,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
             mkt, pick = k.split("|", 1)
             rows_html += f'<tr><td>{mkt}</td><td>{pick}</td><td>{fp["model_prob"]:.0%}</td><td>{mp["model_prob"]:.0%}</td><td style="color:#22c55e;font-weight:600">{avg:.0%}</td></tr>'
         return (f'<div style="margin-top:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:6px;font-size:0.82em;">'
-                f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">🤝 Consensus picks (both ≥70%)</div>'
+                f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">🤝 Consensus picks (both ≥69.5%)</div>'
                 f'<table style="width:100%;font-size:0.9em;"><tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Avg</th></tr>'
                 f'{rows_html}</table></div>')
 
@@ -3503,7 +4164,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                 else:
                     result_cell = '<td style="color:#64748b">—</td>'
 
-            picks_rows += f"<tr><td>{p['market']}</td><td style='background:{_pick_bg};border-radius:4px;padding:2px 6px'>{p['pick']}</td><td>{mp_s}</td><td style='color:{_c(p['confidence'])}'>{p['confidence']}</td><td>{vr_s}</td>{result_cell}</tr>\n"
+            _dv_s = f"{p['decision_value']:.2f}" if p.get('decision_value') else ""
+            picks_rows += f"<tr><td>{p['market']}</td><td style='background:{_pick_bg};border-radius:4px;padding:2px 6px'>{p['pick']}</td><td>{mp_s}</td><td>{_dv_s}</td>{result_cell}</tr>\n"
 
         reason_html = ""
         if r.get("reasoning"):
@@ -3550,14 +4212,55 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                                  f' vs <span style="color:{_c(_ml["confidence"])}">{_ml["market"]}: {_ml["pick"]}</span></div>')
         else:
             _compare_badge = ""
-        
+
+        # Build league recent performance HTML badge
+        _lr = r.get("league_recent", {})
+        if _lr and _lr.get("overall", {}).get("total", 0) > 0:
+            _rating = _lr.get("rating", "unknown")
+            _lr_icon = {"hot": "🔥", "warm": "~", "cold": "❄"}.get(_rating, "?")
+            _lr_bg = {"hot": "rgba(34,197,94,0.15);color:#86efac",
+                      "warm": "rgba(234,179,8,0.15);color:#fde68a",
+                      "cold": "rgba(239,68,68,0.12);color:#fca5a5"}.get(_rating, "rgba(148,163,184,0.15);color:#94a3b8")
+            _ov = _lr["overall"]
+            _mk_parts = "".join(f" | {mk} {mv['pct']:.0f}%({mv['correct']}/{mv['total']})" for mk, mv in _lr.get("markets", {}).items())
+            league_perf_html = f'<div style="padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;font-weight:600;background:{_lr_bg};">{_lr_icon} League (7d): <strong>{_ov["pct"]:.0f}%</strong> ({_ov["correct"]}/{_ov["total"]}){_mk_parts}</div>'
+        else:
+            league_perf_html = ""
+
+        # Build ML-only picks table rows
+        _ml_picks_html = ""
+        for p in r["_ml_analysis"].get("all_picks", [])[:4]:
+            _mp_s = f'{p["model_prob"]:.0%}' if p.get("model_prob") else ""
+            _dv_s = f'{p.get("decision_value",0):.2f}' if p.get("decision_value") else ""
+            _res_s = _pick_result(p, r) if has_result_h else ""
+            _ml_picks_html += f'<tr><td>{p["market"]}</td><td>{p["pick"]}</td><td>{_mp_s}</td><td>{_dv_s}</td>{_res_s}</tr>\n'
+
         rows.append(f"""<div class="card" data-match-id="{r.get('match_id', '')}" data-exp-home="{exp_home}" data-exp-away="{exp_away}" data-exp-total="{exp_total}" data-market="{r['market']}" data-pick="{r['pick']}" data-date="{r.get('date', '')}" data-time="{r.get('time', '')}" style="border-left: 4px solid {_c(r['confidence'])};">
 <div class="card-header">
   <span class="teams">{r['home']} vs {r['away']}</span>
   <span class="conf-badge" style="background:{_c(r['confidence'])}">{_star(r['confidence'])} {r['confidence']}</span>
 </div>
 <div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} {r.get('time', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
+{league_perf_html}
+<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0;font-size:0.82em;">
+  <div style="background:#1e293b;border-radius:6px;padding:8px 10px;border-left:3px solid #60a5fa;">
+    <div style="color:#94a3b8;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;">Signal</div>
+    <div style="color:#f1f5f9;font-weight:600;">{_verdict_signal(r)}</div>
+  </div>
+  <div style="background:#1e293b;border-radius:6px;padding:8px 10px;border-left:3px solid #facc15;">
+    <div style="color:#94a3b8;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;">Outlook</div>
+    <div style="color:#f1f5f9;font-weight:600;">{_verdict_outlook(r)}</div>
+  </div>
+  <div style="background:#1e293b;border-radius:6px;padding:8px 10px;border-left:3px solid #34d399;">
+    <div style="color:#94a3b8;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;">Verdict</div>
+    <div style="color:#f1f5f9;font-weight:600;">{_verdict_verdict(r)}</div>
+  </div>
+</div>
 {"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("level") == "hard" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
+{"".join(f'<div style="background:#854d0e;color:#fde68a;padding:6px 10px;border-radius:6px;font-size:0.82rem;margin-bottom:8px;font-weight:600;">🏟 DERBY: {r["_derby"]["warning"]}</div>' if r.get("_derby", {}).get("is_derby") else "")}
+{"".join(f'''<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);padding:6px 10px;border-radius:6px;font-size:0.78rem;margin-bottom:8px;">
+<strong>📊 Common Opponent Scoring:</strong> {r["_scoring_analysis"]["home_team"]} scored in {r["_scoring_analysis"]["home_scoring_rate"]:.0%} of shared matches, {r["_scoring_analysis"]["away_team"]} in {r["_scoring_analysis"]["away_scoring_rate"]:.0%} | BTTS rate: {r["_scoring_analysis"]["btts_rate"]:.0%} | O2.5 rate: {r["_scoring_analysis"]["over25_rate"]:.0%}
+</div>''' if r.get("_scoring_analysis", {}).get("btts_rate", 0) > 0 else "")}
 {result_html}
 <table style="margin:6px 0;">
   <tr><th>Home</th><td>Pos {r.get('home_pos', '—')}</td><td>Form {hf or '—'}</td><td>{r.get('odds_home', '—')}</td></tr>
@@ -3576,8 +4279,9 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 </div>
 <div style="font-weight:700;margin-bottom:4px;">{r['pick']} ({r['market']})</div>
 <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px;">Exp: {exp_str} &middot; Kelly: {r.get('kelly_stake', 0)*100:.1f}%</div>
+{f"<div style='font-size:0.78em;color:{'#10b981' if r.get('kelly_stake',0)*100>=3.5 else '#f59e0b' if r.get('kelly_stake',0)*100>=1.5 else '#64748b'};margin-bottom:6px;font-style:italic;'>{_kelly_interpretation(r.get('kelly_stake',0)*100)}</div>" if r.get('kelly_stake',0) > 0 else ""}
 {reason_html}
-{("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Conf</th><th>Value</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
+{("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Score</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
 {("<div style='margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.1);border-radius:6px;font-size:0.82em;'><strong>Best alt:</strong> <span style='color:" + _c(r.get('_backup', {}).get('confidence', 'Low')) + "'>" + r['_backup']['market'] + ": " + r['_backup']['pick'] + " (" + r['_backup']['confidence'] + ")</span></div>") if r.get('_backup') else ""}
 </div>''')}
 {"".join(f'''<div class="model-panel model-ml">
@@ -3587,6 +4291,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 </div>
 <div style="font-weight:700;margin-bottom:4px;">{r["_ml_analysis"]["pick"]} ({r["_ml_analysis"]["market"]})</div>
 <div style="color:#94a3b8;font-size:0.82em;margin-bottom:6px;">Exp: {r["_ml_analysis"]["_exp_goals"][0]:.1f}-{r["_ml_analysis"]["_exp_goals"][1]:.1f} &middot; Kelly: {r["_ml_analysis"].get("_kelly_stake", 0)*100:.1f}%</div>
+{f"<div style='font-size:0.78em;color:{'#10b981' if r['_ml_analysis'].get('_kelly_stake',0)*100>=3.5 else '#f59e0b' if r['_ml_analysis'].get('_kelly_stake',0)*100>=1.5 else '#64748b'};margin-bottom:6px;font-style:italic;'>{_kelly_interpretation(r['_ml_analysis'].get('_kelly_stake',0)*100)}</div>" if r['_ml_analysis'].get('_kelly_stake',0) > 0 else ""}
 <div style="font-size:0.78em;color:#94a3b8;margin-bottom:4px;">Model odds:</div>
 <table style="font-size:0.85em;">
   <tr><th>1X2</th><td>H: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["home"]:.2f}</td><td>D: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["draw"]:.2f}</td><td>A: {r["_ml_analysis"]["_ml_odds"]["ml_1x2"]["odds"]["away"]:.2f}</td></tr>
@@ -3595,8 +4300,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 </table>
 {"".join(f'<div class="synthform-line" style="margin:8px 0;padding:6px 10px;font-size:0.82em;">✦ {_highlight_exp(l.replace("⟁SYNTHFORM⟁", "", 1).strip())}</div>' if l.startswith("⟁SYNTHFORM⟁") else f'<div style="font-size:0.82em;margin:4px 0;{_ml_reason_style(l)}">{_highlight_exp(l)}</div>' if l.strip() and not l.startswith("──") else "" for l in r["_ml_analysis"].get("reasoning", []))}
 <table style="font-size:0.85em;width:100%;">
-  <tr><th>Mkt</th><th>Pick</th><th>Prob</th><th>Score</th>{"<th>Res</th>" if has_result_h else ""}</tr>
-  {"".join(f"""<tr><td>{p["market"]}</td><td>{p["pick"]}</td><td>{f'{p["model_prob"]:.0%}' if p.get("model_prob") else ""}</td><td>{f'{p.get("decision_value",0):.2f}' if p.get("decision_value") else ""}</td>{_pick_result(p, r) if has_result_h else ""}</tr>""" for p in r["_ml_analysis"].get("all_picks", [])[:4])}
+  <tr><th>Market</th><th>Pick</th><th>Prob</th><th>Score</th>{"<th>Res</th>" if has_result_h else ""}</tr>
+  {_ml_picks_html}
 </table>
 </div>''')}
 {_comparison_table(r)}
@@ -3817,12 +4522,23 @@ function applyFilters() {{
                      _save_to=high_path, _title_suffix=" (High Confidence)")
         log(f"High-confidence report: {high_path.resolve()}")
 
+    # ── Hot-leagues-only report ──
+    hot_results = [r for r in results if r.get("league_recent", {}).get("rating") == "hot"]
+    hot_path = None
+    if hot_results:
+        hot_path = pred_dir / "hot.html"
+        _write_html(hot_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=hot_path, _title_suffix=" (Hot Leagues — 7d)")
+        log(f"Hot-leagues report: {hot_path.resolve()} ({len(hot_results)} matches)")
+
     # ── Auto-open in browser ──
     webbrowser.open(str(report_path.resolve()))
     if high_path:
         webbrowser.open(str(high_path.resolve()))
+    if hot_path:
+        webbrowser.open(str(hot_path.resolve()))
 
-    return report_path
+    return report_path, hot_path
 
 
 def _update_index(pred_dir: Path, current_time: str):
@@ -4215,6 +4931,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "kelly_stake": pred.get("_kelly_stake", 0),
             "pick_odds": pred.get("_odds"),
             "league_difficulty": _get_league_difficulty(data.get("league", "")),
+            "league_recent": _get_league_recent_performance(data.get("league", "")),
         })
 
     # ── Output ──
@@ -4223,7 +4940,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         return
 
     # ── Always generate HTML ──
-    report_path = _write_html(results, match_urls, compare_forebet, high_only)
+    report_path, hot_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
@@ -4263,6 +4980,31 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             match_info += f"  •  {date}"
         print(f"\n\033[1m{i}. {match_info}\033[0m")
 
+        # Line 1b: League recent performance
+        lr = r.get("league_recent", {})
+        if lr and lr.get("overall", {}).get("total", 0) > 0:
+            rating = lr.get("rating", "unknown")
+            if rating == "hot":
+                _lc = "\033[1;32m"  # green
+                _icon = "🔥"
+            elif rating == "warm":
+                _lc = "\033[1;33m"  # yellow
+                _icon = "~"
+            elif rating == "cold":
+                _lc = "\033[1;31m"  # red
+                _icon = "❄"
+            else:
+                _lc = "\033[0m"
+                _icon = "?"
+            _ov = lr["overall"]
+            _perf_str = f"{_icon} League: {_lc}{_ov['pct']:.0f}% ({_ov['correct']}/{_ov['total']})\033[0m (7d)"
+            _mkt_parts = []
+            for _mk, _mv in lr.get("markets", {}).items():
+                _mkt_parts.append(f"{_mk} {_mv['pct']:.0f}%({_mv['correct']}/{_mv['total']})")
+            if _mkt_parts:
+                _perf_str += f" | {' '.join(_mkt_parts)}"
+            print(f"  {_perf_str}")
+
         # Line 2: Result (if finished)
         if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
             hg = r["actual_home_goals"]
@@ -4293,6 +5035,9 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         fb = r.get("forebet")
         if fb:
             pick_line += f" • Forebet: {fb}"
+        kelly_pct = r.get("kelly_stake", 0) * 100
+        if kelly_pct > 0:
+            pick_line += f" • Kelly: {kelly_pct:.1f}% ({_kelly_interpretation(kelly_pct)})"
         print(pick_line)
 
         # Line 3b: Backup pick
@@ -4314,7 +5059,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             ml_picks = ml_analysis.get("all_picks", [])[:3]
             for mp in ml_picks:
                 dv = mp.get("decision_value", 0)
-                print(f"    {mp['market']:5s}: {mp['pick']:12s} ({mp['confidence']:12s}) [synth {dv:.3f}]")
+                mp_s = f"{mp['model_prob']:.0%}" if mp.get("model_prob") else ""
+                print(f"    {mp['market']:5s}: {mp['pick']:12s} {mp_s:>5s} {mp['confidence']:12s} [score {dv:.3f}]")
             # ML synthesis rationale
             ml_rationale = ml_analysis.get("reasoning", [])
             # Find and print the synthform line
@@ -4330,6 +5076,25 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # Line 4: HTML path
         print(f"→ predictions/latest.html")
     print(f"\nSaved to database: history.db")
+
+    # ── Hot leagues summary ──
+    hot_count = len([r for r in results if r.get("league_recent", {}).get("rating") == "hot"])
+    if hot_count:
+        # Deduplicate by league prefix
+        hot_leagues = {}
+        for r in results:
+            lr = r.get("league_recent", {})
+            if lr.get("rating") == "hot":
+                league = r.get("league", "")
+                prefix = league.split()[0] if league.split() else league
+                if prefix not in hot_leagues:
+                    hot_leagues[prefix] = lr
+        print(f"\n\033[1;32m🔥 Hot Leagues (7d): {hot_count} matches from {len(hot_leagues)} leagues\033[0m")
+        for prefix, lr in sorted(hot_leagues.items(), key=lambda x: x[1]["overall"]["pct"], reverse=True):
+            ov = lr["overall"]
+            mk_parts = " | ".join(f"{mk} {mv['pct']:.0f}%" for mk, mv in lr.get("markets", {}).items())
+            print(f"  \033[32m{prefix:5s}\033[0m {ov['pct']:5.1f}% ({ov['correct']}/{ov['total']})  {mk_parts}")
+        print(f"→ predictions/hot.html")
 
     # Schedule retrain ~18h after games finish
     if preds_made > 0:
@@ -4657,6 +5422,7 @@ Options:
     parser.add_argument("--no-compare", action="store_true", help="Skip Forebet comparison")
     parser.add_argument("--no-reasoning", action="store_true", help="Hide reasoning")
     parser.add_argument("--no-ml", "--classic", action="store_true", help="Disable ML-enhanced prediction (use classic model)")
+    parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
 
     args = parser.parse_args()
 
@@ -4706,6 +5472,19 @@ Options:
 
     if args.calibrate:
         run_calibration()
+        return
+
+    if args.train_weights:
+        from database import train_weights_from_history
+        print("Training ensemble weights from historical predictions...")
+        result = train_weights_from_history(market="1X2", min_samples=10)
+        print(f"Updated weights for {result['leagues_updated']} leagues")
+        # Show top 10 by sample size
+        sorted_leagues = sorted(result['details'].items(), key=lambda x: x[1]['total'], reverse=True)[:10]
+        print("\nTop 10 leagues:")
+        for league, info in sorted_leagues:
+            print(f"  {league[:30]:30s} n={info['total']:3d} FB={info['forebet_acc']}% PM={info['poisson_ml_acc']}%")
+            print(f"    Weights: FB={info['weights']['forebet']:.1%} P={info['weights']['poisson']:.1%} ML={info['weights']['ml']:.1%}")
         return
 
     if args.review:

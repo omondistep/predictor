@@ -158,7 +158,8 @@ class ForebetScraper:
         if h1:
             text = h1.get_text(strip=True)
             # English: "Team A VS Team B", Spanish: "Team A - Team B"
-            parts = re.split(r"\s*(?:[Vv][Ss]|-)\s*", text)
+            # VS may have no surrounding whitespace when get_text() concatenates spans
+            parts = re.split(r"\s*[Vv][Ss]\s*|(?:\s+-\s+)", text, maxsplit=1)
             if len(parts) == 2:
                 self.data["home_team"] = parts[0].strip()
                 self.data["away_team"] = parts[1].strip()
@@ -179,6 +180,13 @@ class ForebetScraper:
                 self.data["league"] = f"{parts[0]} {parts[1]}"
             elif parts:
                 self.data["league"] = parts[0]
+
+        # Alternative: teamtablesp_container contains "Country League" text
+        tsc = self.soup.find("div", {"class": "teamtablesp_container"})
+        if tsc and (not self.data.get("league") or len(self.data["league"]) < 4):
+            text = tsc.get_text(" ", strip=True)
+            if text and len(text) > 2:
+                self.data["league"] = text
 
         # Alternative: find league via the rcnt div first text
         rcnt = self.soup.find("div", {"class": "rcnt"})

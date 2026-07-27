@@ -10,6 +10,7 @@
 | `pr --high-only <file>` | Only show High / Near Certain picks |
 | `pr --no-ml <file>` | Classic Poisson only (no ML ensemble) |
 | `pr --json <file>` | JSON output |
+| `pr --train-weights` | Train ensemble weights from historical predictions |
 
 ## Workflow
 

@@ -204,6 +204,15 @@ def main():
             run_calibration_learning(analyze=True, retrain=True, report=False)
         except Exception as e:
             log(f"  Calibration learning skipped: {e}")
+
+        # ── Retrain ensemble weights from history ──
+        log("Retraining ensemble weights from history...")
+        try:
+            from database import train_weights_from_history
+            result = train_weights_from_history(market="1X2", min_samples=10)
+            log(f"  Updated weights for {result['leagues_updated']} leagues")
+        except Exception as e:
+            log(f"  Weight retraining skipped: {e}")
     else:
         log("No new results found.")
 
