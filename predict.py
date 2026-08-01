@@ -4011,28 +4011,85 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         return "color:#cbd5e1;"
 
     def _comparison_table(r):
-        """Build a consensus table for picks where both models agree (≥70% prob)."""
+        """Consensus picks (both models agree ≥69.5%) plus the best alternative pick,
+        evaluated across EVERY option from both models (incl. 1X2) — not just Forebet."""
         ml = r.get("_ml_analysis")
         if not ml:
             return ""
-        fb_picks = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob") and p["model_prob"] >= 0.695}
-        ml_picks = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob") and p["model_prob"] >= 0.695}
-        agreed_keys = sorted(set(fb_picks) & set(ml_picks),
-                             key=lambda k: (fb_picks[k]["model_prob"] + ml_picks[k]["model_prob"]) / 2,
-                             reverse=True)
-        if not agreed_keys:
+        fb_all = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob")}
+        ml_all = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob")}
+        if not fb_all and not ml_all:
             return ""
-        rows_html = ""
-        for k in agreed_keys:
-            fp = fb_picks[k]
-            mp = ml_picks[k]
-            avg = (fp["model_prob"] + mp["model_prob"]) / 2
+
+        agree_thresh = 0.695
+        agreed_keys = sorted(
+            (k for k in set(fb_all) & set(ml_all)
+             if fb_all[k]["model_prob"] >= agree_thresh and ml_all[k]["model_prob"] >= agree_thresh),
+            key=lambda k: (fb_all[k]["model_prob"] + ml_all[k]["model_prob"]) / 2,
+            reverse=True)
+        agreed_set = set(agreed_keys)
+
+        # ── Best alt: score EVERY option from both models (incl. 1X2) ──
+        # Combined score = average of both models' probabilities when both have
+        # the pick; otherwise the single model that carries it.
+        primary_key = f"{r.get('market')}|{r.get('pick')}"
+        scored = []
+        for k in set(fb_all) | set(ml_all):
+            fp_p = fb_all[k]["model_prob"] if k in fb_all else None
+            mp_p = ml_all[k]["model_prob"] if k in ml_all else None
+            if fp_p is not None and mp_p is not None:
+                comb = (fp_p + mp_p) / 2
+            else:
+                comb = fp_p if fp_p is not None else mp_p
+            if comb:
+                scored.append((comb, k, fp_p, mp_p))
+        scored.sort(key=lambda x: x[0], reverse=True)
+
+        best_alt = None
+        for comb, k, fp_p, mp_p in scored:
+            if k == primary_key or k in agreed_set:
+                continue
+            if comb >= 0.50:  # only worth flagging a genuine alternative
+                best_alt = (comb, k, fp_p, mp_p)
+                break
+
+        def _cell(prob):
+            return f'<td>{prob:.0%}</td>' if prob is not None else '<td style="color:#64748b">—</td>'
+
+        html = ""
+        if agreed_keys:
+            agreed_rows = ""
+            for k in agreed_keys:
+                fp = fb_all[k]
+                mp = ml_all[k]
+                avg = (fp["model_prob"] + mp["model_prob"]) / 2
+                mkt, pick = k.split("|", 1)
+                agreed_rows += (f'<tr><td>{mkt}</td><td>{pick}</td>'
+                                f'<td>{fp["model_prob"]:.0%}</td><td>{mp["model_prob"]:.0%}</td>'
+                                f'<td style="color:#22c55e;font-weight:600">{avg:.0%}</td></tr>')
+            html += (f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">'
+                     f'🤝 Consensus picks (both ≥69.5%)</div>'
+                     f'<table style="width:100%;font-size:0.9em;">'
+                     f'<tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Avg</th></tr>'
+                     f'{agreed_rows}</table>')
+
+        if best_alt:
+            comb, k, fp_p, mp_p = best_alt
             mkt, pick = k.split("|", 1)
-            rows_html += f'<tr><td>{mkt}</td><td>{pick}</td><td>{fp["model_prob"]:.0%}</td><td>{mp["model_prob"]:.0%}</td><td style="color:#22c55e;font-weight:600">{avg:.0%}</td></tr>'
-        return (f'<div style="margin-top:10px;padding:8px 10px;background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);border-radius:6px;font-size:0.82em;">'
-                f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">🤝 Consensus picks (both ≥69.5%)</div>'
-                f'<table style="width:100%;font-size:0.9em;"><tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Avg</th></tr>'
-                f'{rows_html}</table></div>')
+            html += (f'<div style="margin-top:8px;font-weight:700;color:#a5b4fc;">'
+                     f'★ Best alt (both models considered)</div>'
+                     f'<table style="width:100%;font-size:0.9em;">'
+                     f'<tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Comb</th></tr>'
+                     f'<tr style="background:rgba(99,102,241,0.10);">'
+                     f'<td>{mkt}</td><td>{pick}</td>{_cell(fp_p)}{_cell(mp_p)}'
+                     f'<td style="color:#a5b4fc;font-weight:600">{comb:.0%}</td></tr>'
+                     f'</table>')
+
+        if not html:
+            return ""
+        return (f'<div style="margin-top:10px;padding:8px 10px;'
+                f'background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);'
+                f'border-radius:6px;font-size:0.82em;">{html}</div>')
 
     def _venue_stats_html(r):
         parts = []
