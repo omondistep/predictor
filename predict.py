@@ -5365,16 +5365,20 @@ def ensure_alias():
     """Create symlinks in ~/.local/bin/ for easy access."""
     bindir = Path.home() / ".local" / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
+    # Prefer the venv-aware `pr` wrapper so aliases always use .venv python.
+    # On Windows the bash wrapper won't run, so fall back to predict.py directly.
     src = Path(__file__).resolve()
+    wrapper = src.parent / "pr"
+    target = wrapper if (os.name != "nt" and wrapper.exists()) else src
     for name in ("pr", "predict", "predictor"):
         bin_path = bindir / name
-        if bin_path.exists() and bin_path.samefile(src):
+        if bin_path.exists() and bin_path.samefile(target):
             continue
         try:
             if bin_path.exists() or bin_path.is_symlink():
                 bin_path.unlink()
-            bin_path.symlink_to(src)
-            print(f"Alias created: {bin_path} -> {src}")
+            bin_path.symlink_to(target)
+            print(f"Alias created: {bin_path} -> {target}")
         except Exception as e:
             print(f"Warning: could not create alias for {name}: {e}")
 

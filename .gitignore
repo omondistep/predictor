@@ -26,6 +26,13 @@ predictions/
 ml_models/
 backups/
 
+# ...but keep these tracked so a fresh clone carries the full system:
+!seed/
+!seed/data/
+!seed/data/*.json
+!ml_models/
+!ml_models/ml_predictor/
+
 # Logs
 *.log
 /tmp/

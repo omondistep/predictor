@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
 set -e
-DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Resolve symlinks so this works when invoked via ~/.local/bin/pr
+SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$SOURCE" ]; do
+    TARGET="$(readlink "$SOURCE")"
+    case "$TARGET" in
+        /*) SOURCE="$TARGET" ;;
+        *) SOURCE="$(dirname "$SOURCE")/$TARGET" ;;
+    esac
+done
+DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 # Use venv python if available, otherwise system python
 if [ -x "$DIR/.venv/bin/python" ]; then
     PYTHON="$DIR/.venv/bin/python"
 else
-    echo "No .venv found. Run ./install.sh first." >&2
+    echo "No .venv found. Run scripts/install.sh first." >&2
     exit 1
 fi
 

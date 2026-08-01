@@ -1,0 +1,242 @@
+{
+  "Py2": {
+    "league_code": "Py2",
+    "country": "Paraguay",
+    "league": "Division Intermedia",
+    "league_url_path": "football-tips-and-predictions-for-paraguay/division-intermedia",
+    "country_code": "py",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "AuC": {
+    "league_code": "AuC",
+    "country": "Australia",
+    "league": "Australia Cup",
+    "league_url_path": "tips-and-predictions-for-australia/australia-cup",
+    "country_code": "au",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "In3": {
+    "league_code": "In3",
+    "country": "India",
+    "league": "Calcutta Football League",
+    "league_url_path": "football-tips-and-predictions-for-india/calcutta-football-league",
+    "country_code": "in",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Uz1": {
+    "league_code": "Uz1",
+    "country": "Uzbekistan",
+    "league": "Professional Football League",
+    "league_url_path": "football-tips-and-predictions-for-Uzbekistan/professional-football-league",
+    "country_code": "uz",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Kr2": {
+    "league_code": "Kr2",
+    "country": "South Korea",
+    "league": "K League 2",
+    "league_url_path": "football-tips-and-predictions-for-south-korea/k-league-2",
+    "country_code": "kr",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "AuV": {
+    "league_code": "AuV",
+    "country": "Australia",
+    "league": "NPL Victoria",
+    "league_url_path": "tips-and-predictions-for-australia/npl-victoria",
+    "country_code": "au",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Kz2": {
+    "league_code": "Kz2",
+    "country": "Kazakhstan",
+    "league": "First Division",
+    "league_url_path": "football-tips-and-predictions-for-kazakhstan/first-division",
+    "country_code": "kz",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "CzC": {
+    "league_code": "CzC",
+    "country": "Czech Republic",
+    "league": "Czech Cup",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/czech-cup",
+    "country_code": "cz",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Fi3": {
+    "league_code": "Fi3",
+    "country": "Finland",
+    "league": "Kakkonen",
+    "league_url_path": "football-tips-and-predictions-for-finland/kakkonen",
+    "country_code": "fi",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Ro1": {
+    "league_code": "Ro1",
+    "country": "Romania",
+    "league": "Divizia A",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-1",
+    "country_code": "ro",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Cz2": {
+    "league_code": "Cz2",
+    "country": "Czech Republic",
+    "league": "National Football League",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/fnl",
+    "country_code": "cz",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Dk2": {
+    "league_code": "Dk2",
+    "country": "Denmark",
+    "league": "1. Division",
+    "league_url_path": "football-tips-and-predictions-for-denmark/first-division",
+    "country_code": "dk",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Fi1": {
+    "league_code": "Fi1",
+    "country": "Finland",
+    "league": "Veikkausliiga",
+    "league_url_path": "football-tips-and-predictions-for-finland/veikkausliiga",
+    "country_code": "fi",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Fi4": {
+    "league_code": "Fi4",
+    "country": "Finland",
+    "league": "Ykkonen",
+    "league_url_path": "football-tips-and-predictions-for-finland/ykkonen",
+    "country_code": "fi",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Dk1": {
+    "league_code": "Dk1",
+    "country": "Denmark",
+    "league": "Superliga",
+    "league_url_path": "football-tips-and-predictions-for-denmark/superliga",
+    "country_code": "dk",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Ru1": {
+    "league_code": "Ru1",
+    "country": "Russia",
+    "league": "Premier League",
+    "league_url_path": "football-tips-and-predictions-for-russia/premier-liga",
+    "country_code": "ru",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Se1": {
+    "league_code": "Se1",
+    "country": "Sweden",
+    "league": "Allsvenskan",
+    "league_url_path": "football-tips-and-predictions-for-sweden/allsvenskan",
+    "country_code": "se",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Ch2": {
+    "league_code": "Ch2",
+    "country": "Switzerland",
+    "league": "Challenge League",
+    "league_url_path": "football-tips-and-predictions-for-switzerland/challenge-league",
+    "country_code": "ch",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Ar3": {
+    "league_code": "Ar3",
+    "country": "Argentina",
+    "league": "Torneo Federal A",
+    "league_url_path": "football-tips-and-predictions-for-argentina/torneo-federal-a",
+    "country_code": "ar",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "BrP": {
+    "league_code": "BrP",
+    "country": "Brazil",
+    "league": "Campeonato Paulista U20",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista-u20",
+    "country_code": "br",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Is2": {
+    "league_code": "Is2",
+    "country": "Iceland",
+    "league": "1. Division",
+    "league_url_path": "football-tips-and-predictions-for-iceland/1-division",
+    "country_code": "is",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Lb": {
+    "league_code": "Lb",
+    "country": "Lebanon",
+    "league": "Premier League",
+    "league_url_path": "predictions-lebanon/premier-league",
+    "country_code": "lb",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "Ie2": {
+    "league_code": "Ie2",
+    "country": "Ireland",
+    "league": "First Division",
+    "league_url_path": "football-tips-and-predictions-for-ireland/first-division",
+    "country_code": "ie",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  },
+  "No3": {
+    "league_code": "No3",
+    "country": "Norway",
+    "league": "2. Division",
+    "league_url_path": "football-tips-and-predictions-for-norway/2-division",
+    "country_code": "no",
+    "match_count": 1,
+    "teams": {},
+    "source": "live_prediction"
+  }
+}

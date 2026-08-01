@@ -71,6 +71,33 @@ Cron (scheduled by pr)     → Runs retrain_from_results() after 18h
 | `calibration_params.json` | Isotonic regression calibration params |
 | `ml_models/ml_predictor/` | Trained ML model components |
 
+## Replicate to a New Machine (Linux / macOS / Windows)
+
+The full system ships in git — DB, calibration params and trained ML models —
+plus a snapshot of regenerated state in `seed/data/`. To stand up an identical
+copy:
+
+```bash
+git clone <repo-url> predictor
+cd predictor
+bash scripts/install.sh        # Linux / macOS (delegates to install.ps1 from Git-Bash)
+# or on Windows (cmd / PowerShell):
+powershell -ExecutionPolicy Bypass -File scripts\install.ps1
+```
+
+The installer:
+1. Creates `.venv` and installs `requirements.txt` (includes xgboost, lightgbm, cloudscraper)
+2. Restores `data/{pending_results,leagues_db,predictions}.json` from `seed/data/`
+3. Verifies ML models load from git (only retrains if broken/missing)
+4. Installs the `pr` command — `~/.local/bin/pr` symlink on Linux/macOS,
+   `pr.cmd` + `pr.ps1` shims in `%USERPROFILE%\.local\bin` on Windows
+
+**Keep snapshots fresh after big state changes:**
+```bash
+cp data/pending_results.json data/leagues_db.json data/predictions.json seed/data/
+git add seed/data/ history.db ml_models/ && git commit
+```
+
 ## Auto-Retrain (Cron)
 
 A cron job is automatically scheduled when you run predictions. It retrains the model 18 hours later.
