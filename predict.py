@@ -1518,6 +1518,58 @@ def _get_team_results_from_db(team_name: str, limit: int = 8) -> list:
         return []
 
 
+def _last_h2h_outcome(data: dict) -> dict | None:
+    """Most recent head-to-head meeting outcome from the home team's perspective.
+
+    Prefers scraped h2h_details (built oldest→newest, so last = most recent);
+    falls back to the most recent actual meeting found in history.db.
+    Returns None when no prior meeting is known.  Keys: result ("W"/"D"/"L"),
+    score ("gf-ga" from home perspective), date.
+    """
+    home_team = (data.get("home_team") or "").strip()
+    away_team = (data.get("away_team") or "").strip()
+    if not home_team or not away_team:
+        return None
+
+    details = data.get("h2h_details") or []
+    if details:
+        last = details[-1]
+        res = last.get("result")
+        if res in ("W", "D", "L"):
+            return {
+                "result": res,
+                "score": f"{last.get('goals_for', 0)}-{last.get('goals_against', 0)}",
+                "date": last.get("date") or "",
+            }
+
+    from database import get_db
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT home_team, away_team, actual_home_goals, actual_away_goals, match_date
+            FROM matches
+            WHERE actual_home_goals IS NOT NULL AND actual_away_goals IS NOT NULL
+              AND ((home_team = ? AND away_team = ?) OR (home_team = ? AND away_team = ?))
+            ORDER BY id DESC
+            LIMIT 1
+        """, (home_team, away_team, away_team, home_team))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            hg, ag = int(row["actual_home_goals"]), int(row["actual_away_goals"])
+            if row["home_team"] == home_team:
+                res = "W" if hg > ag else "D" if hg == ag else "L"
+                score = f"{hg}-{ag}"
+            else:
+                res = "W" if ag > hg else "D" if ag == hg else "L"
+                score = f"{ag}-{hg}"
+            return {"result": res, "score": score, "date": row["match_date"] or ""}
+    except Exception:
+        pass
+    return None
+
+
 def _transitive_common_opponent_analysis(data: dict) -> dict:
     """
     Transitive common-opponent analysis.
@@ -3005,6 +3057,43 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             signal_blend = min(0.65, signal_blend + min(0.5, draw_signal_val * 0.3))
             method_parts.append("draw")
             draw_adjusted = True
+
+    # ── Last-H2H outcome persistence ──
+    # 383 historical meetings: decisive last-H2H results persist (68% repeat for
+    # home wins, 52% for away wins) but draws do NOT repeat (47%). So only a
+    # decisive last meeting nudges expected goals; strength decays with age and
+    # scales with the ML model's H2H feature importance.
+    _lho = _last_h2h_outcome(data)
+    if _lho and _lho["result"] in ("W", "L"):
+        _h2h_rec = _recency_weight(_lho["date"], decay_days=365)
+        # Hard gate: only within the 1-year decay window. The recency clamp
+        # (floor 0.2) would otherwise keep stale meetings alive indefinitely.
+        _h2h_in_window = False
+        try:
+            _h2h_dt = datetime.strptime(_lho["date"], "%d/%m/%Y")
+            _h2h_in_window = (datetime.now() - _h2h_dt).days <= 365
+        except (ValueError, TypeError):
+            _h2h_in_window = _h2h_rec >= 0.75
+        if not _h2h_in_window:
+            _lho = None
+    if _lho and _lho["result"] in ("W", "L"):
+        _h2h_rec = _recency_weight(_lho["date"], decay_days=365)
+        _h2h_w = ml_signal_weights.get("h2h", 1.0) if ml_signal_weights else 1.0
+        _h2h_shift = 0.08 * _h2h_rec * _h2h_w
+        if _h2h_shift > 0.01:
+            if _lho["result"] == "W":
+                exp_h = min(exp_h + _h2h_shift, 3.2)
+                exp_a = max(exp_a - _h2h_shift * 0.25, 0.05)
+            else:
+                exp_a = min(exp_a + _h2h_shift, 3.2)
+                exp_h = max(exp_h - _h2h_shift * 0.25, 0.05)
+            signal_blend = min(0.65, signal_blend + _h2h_shift * 1.25)
+            method_parts.append("h2h-last")
+            _lho_verb = "won" if _lho["result"] == "W" else "lost"
+            reasoning.append(
+                f"[H2H-LAST] {data.get('home_team', '')} {_lho_verb} last H2H vs "
+                f"{data.get('away_team', '')} ({_lho['score']}) — decisive H2H outcomes persist"
+            )
 
     # ── Single final probability recompute from adjusted expected goals ──
     # Every signal above only modified exp_h/exp_a; now derive probabilities once
