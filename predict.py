@@ -1524,7 +1524,7 @@ def _last_h2h_outcome(data: dict) -> dict | None:
     Prefers scraped h2h_details (built oldest→newest, so last = most recent);
     falls back to the most recent actual meeting found in history.db.
     Returns None when no prior meeting is known.  Keys: result ("W"/"D"/"L"),
-    score ("gf-ga" from home perspective), date.
+    score ("gf-ga" from home perspective), total_goals, date.
     """
     home_team = (data.get("home_team") or "").strip()
     away_team = (data.get("away_team") or "").strip()
@@ -1536,9 +1536,12 @@ def _last_h2h_outcome(data: dict) -> dict | None:
         last = details[-1]
         res = last.get("result")
         if res in ("W", "D", "L"):
+            gf = last.get("goals_for", 0)
+            ga = last.get("goals_against", 0)
             return {
                 "result": res,
-                "score": f"{last.get('goals_for', 0)}-{last.get('goals_against', 0)}",
+                "score": f"{gf}-{ga}",
+                "total_goals": int(last.get("total_goals") or (gf + ga)),
                 "date": last.get("date") or "",
             }
 
@@ -1564,7 +1567,8 @@ def _last_h2h_outcome(data: dict) -> dict | None:
             else:
                 res = "W" if ag > hg else "D" if ag == hg else "L"
                 score = f"{ag}-{hg}"
-            return {"result": res, "score": score, "date": row["match_date"] or ""}
+            return {"result": res, "score": score, "date": row["match_date"] or "",
+                    "total_goals": hg + ag}
     except Exception:
         pass
     return None
@@ -3058,13 +3062,14 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             method_parts.append("draw")
             draw_adjusted = True
 
-    # ── Last-H2H outcome persistence ──
+    # ── Last-H2H persistence (1X2 + total goals) ──
     # 383 historical meetings: decisive last-H2H results persist (68% repeat for
-    # home wins, 52% for away wins) but draws do NOT repeat (47%). So only a
-    # decisive last meeting nudges expected goals; strength decays with age and
-    # scales with the ML model's H2H feature importance.
+    # home wins, 52% for away wins), the last meeting's total goals persist
+    # (O2.5 repeats 64% vs 37% base), and a last-H2H draw lifts the draw rate
+    # (47% vs 16% base — handled after the probability blend). Strength decays
+    # with age and scales with the ML model's feature importance.
     _lho = _last_h2h_outcome(data)
-    if _lho and _lho["result"] in ("W", "L"):
+    if _lho:
         _h2h_rec = _recency_weight(_lho["date"], decay_days=365)
         # Hard gate: only within the 1-year decay window. The recency clamp
         # (floor 0.2) would otherwise keep stale meetings alive indefinitely.
@@ -3076,8 +3081,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             _h2h_in_window = _h2h_rec >= 0.75
         if not _h2h_in_window:
             _lho = None
+    _lho_home = data.get("home_team", "")
+    _lho_away = data.get("away_team", "")
+
+    # 1X2: decisive last meeting persists → shift expected goals
     if _lho and _lho["result"] in ("W", "L"):
-        _h2h_rec = _recency_weight(_lho["date"], decay_days=365)
         _h2h_w = ml_signal_weights.get("h2h", 1.0) if ml_signal_weights else 1.0
         _h2h_shift = 0.08 * _h2h_rec * _h2h_w
         if _h2h_shift > 0.01:
@@ -3091,9 +3099,30 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             method_parts.append("h2h-last")
             _lho_verb = "won" if _lho["result"] == "W" else "lost"
             reasoning.append(
-                f"[H2H-LAST] {data.get('home_team', '')} {_lho_verb} last H2H vs "
-                f"{data.get('away_team', '')} ({_lho['score']}) — decisive H2H outcomes persist"
+                f"[H2H-LAST] {_lho_home} {_lho_verb} last H2H vs {_lho_away} "
+                f"({_lho['score']}) — decisive H2H outcomes persist"
             )
+
+    # O/U: last meeting's total goals persist → scale both expected goals together
+    if _lho and _lho.get("total_goals"):
+        _ou_w = ml_signal_weights.get("goals", 1.0) if ml_signal_weights else 1.0
+        _ou_strength = _h2h_rec * _ou_w
+        if _ou_strength > 0.05:
+            if _lho["total_goals"] > 2.5:
+                _ou_factor = 1.0 + 0.10 * _ou_strength
+            elif _lho["total_goals"] < 2.5:
+                _ou_factor = 1.0 - 0.10 * _ou_strength
+            else:
+                _ou_factor = None
+            if _ou_factor:
+                exp_h = min(exp_h * _ou_factor, 3.2)
+                exp_a = min(exp_a * _ou_factor, 3.2)
+                signal_blend = min(0.65, signal_blend + 0.15 * _ou_strength)
+                method_parts.append("h2h-ou")
+                reasoning.append(
+                    f"[H2H-OU] Last H2H had {_lho['total_goals']} goals — "
+                    f"{'Over' if _lho['total_goals'] > 2.5 else 'Under'} 2.5 tendency"
+                )
 
     # ── Single final probability recompute from adjusted expected goals ──
     # Every signal above only modified exp_h/exp_a; now derive probabilities once
@@ -3128,6 +3157,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     p_away = p_away * (1 - _w) + _pa * _w
     p_over = p_over * (1 - _w) + _po * _w
     p_under = 1.0 - p_over
+
+    # ── Last-H2H draw persistence ──
+    # A last-H2H draw lifts the draw rate (47% vs 16% base). Applied to the
+    # blended probabilities, scaled by recency and ML draw feature importance.
+    if _lho and _lho["result"] == "D":
+        _d_w = ml_signal_weights.get("draw", 1.0) if ml_signal_weights else 1.0
+        _d_strength = 0.12 * _h2h_rec * _d_w
+        if _d_strength > 0.01:
+            p_draw = min(p_draw + _d_strength, 0.55)
+            _tp2 = p_home + p_draw + p_away
+            if _tp2 > 0:
+                p_home /= _tp2
+                p_draw /= _tp2
+                p_away /= _tp2
+            method_parts.append("h2h-draw")
+            reasoning.append(
+                f"[H2H-DRAW] Last H2H was a draw ({_lho['score']}) — draws persist ~3x base rate"
+            )
 
     # ── Apply learned bias corrections from calibration learning ──
     _load_calibration_biases()
