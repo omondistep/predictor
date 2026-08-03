@@ -238,5 +238,1795 @@
     "match_count": 1,
     "teams": {},
     "source": "live_prediction"
+  },
+  "ar01": {
+    "league_code": "ar01",
+    "country": "Argentina",
+    "league": "Copa Argentina",
+    "league_url_path": "football-tips-and-predictions-for-argentina/copa-argentina",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar02": {
+    "league_code": "ar02",
+    "country": "Argentina",
+    "league": "Copa De La Liga Profesional",
+    "league_url_path": "football-tips-and-predictions-for-argentina/copa-de-la-liga-profesional",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar03": {
+    "league_code": "ar03",
+    "country": "Argentina",
+    "league": "Liga Profesional",
+    "league_url_path": "football-tips-and-predictions-for-argentina/liga-profesional",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar04": {
+    "league_code": "ar04",
+    "country": "Argentina",
+    "league": "Nacional B",
+    "league_url_path": "football-tips-and-predictions-for-argentina/nacional-b",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar05": {
+    "league_code": "ar05",
+    "country": "Argentina",
+    "league": "Primera B Metropolitana",
+    "league_url_path": "football-tips-and-predictions-for-argentina/primera-b-metropolitana",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar06": {
+    "league_code": "ar06",
+    "country": "Argentina",
+    "league": "Primera C Metropolitana",
+    "league_url_path": "football-tips-and-predictions-for-argentina/primera-c-metropolitana",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar07": {
+    "league_code": "ar07",
+    "country": "Argentina",
+    "league": "Primera D",
+    "league_url_path": "football-tips-and-predictions-for-argentina/primera-d",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar08": {
+    "league_code": "ar08",
+    "country": "Argentina",
+    "league": "Reserve League",
+    "league_url_path": "football-tips-and-predictions-for-argentina/reserve-league",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar09": {
+    "league_code": "ar09",
+    "country": "Argentina",
+    "league": "Super Cup",
+    "league_url_path": "football-tips-and-predictions-for-argentina/super-cup",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ar11": {
+    "league_code": "ar11",
+    "country": "Argentina",
+    "league": "Torneos De Verano",
+    "league_url_path": "football-tips-and-predictions-for-argentina/torneos-de-verano",
+    "country_code": "ar",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au01": {
+    "league_code": "au01",
+    "country": "Australia",
+    "league": "A League",
+    "league_url_path": "tips-and-predictions-for-australia/a-league",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au02": {
+    "league_code": "au02",
+    "country": "Australia",
+    "league": "A League Women",
+    "league_url_path": "tips-and-predictions-for-australia/a-league-women",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au04": {
+    "league_code": "au04",
+    "country": "Australia",
+    "league": "Australian Championship",
+    "league_url_path": "tips-and-predictions-for-australia/australian-championship",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au05": {
+    "league_code": "au05",
+    "country": "Australia",
+    "league": "Brisbane Premier",
+    "league_url_path": "tips-and-predictions-for-australia/brisbane-premier",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au06": {
+    "league_code": "au06",
+    "country": "Australia",
+    "league": "Npl Act",
+    "league_url_path": "tips-and-predictions-for-australia/npl-act",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au07": {
+    "league_code": "au07",
+    "country": "Australia",
+    "league": "Npl Northern Nsw",
+    "league_url_path": "tips-and-predictions-for-australia/npl-northern-nsw",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au08": {
+    "league_code": "au08",
+    "country": "Australia",
+    "league": "Npl Nsw",
+    "league_url_path": "tips-and-predictions-for-australia/npl-nsw",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au09": {
+    "league_code": "au09",
+    "country": "Australia",
+    "league": "Npl Queensland",
+    "league_url_path": "tips-and-predictions-for-australia/npl-queensland",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au10": {
+    "league_code": "au10",
+    "country": "Australia",
+    "league": "Npl South",
+    "league_url_path": "tips-and-predictions-for-australia/npl-south",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au11": {
+    "league_code": "au11",
+    "country": "Australia",
+    "league": "Npl Tasmania",
+    "league_url_path": "tips-and-predictions-for-australia/npl-tasmania",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "au13": {
+    "league_code": "au13",
+    "country": "Australia",
+    "league": "Npl West",
+    "league_url_path": "tips-and-predictions-for-australia/npl-west",
+    "country_code": "au",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br01": {
+    "league_code": "br01",
+    "country": "Brazil",
+    "league": "Acreano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/acreano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br02": {
+    "league_code": "br02",
+    "country": "Brazil",
+    "league": "Alagoano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/alagoano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br03": {
+    "league_code": "br03",
+    "country": "Brazil",
+    "league": "Amapaense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/amapaense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br04": {
+    "league_code": "br04",
+    "country": "Brazil",
+    "league": "Amazonense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/amazonense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br05": {
+    "league_code": "br05",
+    "country": "Brazil",
+    "league": "Baiano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/baiano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br06": {
+    "league_code": "br06",
+    "country": "Brazil",
+    "league": "Baiano 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/baiano-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br07": {
+    "league_code": "br07",
+    "country": "Brazil",
+    "league": "Brasileiro U20",
+    "league_url_path": "football-tips-and-predictions-for-brazil/brasileiro-u20",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br08": {
+    "league_code": "br08",
+    "country": "Brazil",
+    "league": "Brasileiro Women",
+    "league_url_path": "football-tips-and-predictions-for-brazil/brasileiro-women",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br09": {
+    "league_code": "br09",
+    "country": "Brazil",
+    "league": "Brasiliense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/brasiliense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br10": {
+    "league_code": "br10",
+    "country": "Brazil",
+    "league": "Capixaba",
+    "league_url_path": "football-tips-and-predictions-for-brazil/capixaba",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br11": {
+    "league_code": "br11",
+    "country": "Brazil",
+    "league": "Carioca",
+    "league_url_path": "football-tips-and-predictions-for-brazil/carioca",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br12": {
+    "league_code": "br12",
+    "country": "Brazil",
+    "league": "Carioca 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/carioca-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br13": {
+    "league_code": "br13",
+    "country": "Brazil",
+    "league": "Carioca U20",
+    "league_url_path": "football-tips-and-predictions-for-brazil/carioca-u20",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br14": {
+    "league_code": "br14",
+    "country": "Brazil",
+    "league": "Catarinense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/catarinense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br15": {
+    "league_code": "br15",
+    "country": "Brazil",
+    "league": "Catarinense 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/catarinense-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br16": {
+    "league_code": "br16",
+    "country": "Brazil",
+    "league": "Cearense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/cearense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br17": {
+    "league_code": "br17",
+    "country": "Brazil",
+    "league": "Cearense 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/cearense-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br18": {
+    "league_code": "br18",
+    "country": "Brazil",
+    "league": "Copa Centro Oeste",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-centro-oeste",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br19": {
+    "league_code": "br19",
+    "country": "Brazil",
+    "league": "Copa Do Brasil U20",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-do-brasil-u20",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br20": {
+    "league_code": "br20",
+    "country": "Brazil",
+    "league": "Copa Do Brazil",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-do-brazil",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br21": {
+    "league_code": "br21",
+    "country": "Brazil",
+    "league": "Copa Do Nordeste",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-do-nordeste",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br22": {
+    "league_code": "br22",
+    "country": "Brazil",
+    "league": "Copa Fgf",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-fgf",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br23": {
+    "league_code": "br23",
+    "country": "Brazil",
+    "league": "Copa Norte",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-norte",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br24": {
+    "league_code": "br24",
+    "country": "Brazil",
+    "league": "Copa Paulista",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-paulista",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br25": {
+    "league_code": "br25",
+    "country": "Brazil",
+    "league": "Copa Rio",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-rio",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br26": {
+    "league_code": "br26",
+    "country": "Brazil",
+    "league": "Copa Sao Paulo De Juniores",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-sao-paulo-de-juniores",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br27": {
+    "league_code": "br27",
+    "country": "Brazil",
+    "league": "Copa Sul Sudeste",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-sul-sudeste",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br28": {
+    "league_code": "br28",
+    "country": "Brazil",
+    "league": "Copa Verde",
+    "league_url_path": "football-tips-and-predictions-for-brazil/copa-verde",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br29": {
+    "league_code": "br29",
+    "country": "Brazil",
+    "league": "Gaucho",
+    "league_url_path": "football-tips-and-predictions-for-brazil/gaucho",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br30": {
+    "league_code": "br30",
+    "country": "Brazil",
+    "league": "Gaucho 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/gaucho-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br31": {
+    "league_code": "br31",
+    "country": "Brazil",
+    "league": "Goiano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/goiano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br32": {
+    "league_code": "br32",
+    "country": "Brazil",
+    "league": "Maranhense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/maranhense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br33": {
+    "league_code": "br33",
+    "country": "Brazil",
+    "league": "Matogrossense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/matogrossense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br34": {
+    "league_code": "br34",
+    "country": "Brazil",
+    "league": "Mineiro",
+    "league_url_path": "football-tips-and-predictions-for-brazil/mineiro",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br35": {
+    "league_code": "br35",
+    "country": "Brazil",
+    "league": "Mineiro 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/mineiro-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br36": {
+    "league_code": "br36",
+    "country": "Brazil",
+    "league": "Mineiro U20",
+    "league_url_path": "football-tips-and-predictions-for-brazil/mineiro-u20",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br37": {
+    "league_code": "br37",
+    "country": "Brazil",
+    "league": "Paraense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paraense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br38": {
+    "league_code": "br38",
+    "country": "Brazil",
+    "league": "Paraibano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paraibano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br39": {
+    "league_code": "br39",
+    "country": "Brazil",
+    "league": "Paranaense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paranaense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br40": {
+    "league_code": "br40",
+    "country": "Brazil",
+    "league": "Paranaense 2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paranaense-2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br41": {
+    "league_code": "br41",
+    "country": "Brazil",
+    "league": "Paranaense U19",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paranaense-u19",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br42": {
+    "league_code": "br42",
+    "country": "Brazil",
+    "league": "Paulista",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br43": {
+    "league_code": "br43",
+    "country": "Brazil",
+    "league": "Paulista A2",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista-a2",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br44": {
+    "league_code": "br44",
+    "country": "Brazil",
+    "league": "Paulista A3",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista-a3",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br45": {
+    "league_code": "br45",
+    "country": "Brazil",
+    "league": "Paulista Serie B",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista-serie-b",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br47": {
+    "league_code": "br47",
+    "country": "Brazil",
+    "league": "Paulista Women",
+    "league_url_path": "football-tips-and-predictions-for-brazil/paulista-women",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br48": {
+    "league_code": "br48",
+    "country": "Brazil",
+    "league": "Pernambucano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/pernambucano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br49": {
+    "league_code": "br49",
+    "country": "Brazil",
+    "league": "Piauiense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/piauiense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br50": {
+    "league_code": "br50",
+    "country": "Brazil",
+    "league": "Potiguar",
+    "league_url_path": "football-tips-and-predictions-for-brazil/potiguar",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br51": {
+    "league_code": "br51",
+    "country": "Brazil",
+    "league": "Rondoniense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/rondoniense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br52": {
+    "league_code": "br52",
+    "country": "Brazil",
+    "league": "Roraimense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/roraimense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br53": {
+    "league_code": "br53",
+    "country": "Brazil",
+    "league": "Sergipano",
+    "league_url_path": "football-tips-and-predictions-for-brazil/sergipano",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br54": {
+    "league_code": "br54",
+    "country": "Brazil",
+    "league": "Serie A",
+    "league_url_path": "football-tips-and-predictions-for-brazil/serie-a",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br55": {
+    "league_code": "br55",
+    "country": "Brazil",
+    "league": "Serie B",
+    "league_url_path": "football-tips-and-predictions-for-brazil/serie-b",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br56": {
+    "league_code": "br56",
+    "country": "Brazil",
+    "league": "Serie C",
+    "league_url_path": "football-tips-and-predictions-for-brazil/serie-c",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br57": {
+    "league_code": "br57",
+    "country": "Brazil",
+    "league": "Serie D",
+    "league_url_path": "football-tips-and-predictions-for-brazil/serie-d",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br58": {
+    "league_code": "br58",
+    "country": "Brazil",
+    "league": "Sul Matogrossense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/sul-matogrossense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br59": {
+    "league_code": "br59",
+    "country": "Brazil",
+    "league": "Supercopa",
+    "league_url_path": "football-tips-and-predictions-for-brazil/supercopa",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "br60": {
+    "league_code": "br60",
+    "country": "Brazil",
+    "league": "Tocantinense",
+    "league_url_path": "football-tips-and-predictions-for-brazil/tocantinense",
+    "country_code": "br",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz01": {
+    "league_code": "cz01",
+    "country": "Czech Republic",
+    "league": "1. Liga Women",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/1-liga-women",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz02": {
+    "league_code": "cz02",
+    "country": "Czech Republic",
+    "league": "3. Cfl",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/3-cfl",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz03": {
+    "league_code": "cz03",
+    "country": "Czech Republic",
+    "league": "3. Msfl",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/3-msfl",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz04": {
+    "league_code": "cz04",
+    "country": "Czech Republic",
+    "league": "Chance Liga",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/chance-liga",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz06": {
+    "league_code": "cz06",
+    "country": "Czech Republic",
+    "league": "Division A",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-a",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz07": {
+    "league_code": "cz07",
+    "country": "Czech Republic",
+    "league": "Division B",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-b",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz08": {
+    "league_code": "cz08",
+    "country": "Czech Republic",
+    "league": "Division C",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-c",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz09": {
+    "league_code": "cz09",
+    "country": "Czech Republic",
+    "league": "Division D",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-d",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz10": {
+    "league_code": "cz10",
+    "country": "Czech Republic",
+    "league": "Division E",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-e",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz11": {
+    "league_code": "cz11",
+    "country": "Czech Republic",
+    "league": "Division F",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/division-f",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz13": {
+    "league_code": "cz13",
+    "country": "Czech Republic",
+    "league": "Tipsport Liga",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/tipsport-liga",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "cz14": {
+    "league_code": "cz14",
+    "country": "Czech Republic",
+    "league": "U19 League",
+    "league_url_path": "football-tips-and-predictions-for-czech-rep/u19-league",
+    "country_code": "cz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "dk01": {
+    "league_code": "dk01",
+    "country": "Denmark",
+    "league": "1st Division Women",
+    "league_url_path": "football-tips-and-predictions-for-denmark/1st-division-women",
+    "country_code": "dk",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "dk02": {
+    "league_code": "dk02",
+    "country": "Denmark",
+    "league": "2. Division",
+    "league_url_path": "football-tips-and-predictions-for-denmark/2-division",
+    "country_code": "dk",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "dk03": {
+    "league_code": "dk03",
+    "country": "Denmark",
+    "league": "Danish Cup Women",
+    "league_url_path": "football-tips-and-predictions-for-denmark/danish-cup-women",
+    "country_code": "dk",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "dk04": {
+    "league_code": "dk04",
+    "country": "Denmark",
+    "league": "Dbus Landspokal",
+    "league_url_path": "football-tips-and-predictions-for-denmark/dbus-landspokal",
+    "country_code": "dk",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "dk05": {
+    "league_code": "dk05",
+    "country": "Denmark",
+    "league": "Elitedivisionen Women",
+    "league_url_path": "football-tips-and-predictions-for-denmark/elitedivisionen-women",
+    "country_code": "dk",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "fi01": {
+    "league_code": "fi01",
+    "country": "Finland",
+    "league": "Finland Ykkonen",
+    "league_url_path": "football-tips-and-predictions-for-finland/finland-ykkonen",
+    "country_code": "fi",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "fi03": {
+    "league_code": "fi03",
+    "country": "Finland",
+    "league": "Kansallinen Liiga Women",
+    "league_url_path": "football-tips-and-predictions-for-finland/kansallinen-liiga-women",
+    "country_code": "fi",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "fi04": {
+    "league_code": "fi04",
+    "country": "Finland",
+    "league": "Suomen Cup",
+    "league_url_path": "football-tips-and-predictions-for-finland/suomen-cup",
+    "country_code": "fi",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "fi05": {
+    "league_code": "fi05",
+    "country": "Finland",
+    "league": "Suomen Cup Women",
+    "league_url_path": "football-tips-and-predictions-for-finland/suomen-cup-women",
+    "country_code": "fi",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is02": {
+    "league_code": "is02",
+    "country": "Iceland",
+    "league": "2. Division",
+    "league_url_path": "football-tips-and-predictions-for-iceland/2-division",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is03": {
+    "league_code": "is03",
+    "country": "Iceland",
+    "league": "Besta Deild Karla",
+    "league_url_path": "football-tips-and-predictions-for-iceland/besta-deild-karla",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is04": {
+    "league_code": "is04",
+    "country": "Iceland",
+    "league": "Icelandic Cup",
+    "league_url_path": "football-tips-and-predictions-for-iceland/icelandic-cup",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is05": {
+    "league_code": "is05",
+    "country": "Iceland",
+    "league": "Icelandic Cup Women",
+    "league_url_path": "football-tips-and-predictions-for-iceland/icelandic-cup-women",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is06": {
+    "league_code": "is06",
+    "country": "Iceland",
+    "league": "League Cup",
+    "league_url_path": "football-tips-and-predictions-for-iceland/league-cup",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is07": {
+    "league_code": "is07",
+    "country": "Iceland",
+    "league": "Reykjavik Cup",
+    "league_url_path": "football-tips-and-predictions-for-iceland/reykjavik-cup",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "is08": {
+    "league_code": "is08",
+    "country": "Iceland",
+    "league": "Urvalsdeild Women",
+    "league_url_path": "football-tips-and-predictions-for-iceland/urvalsdeild-women",
+    "country_code": "is",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "in02": {
+    "league_code": "in02",
+    "country": "India",
+    "league": "I League",
+    "league_url_path": "football-tips-and-predictions-for-india/i-league",
+    "country_code": "in",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "in03": {
+    "league_code": "in03",
+    "country": "India",
+    "league": "I League 2",
+    "league_url_path": "football-tips-and-predictions-for-india/i-league-2",
+    "country_code": "in",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "in04": {
+    "league_code": "in04",
+    "country": "India",
+    "league": "Santosh Trophy",
+    "league_url_path": "football-tips-and-predictions-for-india/santosh-trophy",
+    "country_code": "in",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "in05": {
+    "league_code": "in05",
+    "country": "India",
+    "league": "Super Cup",
+    "league_url_path": "football-tips-and-predictions-for-india/super-cup",
+    "country_code": "in",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "in06": {
+    "league_code": "in06",
+    "country": "India",
+    "league": "Super League",
+    "league_url_path": "football-tips-and-predictions-for-india/super-league",
+    "country_code": "in",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ie01": {
+    "league_code": "ie01",
+    "country": "Ireland",
+    "league": "Fai Cup",
+    "league_url_path": "football-tips-and-predictions-for-ireland/fai-cup",
+    "country_code": "ie",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ie03": {
+    "league_code": "ie03",
+    "country": "Ireland",
+    "league": "National League Women",
+    "league_url_path": "football-tips-and-predictions-for-ireland/national-league-women",
+    "country_code": "ie",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ie04": {
+    "league_code": "ie04",
+    "country": "Ireland",
+    "league": "Premier League",
+    "league_url_path": "football-tips-and-predictions-for-ireland/premier-league",
+    "country_code": "ie",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kz02": {
+    "league_code": "kz02",
+    "country": "Kazakhstan",
+    "league": "Kazakhstan Cup",
+    "league_url_path": "football-tips-and-predictions-for-kazakhstan/kazakhstan-cup",
+    "country_code": "kz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kz03": {
+    "league_code": "kz03",
+    "country": "Kazakhstan",
+    "league": "Premier League",
+    "league_url_path": "football-tips-and-predictions-for-kazakhstan/premier-league",
+    "country_code": "kz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kz04": {
+    "league_code": "kz04",
+    "country": "Kazakhstan",
+    "league": "Super Cup",
+    "league_url_path": "football-tips-and-predictions-for-kazakhstan/super-cup",
+    "country_code": "kz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no01": {
+    "league_code": "no01",
+    "country": "Norway",
+    "league": "1. Division",
+    "league_url_path": "football-tips-and-predictions-for-norway/1-division",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no02": {
+    "league_code": "no02",
+    "country": "Norway",
+    "league": "1. Division Women",
+    "league_url_path": "football-tips-and-predictions-for-norway/1-division-women",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no04": {
+    "league_code": "no04",
+    "country": "Norway",
+    "league": "Eliteserien",
+    "league_url_path": "football-tips-and-predictions-for-norway/eliteserien",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no05": {
+    "league_code": "no05",
+    "country": "Norway",
+    "league": "Nm Cupen",
+    "league_url_path": "football-tips-and-predictions-for-norway/nm-cupen",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no06": {
+    "league_code": "no06",
+    "country": "Norway",
+    "league": "Norway Cup Women",
+    "league_url_path": "football-tips-and-predictions-for-norway/norway-cup-women",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "no07": {
+    "league_code": "no07",
+    "country": "Norway",
+    "league": "Toppserien Women",
+    "league_url_path": "football-tips-and-predictions-for-norway/toppserien-women",
+    "country_code": "no",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "py01": {
+    "league_code": "py01",
+    "country": "Paraguay",
+    "league": "Copa Paraguay",
+    "league_url_path": "football-tips-and-predictions-for-paraguay/copa-paraguay",
+    "country_code": "py",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "py03": {
+    "league_code": "py03",
+    "country": "Paraguay",
+    "league": "Primera Division",
+    "league_url_path": "football-tips-and-predictions-for-paraguay/primera-division",
+    "country_code": "py",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro01": {
+    "league_code": "ro01",
+    "country": "Romania",
+    "league": "3. Liga Promotion Group",
+    "league_url_path": "football-tips-and-predictions-for-romania/3-liga-promotion-group",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro03": {
+    "league_code": "ro03",
+    "country": "Romania",
+    "league": "Liga 2",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-2",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro04": {
+    "league_code": "ro04",
+    "country": "Romania",
+    "league": "Liga 3 Seria 1",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-1",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro05": {
+    "league_code": "ro05",
+    "country": "Romania",
+    "league": "Liga 3 Seria 10",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-10",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro06": {
+    "league_code": "ro06",
+    "country": "Romania",
+    "league": "Liga 3 Seria 2",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-2",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro07": {
+    "league_code": "ro07",
+    "country": "Romania",
+    "league": "Liga 3 Seria 3",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-3",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro08": {
+    "league_code": "ro08",
+    "country": "Romania",
+    "league": "Liga 3 Seria 4",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-4",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro09": {
+    "league_code": "ro09",
+    "country": "Romania",
+    "league": "Liga 3 Seria 5",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-5",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro10": {
+    "league_code": "ro10",
+    "country": "Romania",
+    "league": "Liga 3 Seria 6",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-6",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro11": {
+    "league_code": "ro11",
+    "country": "Romania",
+    "league": "Liga 3 Seria 7",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-7",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro12": {
+    "league_code": "ro12",
+    "country": "Romania",
+    "league": "Liga 3 Seria 8",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-8",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro13": {
+    "league_code": "ro13",
+    "country": "Romania",
+    "league": "Liga 3 Seria 9",
+    "league_url_path": "football-tips-and-predictions-for-romania/liga-3-seria-9",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro14": {
+    "league_code": "ro14",
+    "country": "Romania",
+    "league": "Romanian Cup",
+    "league_url_path": "football-tips-and-predictions-for-romania/romanian-cup",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro15": {
+    "league_code": "ro15",
+    "country": "Romania",
+    "league": "Romanian Cup Women",
+    "league_url_path": "football-tips-and-predictions-for-romania/romanian-cup-women",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro16": {
+    "league_code": "ro16",
+    "country": "Romania",
+    "league": "Super Cup",
+    "league_url_path": "football-tips-and-predictions-for-romania/super-cup",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ro17": {
+    "league_code": "ro17",
+    "country": "Romania",
+    "league": "Superliga Women",
+    "league_url_path": "football-tips-and-predictions-for-romania/superliga-women",
+    "country_code": "ro",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru01": {
+    "league_code": "ru01",
+    "country": "Russia",
+    "league": "1. Division",
+    "league_url_path": "football-tips-and-predictions-for-russia/1-division",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru02": {
+    "league_code": "ru02",
+    "country": "Russia",
+    "league": "Fnl 2 Division A Silver",
+    "league_url_path": "football-tips-and-predictions-for-russia/fnl-2-division-a-silver",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru03": {
+    "league_code": "ru03",
+    "country": "Russia",
+    "league": "Fnl 2 Division G Gold",
+    "league_url_path": "football-tips-and-predictions-for-russia/fnl-2-division-g-gold",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru04": {
+    "league_code": "ru04",
+    "country": "Russia",
+    "league": "Kubok",
+    "league_url_path": "football-tips-and-predictions-for-russia/kubok-",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru05": {
+    "league_code": "ru05",
+    "country": "Russia",
+    "league": "Pfl Center",
+    "league_url_path": "football-tips-and-predictions-for-russia/pfl-center",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru06": {
+    "league_code": "ru06",
+    "country": "Russia",
+    "league": "Pfl East",
+    "league_url_path": "football-tips-and-predictions-for-russia/pfl-east",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru07": {
+    "league_code": "ru07",
+    "country": "Russia",
+    "league": "Pfl South",
+    "league_url_path": "football-tips-and-predictions-for-russia/pfl-south",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru08": {
+    "league_code": "ru08",
+    "country": "Russia",
+    "league": "Pfl Ural",
+    "league_url_path": "football-tips-and-predictions-for-russia/pfl-ural",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru09": {
+    "league_code": "ru09",
+    "country": "Russia",
+    "league": "Pfl West",
+    "league_url_path": "football-tips-and-predictions-for-russia/pfl-west",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru11": {
+    "league_code": "ru11",
+    "country": "Russia",
+    "league": "Super Cup",
+    "league_url_path": "football-tips-and-predictions-for-russia/super-cup",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru12": {
+    "league_code": "ru12",
+    "country": "Russia",
+    "league": "Supreme Division Women",
+    "league_url_path": "football-tips-and-predictions-for-russia/supreme-division-women",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ru13": {
+    "league_code": "ru13",
+    "country": "Russia",
+    "league": "Youth League",
+    "league_url_path": "football-tips-and-predictions-for-russia/youth-league",
+    "country_code": "ru",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kr01": {
+    "league_code": "kr01",
+    "country": "South Korea",
+    "league": "Fa Cup",
+    "league_url_path": "football-tips-and-predictions-for-south-korea/fa-cup",
+    "country_code": "kr",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kr02": {
+    "league_code": "kr02",
+    "country": "South Korea",
+    "league": "K League 1",
+    "league_url_path": "football-tips-and-predictions-for-south-korea/k-league-1",
+    "country_code": "kr",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kr04": {
+    "league_code": "kr04",
+    "country": "South Korea",
+    "league": "National League",
+    "league_url_path": "football-tips-and-predictions-for-south-korea/national-league",
+    "country_code": "kr",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "kr05": {
+    "league_code": "kr05",
+    "country": "South Korea",
+    "league": "Wk League Women",
+    "league_url_path": "football-tips-and-predictions-for-south-korea/wk-league-women",
+    "country_code": "kr",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se02": {
+    "league_code": "se02",
+    "country": "Sweden",
+    "league": "Allsvenskan Women",
+    "league_url_path": "football-tips-and-predictions-for-sweden/allsvenskan-women",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se03": {
+    "league_code": "se03",
+    "country": "Sweden",
+    "league": "Div 1 Sodra",
+    "league_url_path": "football-tips-and-predictions-for-sweden/div-1-sodra",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se04": {
+    "league_code": "se04",
+    "country": "Sweden",
+    "league": "Div 1norra",
+    "league_url_path": "football-tips-and-predictions-for-sweden/div-1norra",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se05": {
+    "league_code": "se05",
+    "country": "Sweden",
+    "league": "Division 1 Relegation",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-1-relegation",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se06": {
+    "league_code": "se06",
+    "country": "Sweden",
+    "league": "Division 2 Norra Gotaland",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-norra-gotaland",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se07": {
+    "league_code": "se07",
+    "country": "Sweden",
+    "league": "Division 2 Norra Svealand",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-norra-svealand",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se08": {
+    "league_code": "se08",
+    "country": "Sweden",
+    "league": "Division 2 Norrland",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-norrland",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se09": {
+    "league_code": "se09",
+    "country": "Sweden",
+    "league": "Division 2 Play Offs",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-play-offs",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se10": {
+    "league_code": "se10",
+    "country": "Sweden",
+    "league": "Division 2 Sodra Gotaland",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-sodra-gotaland",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se11": {
+    "league_code": "se11",
+    "country": "Sweden",
+    "league": "Division 2 Sodra Svealand",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-sodra-svealand",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se12": {
+    "league_code": "se12",
+    "country": "Sweden",
+    "league": "Division 2 Vastra Gotaland",
+    "league_url_path": "football-tips-and-predictions-for-sweden/division-2-vastra-gotaland",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se13": {
+    "league_code": "se13",
+    "country": "Sweden",
+    "league": "Elitettan Women",
+    "league_url_path": "football-tips-and-predictions-for-sweden/elitettan-women",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se14": {
+    "league_code": "se14",
+    "country": "Sweden",
+    "league": "Superettan",
+    "league_url_path": "football-tips-and-predictions-for-sweden/superettan",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se15": {
+    "league_code": "se15",
+    "country": "Sweden",
+    "league": "Svenska Cupen",
+    "league_url_path": "football-tips-and-predictions-for-sweden/svenska-cupen",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "se16": {
+    "league_code": "se16",
+    "country": "Sweden",
+    "league": "Svenska Cupen Women",
+    "league_url_path": "football-tips-and-predictions-for-sweden/svenska-cupen-women",
+    "country_code": "se",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ch02": {
+    "league_code": "ch02",
+    "country": "Switzerland",
+    "league": "Super League",
+    "league_url_path": "football-tips-and-predictions-for-switzerland/super-league",
+    "country_code": "ch",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ch03": {
+    "league_code": "ch03",
+    "country": "Switzerland",
+    "league": "Swiss Cup",
+    "league_url_path": "football-tips-and-predictions-for-switzerland/swiss-cup",
+    "country_code": "ch",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ch04": {
+    "league_code": "ch04",
+    "country": "Switzerland",
+    "league": "Switzerland Nationalliga B Women",
+    "league_url_path": "football-tips-and-predictions-for-switzerland/switzerland-nationalliga-b-women",
+    "country_code": "ch",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "ch05": {
+    "league_code": "ch05",
+    "country": "Switzerland",
+    "league": "Switzerland Super League Women",
+    "league_url_path": "football-tips-and-predictions-for-switzerland/switzerland-super-league-women",
+    "country_code": "ch",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
+  },
+  "uz02": {
+    "league_code": "uz02",
+    "country": "Uzbekistan",
+    "league": "Uzbek Cup",
+    "league_url_path": "football-tips-and-predictions-for-Uzbekistan/uzbek-cup",
+    "country_code": "uz",
+    "match_count": 0,
+    "teams": {},
+    "source": "leagues.html"
   }
 }

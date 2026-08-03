@@ -23,6 +23,8 @@ import math
 from dataclasses import dataclass, field
 from typing import Optional
 
+from database import get_base_rates, pick_base_rate
+
 
 # Confidence -> numeric 0..1 (higher = more confident)
 CONF_VALUE = {
@@ -63,6 +65,7 @@ class MatchContext:
     top_pick: str = ""                # model's raw top 1X2 outcome
     margin: float = 0.0               # top_prob - second_prob
     league_reliability: float = 1.0
+    base_rates: dict = field(default_factory=dict)  # empirical per-league outcome rates
     warnings: list = field(default_factory=list)
     # component agreement signals (each -1..+1; sign = home/away direction,
     # magnitude = strength). None means component unavailable.
@@ -235,8 +238,12 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
 
         if prob is None:
             prob = CONF_VALUE.get(c.get("confidence", "Low"), 0.15)
-        prob_component = prob
-        comp["prob"] = round(prob, 3)
+        # Score a pick by how far it exceeds its market's base rate, not its
+        # raw probability. Wide markets (Under 3.5) are naturally ~80% likely;
+        # crediting that raw probability lets them dominate every ranking.
+        base = pick_base_rate(ctx.base_rates, market, pick)
+        prob_component = max(0.0, prob - base)
+        comp["prob"] = round(prob_component, 3)
 
         edge = edge_for(ctx, market, pick)
         comp["edge"] = round(edge, 3) if edge is not None else None
@@ -254,13 +261,10 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
 
         comp["conv"] = round(conv_base, 3)
 
-        cov_component = (cov - 1) * 0.10
-
         value = (
             prob_component * 0.50
             + max(0.0, edge or 0.0) * 0.50
-            + dir_align * 0.30 * conv_base
-            + cov_component
+            + dir_align * 0.12 * conv_base
         )
         value += CONF_VALUE.get(c.get("confidence", "Low"), 0.15) * 0.12
 
@@ -377,6 +381,7 @@ def context_from_pred(pred: dict, data: dict, vol: float = 0.1,
         h2h_avg_goals=data.get("h2h_avg_total_goals", 0) or 0.0,
         top_pick=top_pick, margin=margin,
         league_reliability=league_reliability,
+        base_rates=get_base_rates(data.get("league", "")),
         warnings=pred.get("_warnings", []),
         odds_home=data.get("odds_home"), odds_draw=data.get("odds_draw"),
         odds_away=data.get("odds_away"),

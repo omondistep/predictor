@@ -1471,6 +1471,84 @@ def scrape_results_list(url: str) -> list:
         return []
 
 
+def scrape_league_upcoming(league_url_path: str, league_name: str = "", session=None) -> list:
+    """Scrape upcoming matches from a Forebet league listing page.
+
+    Args:
+        league_url_path: Path stored in leagues_db, e.g.
+            "football-tips-and-predictions-for-brazil/serie-a"
+        league_name: Display name for the league (used in output dicts).
+        session: Optional shared cloudscraper session to reuse across calls.
+
+    Returns:
+        List of dicts: {"url", "home_team", "away_team",
+                        "kickoff": datetime or None, "league": str}
+    """
+    url = league_url_path if league_url_path.startswith("http") else "https://www.forebet.com/en/" + league_url_path.lstrip("/")
+    try:
+        scraper = session or cloudscraper.create_scraper()
+        resp = scraper.get(url, timeout=25)
+        if resp.status_code != 200:
+            return []
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        rows = soup.find_all("div", {"class": "rcnt"})
+        if not rows:
+            rows = soup.find_all(["tr", "div"], {"class": re.compile(r"(tr_\d+|predict-row)")})
+
+        out = []
+        for row in rows:
+            link_tag = row.find("a", {"class": "tnmscn"}) or row.find(
+                "a", href=re.compile(r"/football/matches/")
+            )
+            if not link_tag:
+                continue
+            match_url = link_tag["href"]
+            if not match_url.startswith("http"):
+                match_url = "https://www.forebet.com" + match_url
+
+            # Team names: spans with itemprop name inside homeTeam/awayTeam blocks.
+            home_el = row.find("span", {"class": "homeTeam"})
+            away_el = row.find("span", {"class": "awayTeam"})
+            home_team = ""
+            away_team = ""
+            if home_el is not None:
+                n = home_el.find(attrs={"itemprop": "name"})
+                home_team = n.get_text(strip=True) if n else home_el.get_text(strip=True)
+            if away_el is not None:
+                n = away_el.find(attrs={"itemprop": "name"})
+                away_team = n.get_text(strip=True) if n else away_el.get_text(strip=True)
+
+            kickoff = None
+            m = re.search(r"(\d{2})/(\d{2})/(\d{4})\s+(\d{2}):(\d{2})", row.get_text(" ", strip=True))
+            if m:
+                d, mo, y, h, mi = map(int, m.groups())
+                try:
+                    kickoff = datetime(y, mo, d, h, mi)
+                except ValueError:
+                    kickoff = None
+
+            out.append({
+                "url": match_url,
+                "home_team": home_team,
+                "away_team": away_team,
+                "kickoff": kickoff,
+                "league": league_name,
+            })
+
+        # Deduplicate by URL
+        seen_urls = set()
+        final = []
+        for r in out:
+            if r["url"] not in seen_urls:
+                final.append(r)
+                seen_urls.add(r["url"])
+        return final
+    except Exception as e:
+        print(f"  [scraper] Error scraping league {league_url_path}: {e}")
+        return []
+
+
 def scrape_url(url: str) -> dict:
     """Scrape a single Forebet URL and return structured data."""
     scraper = ForebetScraper(url)

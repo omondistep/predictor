@@ -205,6 +205,15 @@ CREATE TABLE IF NOT EXISTS ml_league_accuracy (
     last_updated TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (league, market)
 );
+
+CREATE TABLE IF NOT EXISTS model_market_accuracy (
+    model TEXT,
+    market TEXT,
+    total INTEGER DEFAULT 0,
+    correct INTEGER DEFAULT 0,
+    last_updated TEXT DEFAULT (datetime('now')),
+    PRIMARY KEY (model, market)
+);
 """
 
 SCHEMA_INDEXES = """
@@ -620,6 +629,11 @@ def _prediction_correct(pred: str, home_goals: int, away_goals: int) -> bool:
     if p == "Draw":
         return home_goals == away_goals
 
+    # Both teams to score
+    if p in ("Yes", "No"):
+        both = home_goals > 0 and away_goals > 0
+        return (p == "Yes" and both) or (p == "No" and not both)
+
     # Double chance
     if p == "1X":
         return home_goals >= away_goals
@@ -830,6 +844,139 @@ def get_league_accuracy(league: str) -> float:
     """, (league,)).fetchone()
     conn.close()
     return row["pct"] if row and row["pct"] else 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Per-league empirical base rates (learned from history.db results).
+# Used to score picks against their market's base rate instead of raw
+# probability, so naturally-wide markets (e.g. Under 3.5) stop dominating.
+# ─────────────────────────────────────────────────────────────────────────────
+_BASE_RATES_CACHE = {}
+_GLOBAL_BASE_RATES = None
+_GLOBAL_BASE_COUNT = 0
+_BASE_RATE_PRIOR_WEIGHT = 15.0  # league sample is blended toward the global rate
+
+_BASE_RATE_KEYS = (
+    "under_15", "over_15", "under_25", "over_25", "under_35", "over_35",
+    "under_45", "over_45", "under_55", "over_55",
+    "home", "draw", "away", "btts_yes", "btts_no",
+    "dc_1x", "dc_x2", "dc_12", "dnb_home", "dnb_away",
+)
+
+
+def _compute_base_rates(rows: list) -> dict:
+    """Compute empirical outcome rates from (home_goals, away_goals) rows."""
+    n = len(rows)
+    if n == 0:
+        return {}
+    rates = {k: 0 for k in _BASE_RATE_KEYS}
+    hw = dw = aw = 0
+    for h, a in rows:
+        t = h + a
+        if t <= 1:
+            rates["under_15"] += 1
+        else:
+            rates["over_15"] += 1
+        if t <= 2:
+            rates["under_25"] += 1
+        else:
+            rates["over_25"] += 1
+        if t <= 3:
+            rates["under_35"] += 1
+        else:
+            rates["over_35"] += 1
+        if t <= 4:
+            rates["under_45"] += 1
+        else:
+            rates["over_45"] += 1
+        if t <= 5:
+            rates["under_55"] += 1
+        else:
+            rates["over_55"] += 1
+        if h > a:
+            hw += 1
+        elif h == a:
+            dw += 1
+        else:
+            aw += 1
+        if h > 0 and a > 0:
+            rates["btts_yes"] += 1
+        else:
+            rates["btts_no"] += 1
+        if h >= a:
+            rates["dc_1x"] += 1
+        if h <= a:
+            rates["dc_x2"] += 1
+        if h != a:
+            rates["dc_12"] += 1
+    for k in rates:
+        rates[k] /= n
+    rates["home"], rates["draw"], rates["away"] = hw / n, dw / n, aw / n
+    nz = hw + aw
+    rates["dnb_home"] = hw / nz if nz else 0.5
+    rates["dnb_away"] = aw / nz if nz else 0.5
+    return rates
+
+
+def get_base_rates(league: str = "") -> dict:
+    """Empirical base rates for a league, blended toward global rates.
+
+    Returns a dict keyed by _BASE_RATE_KEYS. Per-league results come from
+    matches where actual scores are known; small league samples are shrunk
+    toward the all-league average so a couple of matches can't skew rates.
+    """
+    global _GLOBAL_BASE_RATES, _GLOBAL_BASE_COUNT
+    if _GLOBAL_BASE_RATES is None:
+        conn = get_db()
+        rows = [tuple(r) for r in conn.execute(
+            "SELECT actual_home_goals, actual_away_goals FROM matches "
+            "WHERE actual_home_goals IS NOT NULL AND actual_away_goals IS NOT NULL")]
+        conn.close()
+        _GLOBAL_BASE_COUNT = len(rows)
+        _GLOBAL_BASE_RATES = _compute_base_rates(rows)
+
+    key = league or "__global__"
+    if key in _BASE_RATES_CACHE:
+        return _BASE_RATES_CACHE[key]
+
+    conn = get_db()
+    rows = [tuple(r) for r in conn.execute(
+        "SELECT actual_home_goals, actual_away_goals FROM matches "
+        "WHERE league = ? AND actual_home_goals IS NOT NULL AND actual_away_goals IS NOT NULL",
+        (league,))]
+    conn.close()
+
+    global_rates = _GLOBAL_BASE_RATES
+    if not rows:
+        _BASE_RATES_CACHE[key] = global_rates
+        return global_rates
+
+    league_rates = _compute_base_rates(rows)
+    n = len(rows)
+    blended = {}
+    for k in _BASE_RATE_KEYS:
+        blended[k] = (n * league_rates[k] + _BASE_RATE_PRIOR_WEIGHT * global_rates[k]) \
+                     / (n + _BASE_RATE_PRIOR_WEIGHT)
+    _BASE_RATES_CACHE[key] = blended
+    return blended
+
+
+def pick_base_rate(base_rates: dict, market: str, pick: str) -> float:
+    """Historical hit-rate baseline for a specific market/pick."""
+    key = {
+        ("O/U", "Over 1.5"): "over_15", ("O/U", "Under 1.5"): "under_15",
+        ("O/U", "Over 2.5"): "over_25", ("O/U", "Under 2.5"): "under_25",
+        ("O/U", "Over 3.5"): "over_35", ("O/U", "Under 3.5"): "under_35",
+        ("O/U", "Over 4.5"): "over_45", ("O/U", "Under 4.5"): "under_45",
+        ("O/U", "Over 5.5"): "over_55", ("O/U", "Under 5.5"): "under_55",
+        ("1X2", "Home win"): "home", ("1X2", "Draw"): "draw", ("1X2", "Away win"): "away",
+        ("BTTS", "Yes"): "btts_yes", ("BTTS", "No"): "btts_no",
+        ("DC", "1X"): "dc_1x", ("DC", "X2"): "dc_x2", ("DC", "12"): "dc_12",
+        ("DNB", "Home"): "dnb_home", ("DNB", "Away"): "dnb_away",
+    }.get((market, pick))
+    if not key:
+        return 0.5
+    return base_rates.get(key, 0.5) if base_rates else 0.5
 
 
 def store_market_results(match_id: int, all_picks: list, actual_home_goals: int, actual_away_goals: int, actual_outcome: str, match_data: dict = None):
@@ -1262,6 +1409,58 @@ def get_ml_league_accuracy(league: str, market: str, min_samples: int = 5) -> di
         result["use_ml"] = result["ml_accuracy"] > 0.45
     
     return result
+
+
+def record_model_market_result(model: str, market: str, correct: bool):
+    """Record per-model per-market accuracy for the Best-alt weighting.
+
+    model is one of "fb" (Forebet-based model) or "ml" (ML-only model).
+    """
+    conn = get_db()
+    conn.execute("""
+        INSERT INTO model_market_accuracy (model, market, total, correct, last_updated)
+        VALUES (?, ?, 1, ?, datetime('now'))
+        ON CONFLICT(model, market) DO UPDATE SET
+            total = total + 1,
+            correct = correct + excluded.correct,
+            last_updated = datetime('now')
+    """, (model, market, int(bool(correct))))
+    conn.commit()
+    conn.close()
+
+
+def get_model_market_accuracy(model: str = None, market: str = None,
+                              min_samples: int = 5) -> dict:
+    """Get per-model per-market accuracy from model_market_accuracy.
+
+    Returns dict mapping "{model}|{market}" → {total, correct, accuracy},
+    or with model/market given, the stats for that single row.
+    """
+    conn = get_db()
+    query = """
+        SELECT model, market, total, correct
+        FROM model_market_accuracy
+        WHERE total >= ?
+    """
+    params = [min_samples]
+    if model:
+        query += " AND model = ?"
+        params.append(model)
+    if market:
+        query += " AND market = ?"
+        params.append(market)
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+
+    out = {}
+    for r in rows:
+        key = f"{r['model']}|{r['market']}"
+        out[key] = {
+            "total": r["total"],
+            "correct": r["correct"],
+            "accuracy": (r["correct"] / r["total"]) if r["total"] > 0 else None,
+        }
+    return out
 
 
 def get_predictions_for_review() -> list:

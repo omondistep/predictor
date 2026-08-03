@@ -2,10 +2,10 @@
 
 ## Retraining Model
 
-### Run Retraining (Isotonic Regression)
+### Run Retraining (ML Model)
 ```bash
 cd /home/stdk/predictor
-.venv/bin/python3 -c "from calibration_learner import retrain_from_results; retrain_from_results(force=True)"
+.venv/bin/python3 -c "from calibration_learner import auto_retrain; auto_retrain(force=True)"
 ```
 
 ### View Calibration Parameters
@@ -30,7 +30,7 @@ for m in get_market_accuracy():
 
 **Installed cron job:**
 ```bash
-30 5 * * * cd /home/stdk/predictor && .venv/bin/python3 -c "from calibration_learner import retrain_from_results; retrain_from_results(force=True)" >> /tmp/retrain.log 2>&1
+30 5 * * * cd /home/stdk/predictor && .venv/bin/python3 -c "from calibration_learner import auto_retrain; auto_retrain(force=True)" >> /tmp/retrain.log 2>&1
 ```
 
 **Verify:** `crontab -l`

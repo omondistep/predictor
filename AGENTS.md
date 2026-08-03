@@ -7,6 +7,7 @@
 | `pr <file>` | Run predictions for matches in a link file |
 | `pr <url>` | Predict a single match URL |
 | `pr results` | Scrape Forebet for scores, update DB + HTML reports |
+| `pr --today` | Auto-fetch today's + tonight's (00:00–06:00) matches per league → `links/today.html` |
 | `pr --high-only <file>` | Only show High / Near Certain picks |
 | `pr --no-ml <file>` | Classic Poisson only (no ML ensemble) |
 | `pr --json <file>` | JSON output |
@@ -48,8 +49,8 @@ pr results                 → Reads data/pending_results.json
                            → Removes completed entries from pending file
                            → Auto-learn: analyze bias + retrain ML if 50+ new examples
 
-Cron (scheduled by pr)     → Runs retrain_from_results() after 18h
-                           → Isotonic regression on latest data
+Cron (scheduled by pr)     → Runs auto_retrain() after 18h
+                           → Retrains the ML model on latest data
 ```
 
 **Key point:** `pr results` does NOT trigger learning. It only updates data. Learning happens via `pr --learn-calibration` or the cron job scheduled by `pr links.txt`.

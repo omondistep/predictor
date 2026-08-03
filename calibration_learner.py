@@ -618,7 +618,7 @@ def calibration_report(min_samples: int = 10, verbose: bool = True):
                 p = pmap.get(pred)
             else:
                 # Use stored model_prob from calibration_log
-                p = r.get("model_prob")
+                p = r["model_prob"]
                 if not p or p <= 0:
                     p = 0.5
             if p and p > 0:

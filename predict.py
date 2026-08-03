@@ -25,9 +25,9 @@ from database import (
     get_db, init_db, save_prediction, get_unreviewed_matches, update_result,
     get_calibration_summary, get_predictions_for_review, get_league_accuracy,
     store_market_results, get_market_accuracy, get_market_accuracy_history,
-    add_pending_result,
+    add_pending_result, get_base_rates, pick_base_rate,
 )
-from calibration_learner import retrain_from_results, apply_calibration
+from calibration_learner import auto_retrain, apply_calibration
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 
 # ML-enhanced modules (optional)
@@ -40,7 +40,7 @@ _BIAS_CORRECTIONS_LOADED = False
 
 
 def schedule_retrain(delay_hours: float = 18.0):
-    """Schedule isotonic regression retrain via cron.
+    """Schedule ML model retrain via cron.
 
     Args:
         delay_hours: Hours to wait before retraining (default 18h)
@@ -56,7 +56,7 @@ def schedule_retrain(delay_hours: float = 18.0):
     cron_line = (
         f"{minute} {hour} * * * cd {parent} && "
         f".venv/bin/python3 -c "
-        f"\"from calibration_learner import retrain_from_results; retrain_from_results(force=True)\" "
+        f"\"from calibration_learner import auto_retrain; auto_retrain(force=True)\" "
         f">> /tmp/retrain.log 2>&1"
     )
 
@@ -66,20 +66,20 @@ def schedule_retrain(delay_hours: float = 18.0):
         existing = result.stdout if result.returncode == 0 else ""
 
         lines = [l for l in existing.splitlines()
-                 if "retrain_from_results" not in l]
+                 if "retrain_from_results" not in l and "auto_retrain" not in l]
         lines.append(cron_line)
         new_crontab = "\n".join(lines) + "\n"
 
         proc = subprocess.run("crontab -", shell=True, input=new_crontab,
                               capture_output=True, text=True, timeout=10)
         if proc.returncode == 0:
-            log(f"Retrain cron scheduled for {retrain_time.strftime('%H:%M %Y-%m-%d')}")
+            log(f"ML retrain cron scheduled for {retrain_time.strftime('%H:%M %Y-%m-%d')}")
         else:
             log(f"Failed to set cron: {proc.stderr}")
     except Exception as e:
         log(f"Failed to schedule retrain: {e}")
         log("Running retrain immediately instead...")
-        retrain_from_results(force=True)
+        auto_retrain(force=True)
 
 # ─────────────────────────────────────────────
 # League Profiles
@@ -664,6 +664,117 @@ def _get_league_market_accuracy(league: str, market: str) -> dict:
         return {"total": 0, "correct": 0, "pct": 0}
 
 
+def _pick_correct_for_result(market: str, pick: str, hg, ag) -> bool | None:
+    """Evaluate whether a (market, pick) bet won given final score.
+    Returns True/False, or None for a push (DNB on a draw)."""
+    if hg is None or ag is None or not pick:
+        return None
+    outcome = "Home win" if hg > ag else "Away win" if hg < ag else "Draw"
+    if market == "1X2":
+        return pick == outcome
+    if market == "O/U":
+        total = hg + ag
+        if "Over" in pick:
+            return total > float(pick.split()[-1])
+        if "Under" in pick:
+            return total <= float(pick.split()[-1])
+    if market == "BTTS":
+        both = hg > 0 and ag > 0
+        return (pick == "Yes" and both) or (pick == "No" and not both)
+    if market == "DNB":
+        if outcome == "Draw":
+            return None  # push — stake returned
+        return (pick == "Home" and outcome == "Home win") or (pick == "Away" and outcome == "Away win")
+    if market == "DC":
+        if pick == "1X":
+            return outcome in ("Home win", "Draw")
+        if pick == "X2":
+            return outcome in ("Away win", "Draw")
+        if pick == "12":
+            return outcome in ("Home win", "Away win")
+    return None
+
+
+def _model_market_strengths(market: str, min_samples: int = 10) -> dict:
+    """Per-model per-market historical accuracy for the two models shown in the
+    Best-alt comparison — FB (Forebet-based) and ML (ML-only).
+
+    Uses the dedicated model_market_accuracy table first (exact model picks),
+    falling back to calibration_log.forebet_correct (FB) and ml_league_accuracy
+    (ML) proxies until the table accumulates enough samples.
+
+    Returns dict:
+        fb_acc, ml_acc  (fractional accuracy, or None when insufficient data)
+        fb_n, ml_n      (sample counts)
+        fb_w, ml_w      (normalized blend weights for combining probabilities)
+    """
+    import datetime
+    from database import get_db, get_model_market_accuracy
+    prior = 0.50
+    K = 30  # credibility pseudo-count: acc_eff = acc*(n/(n+K)) + prior*(1 - n/(n+K))
+    result = {"fb_acc": None, "ml_acc": None, "fb_n": 0, "ml_n": 0,
+              "fb_w": 0.5, "ml_w": 0.5}
+
+    fb_acc = ml_acc = None
+    fb_n = ml_n = 0
+
+    # ── Exact per-model tracking (FB model pick vs ML model pick) ──
+    exact = get_model_market_accuracy(model=None, market=market)
+    for k, v in exact.items():
+        if v["total"] >= min_samples:
+            if k.startswith("fb|"):
+                fb_acc, fb_n = v["accuracy"], v["total"]
+            elif k.startswith("ml|"):
+                ml_acc, ml_n = v["accuracy"], v["total"]
+
+    # ── Fallbacks until exact data is available ──
+    if fb_acc is None:
+        try:
+            conn = get_db()
+            cutoff = (datetime.datetime.now() - datetime.timedelta(days=120)).strftime("%Y-%m-%d")
+            row = conn.execute("""
+                SELECT COUNT(*) as n, SUM(forebet_correct) as c
+                FROM calibration_log
+                WHERE market = ? AND forebet_pred IS NOT NULL
+                  AND forebet_correct IS NOT NULL AND created_at >= ?
+            """, (market, cutoff)).fetchone()
+            conn.close()
+            if row and row["n"] >= min_samples:
+                fb_n = row["n"]
+                fb_acc = (row["c"] or 0) / row["n"]
+        except Exception:
+            pass
+    if ml_acc is None:
+        try:
+            conn = get_db()
+            row = conn.execute("""
+                SELECT SUM(ml_total) as ml_total, SUM(ml_correct) as ml_correct
+                FROM ml_league_accuracy WHERE market = ?
+            """, (market,)).fetchone()
+            conn.close()
+            if row and row["ml_total"] >= min_samples:
+                ml_n = row["ml_total"]
+                ml_acc = (row["ml_correct"] or 0) / row["ml_total"]
+        except Exception:
+            pass
+
+    result["fb_acc"], result["fb_n"] = fb_acc, fb_n
+    result["ml_acc"], result["ml_n"] = ml_acc, ml_n
+
+    def _blend(acc, n):
+        if acc is None or n <= 0:
+            return prior
+        k = n / (n + K)
+        return acc * k + prior * (1 - k)
+
+    fb_eff = _blend(fb_acc, fb_n)
+    ml_eff = _blend(ml_acc, ml_n)
+    total = fb_eff + ml_eff
+    result["fb_w"] = fb_eff / total
+    result["ml_w"] = ml_eff / total
+    return result
+
+
 def _kelly_interpretation(kelly_pct: float) -> str:
     """Human-readable Kelly stake interpretation."""
     if kelly_pct <= 0:
@@ -1094,38 +1205,21 @@ def estimate_goals(data: dict, profile: dict) -> tuple:
                 exp_h *= ratio
                 exp_a *= ratio
 
-    # Cap expected total at 3.5 to prevent extreme overestimation
+    # Expected goals no longer hard-capped at 3.5; base-rate-adjusted
+    # valuation in the O/U scoring layer handles overestimation.
     exp_h, exp_a = _cap_expected_goals(exp_h, exp_a, profile.get("avg_goals", 2.5))
 
     return max(0.1, exp_h), max(0.1, exp_a)
 
 
 def _cap_expected_goals(exp_h: float, exp_a: float, league_avg: float = 2.5) -> tuple:
-    """Cap expected total goals at 3.5 to prevent extreme overestimation.
-    
-    Real football matches rarely average >3.5 total goals. The expected goals
-    model can inflate to 4.0+ when adjustments compound multiplicatively.
-    This cap brings unrealistic estimates back to reality.
+    """No-op cap retained for call-site compatibility.
+
+    Previously this hard-capped total expected goals at 3.5, which distorted
+    Over/Under probabilities and broke the base-rate valuation introduced
+    in the bias-correction update. With base-rate-adjusted edge scoring,
+    realistic goal totals are required; the cap is removed.
     """
-    total = exp_h + exp_a
-    if total > 3.5:
-        # Scale down proportionally to cap at 3.5
-        ratio = 3.5 / total
-        exp_h *= ratio
-        exp_a *= ratio
-    return exp_h, exp_a
-    """Cap expected total goals at 3.5 to prevent extreme overestimation.
-    
-    Real football matches rarely average >3.5 total goals. The expected goals
-    model can inflate to 4.0+ when adjustments compound multiplicatively.
-    This cap brings unrealistic estimates back to reality.
-    """
-    total = exp_h + exp_a
-    if total > 3.5:
-        # Scale down proportionally to cap at 3.5
-        ratio = 3.5 / total
-        exp_h *= ratio
-        exp_a *= ratio
     return exp_h, exp_a
 
 
@@ -1170,6 +1264,25 @@ def prob_over(exp_h: float, exp_a: float, threshold: float) -> float:
     """P(Total goals > threshold)."""
     total = exp_h + exp_a
     return 1.0 - poisson_cdf(total, int(threshold))
+
+
+def _ou_exp(exp_h: float, exp_a: float):
+    """Regression-to-mean expected goals for O/U valuation only.
+
+    Fitted on 1,676 settled matches: the model's implied exp total averages
+    2.17 vs 2.68 actual (bias -0.51), worst on low-exp predictions (exp 2.0 ->
+    actual 2.6). Linear fit corrected = 0.601*total + 1.373, fixed point 3.44.
+    Applied only to the O/U Poisson probabilities (the calibrated ML signal and
+    the displayed/logic exp_total stay on their own scales); both sides are
+    scaled proportionally so the home/away split is preserved. Games already
+    above the fixed point are left untouched rather than pulled back down.
+    """
+    total = exp_h + exp_a
+    corrected = 0.601 * total + 1.373
+    if corrected <= total or total <= 0:
+        return exp_h, exp_a
+    ratio = corrected / total
+    return exp_h * ratio, exp_a * ratio
 
 
 def prob_btts(exp_h: float, exp_a: float, rho: float = 0.0) -> float:
@@ -1912,10 +2025,13 @@ def compute_ml_odds(data: dict) -> dict:
     }
 
 
-def analyze_ml_only(data: dict) -> dict:
+def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     """Run a complete ML-only analysis pipeline with draw signal, form analysis,
     venue stats, and synthesis adjustments — independent of Forebet odds.
-    
+
+    main_btts_yes: the main model's blended BTTS-Yes probability, used to gate
+    the ML model's BTTS Yes pick on two-model agreement (None = standalone).
+
     Returns a dict structured identically to analyze_from_data() output.
     """
     ml_model = _load_ml_model()
@@ -1999,6 +2115,10 @@ def analyze_ml_only(data: dict) -> dict:
     league_key = detect_league(data.get("league", ""))
     profile = get_profile(league_key)
     vol = profile.get("volatility", 0.1)
+
+    # Empirical per-league base rates (learned from history.db) — O/U
+    # confidence is measured against the market's base rate, not 50%.
+    base_rates = get_base_rates(data.get("league", ""))
 
     # ── Form analysis from string ──
     hf, af = data.get("home_form", ""), data.get("away_form", "")
@@ -2185,20 +2305,34 @@ def analyze_ml_only(data: dict) -> dict:
             model_prob=p_12, odds=prob_to_odds(p_12))
 
     # ── O/U multi-threshold ──
+    _oe_h, _oe_a = _ou_exp(exp_h, exp_a)
+    _poisson_u15 = 1.0 - prob_over(_oe_h, _oe_a, 1.5)
+    _poisson_u35 = 1.0 - prob_over(_oe_h, _oe_a, 3.5)
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
                                        (2.5, "Under 2.5", "Over 2.5"),
                                        (3.5, "Under 3.5", "Over 3.5")]:
         if thresh == 2.5:
             p_o = p_over
             p_u = p_under
+            # Enforce monotonicity: P(U1.5) <= P(U2.5) <= P(U3.5)
+            # The ML ensemble probability for 2.5 may disagree with the
+            # Poisson-derived probabilities for 1.5/3.5; clamp it to the
+            # Poisson bounds to preserve mathematical consistency.
+            p_u = max(_poisson_u15, min(_poisson_u35, p_u))
+            p_o = 1.0 - p_u
         else:
-            p_o = prob_over(exp_h, exp_a, thresh)
+            p_o = prob_over(_oe_h, _oe_a, thresh)
             p_u = 1.0 - p_o
-        val_o, val_u = p_o - 0.5, p_u - 0.5
+        val_o, val_u = p_o - pick_base_rate(base_rates, "O/U", label_o), \
+                       p_u - pick_base_rate(base_rates, "O/U", label_u)
 
-        if p_o > p_u and val_o > 0:
+        # Value-based direction: emit whichever side has positive edge vs the
+        # league base rate. (The old `p_o > p_u` gate silently required the
+        # Over side to pass 50%, which capped the model at Under 3.5 — Over 3.5
+        # never appeared between its 31% base rate and 50%.)
+        if val_o > 0:
             ou_pick, ou_val = label_o, val_o
-        elif p_u > p_o and val_u > 0:
+        elif val_u > 0:
             ou_pick, ou_val = label_u, val_u
         else:
             continue
@@ -2220,16 +2354,40 @@ def analyze_ml_only(data: dict) -> dict:
             elif exp_total < 2.5 and ou_conf == "Low":
                 ou_conf = "Medium"
 
-        add("O/U", ou_pick, ou_conf, f"ML exp {exp_total:.1f}g model {max(p_o,p_u):.0%}" + (" (ML direct)" if thresh == 2.5 else ""),
-            model_prob=max(p_o, p_u), odds=prob_to_odds(max(p_o, p_u)))
+        _ou_mp = p_o if "Over" in ou_pick else p_u
+        add("O/U", ou_pick, ou_conf, f"ML exp {exp_total:.1f}g model {_ou_mp:.0%}" + (" (ML direct)" if thresh == 2.5 else ""),
+            model_prob=_ou_mp, odds=prob_to_odds(_ou_mp))
+
+    # ── High O/U lines (4.5 / 5.5) — Over side only ──
+    # 3.5 was the model's ceiling, so games expected to score 4+ had no market.
+    # Under 4.5/5.5 add nothing over Under 3.5, so only the Over side is emitted.
+    for thresh in (4.5, 5.5):
+        _oe_h, _oe_a = _ou_exp(exp_h, exp_a)
+        p_o_h = prob_over(_oe_h, _oe_a, thresh)
+        val_o_h = p_o_h - pick_base_rate(base_rates, "O/U", f"Over {thresh}")
+        if val_o_h <= 0:
+            continue
+        if val_o_h > 0.45: ou_conf_h = "Near Certain"
+        elif val_o_h > 0.35: ou_conf_h = "High"
+        elif val_o_h > 0.18: ou_conf_h = "Medium-High"
+        elif val_o_h > 0.10: ou_conf_h = "Medium"
+        else: ou_conf_h = "Low"
+        add("O/U", f"Over {thresh}", ou_conf_h,
+            f"ML exp {exp_total:.1f}g model {p_o_h:.0%}o",
+            model_prob=p_o_h, odds=prob_to_odds(p_o_h))
 
     # ── BTTS ──
-    btts_conf = "Medium-High" if p_btts_yes > 0.62 else "Medium" if p_btts_yes > 0.52 else "Low"
-    btts_no_conf = "Medium-High" if p_btts_no > 0.62 else "Medium" if p_btts_no > 0.52 else "Low"
-    add("BTTS", "Yes", btts_conf, f"ML {p_btts_yes:.0%}", model_prob=p_btts_yes,
-        odds=prob_to_odds(p_btts_yes))
-    add("BTTS", "No", btts_no_conf, f"ML {p_btts_no:.0%}", model_prob=p_btts_no,
-        odds=prob_to_odds(p_btts_no))
+    # Emit BTTS Yes only where BOTH models agree (each >=52%). Standalone runs
+    # (no main-model signal) keep the ML model's own signal.
+    if p_btts_yes >= 0.52 and (main_btts_yes is None or main_btts_yes >= 0.52):
+        btts_conf = "Medium-High" if p_btts_yes > 0.62 else "Medium"
+        add("BTTS", "Yes", btts_conf, f"ML {p_btts_yes:.0%}", model_prob=p_btts_yes,
+            odds=prob_to_odds(p_btts_yes))
+    # BTTS No is historically -EV (backtest ~45% hit). Emit only on a strong
+    # signal and cap at Medium so it stays a backup, never the primary.
+    if p_btts_no >= 0.58:
+        add("BTTS", "No", "Medium", f"ML {p_btts_no:.0%}", model_prob=p_btts_no,
+            odds=prob_to_odds(p_btts_no))
 
     # ── Synthesis ──
     reasoning = []
@@ -2282,6 +2440,14 @@ def analyze_ml_only(data: dict) -> dict:
         method_parts = ["ml-odds"]
 
     primary = candidates[0] if candidates else {"pick": "—", "market": "—", "confidence": "Low"}
+
+    # BTTS No is historically -EV — never let it become the primary pick here either.
+    if primary.get("market") == "BTTS" and primary.get("pick") == "No":
+        fallback = next((c for c in candidates if c is not primary and not (c["market"] == "BTTS" and c["pick"] == "No")), None)
+        if fallback:
+            primary = fallback
+        else:
+            primary["confidence"] = "Low"
 
     # ── Picks summary ──
     picks_summary = []
@@ -2561,6 +2727,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     """
     league_key = detect_league(data.get("league", ""))
     profile = get_profile(league_key)
+    base_rates = get_base_rates(data.get("league", ""))
     reasoning = []
     candidates = []
 
@@ -2847,7 +3014,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     _ph = prob_home_win(exp_h, exp_a)
     _pd = prob_draw(exp_h, exp_a)
     _pa = prob_away_win(exp_h, exp_a)
-    _po = prob_over(exp_h, exp_a, 2.5)
+    _po = prob_over(*_ou_exp(exp_h, exp_a), 2.5)
     _pu = 1.0 - _po
     _tp = _ph + _pd + _pa
     if _tp > 0:
@@ -2887,11 +3054,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         p_over, p_under = p_over_bias, p_under_bias
 
     # ── Apply isotonic regression calibration (improvement 13) ──
+    # O/U is deliberately excluded: the single isotonic curve is fit on picked-side
+    # probabilities that are overwhelmingly Under picks (0.6-0.9), so out_of_bounds
+    # clipping annihilates every Over probability below ~0.55 to ~0.01 (and pollutes
+    # the mid-range). That crushed ml_ou_signal and re-inflated the Under side — the
+    # exact failure this build fixes. O/U honesty now comes from the regression-to-mean
+    # expected-goals correction in _ou_exp instead.
     p_home = apply_calibration("1X2", p_home)
     p_draw = apply_calibration("1X2", p_draw)
     p_away = apply_calibration("1X2", p_away)
-    p_over = apply_calibration("O/U", p_over)
-    p_under = apply_calibration("O/U", p_under)
+    # p_over / p_under intentionally NOT isotonic-calibrated.
 
     # Re-normalize 1X2 after calibration
     total_1x2 = p_home + p_draw + p_away
@@ -3335,10 +3507,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
     # ML ensemble O/U probability (for 2.5 threshold) — used as blending signal
     ml_ou_signal = p_over  # ensemble-blended P(Over 2.5)
+    _prev_p_o = 1.0  # For monotonicity: P(O1.5) >= P(O2.5) >= P(O3.5)
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
                                       (2.5, "Under 2.5", "Over 2.5"),
                                       (3.5, "Under 3.5", "Over 3.5")]:
-        p_o_poisson = prob_over(exp_h, exp_a, thresh)
+        p_o_poisson = prob_over(*_ou_exp(exp_h, exp_a), thresh)
         # Blend Poisson with ML ensemble signal (threshold-dependent weight)
         # 2.5: ML is most relevant (direct match), 1.5/3.5: ML is indirect
         if thresh == 2.5:
@@ -3348,16 +3521,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         else:  # 3.5
             ml_w = 0.25
         p_o = p_o_poisson * (1 - ml_w) + ml_ou_signal * ml_w
+        # Enforce monotonicity: P(Over i) <= P(Over i-1) (non-increasing)
+        p_o = min(p_o, _prev_p_o)
+        _prev_p_o = p_o
         p_u = 1.0 - p_o
 
-        # Use deviation from 50% as signal
-        value_o = p_o - 0.5
-        value_u = p_u - 0.5
+        # Use deviation from the market's base rate as signal (not 50% — wide
+        # markets like Under 3.5 are naturally ~80% likely)
+        value_o = p_o - pick_base_rate(base_rates, "O/U", label_o)
+        value_u = p_u - pick_base_rate(base_rates, "O/U", label_u)
 
-        if p_o > p_u and value_o > 0:
+        # Value-based direction: emit whichever side has positive edge vs the
+        # league base rate. (The old `p_o > p_u` gate silently required the
+        # Over side to pass 50%, which capped the model at Under 3.5 — Over 3.5
+        # never appeared between its 31% base rate and 50%.)
+        if value_o > 0:
             ou_pick = label_o
             ou_val = value_o
-        elif p_u > p_o and value_u > 0:
+        elif value_u > 0:
             ou_pick = label_u
             ou_val = value_u
         else:
@@ -3473,6 +3654,29 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             add("O/U", ou_pick, ou_conf, ou_reason,
                 model_prob=p_o if "Over" in ou_pick else p_u)
 
+    # ── High O/U lines (4.5 / 5.5) — Over side only ──
+    # 3.5 was the model's ceiling, so games expected to score 4+ had no market.
+    # Emit the Over side of wider lines when the model carries positive edge vs
+    # the league base rate; Under 4.5/5.5 add nothing over Under 3.5.
+    for thresh in (4.5, 5.5):
+        _oe_h, _oe_a = _ou_exp(exp_h, exp_a)
+        p_o_high = prob_over(_oe_h, _oe_a, thresh)
+        val_o_high = p_o_high - pick_base_rate(base_rates, "O/U", f"Over {thresh}")
+        if val_o_high <= 0:
+            continue
+        if val_o_high > 0.45: high_conf = "Near Certain"
+        elif val_o_high > 0.35: high_conf = "High"
+        elif val_o_high > 0.18: high_conf = "Medium-High"
+        elif val_o_high > 0.10: high_conf = "Medium"
+        else: high_conf = "Low"
+        if league_reliability < 1.0:
+            _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
+            if CONF_RANK.get(high_conf, 99) < CONF_RANK[_max_conf]:
+                high_conf = _max_conf
+        add("O/U", f"Over {thresh}", high_conf,
+            f"exp goals {exp_total:.1f} model {p_o_high:.0%}o",
+            model_prob=p_o_high)
+
     # ── BTTS (blended: Poisson + Forebet + venue rates) ──
     dc_rho = profile.get("dixon_coles_rho", -0.12)
     p_btss_poisson = prob_btts(exp_h, exp_a, rho=dc_rho)
@@ -3512,11 +3716,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     p_btn = 1.0 - p_btss
 
-    value_yes = p_btss - 0.5
-    value_no = p_btn - 0.5
+    # ── BTTS Yes agreement: emit only where the ML model also leans Yes.
+    # Run the ML analysis once here and reuse the result at return, so the
+    # agreement check costs nothing beyond the single call per match.
+    _ml_agreement = analyze_ml_only(data, main_btts_yes=p_btss) if use_ml else None
+    _ml_btts_yes = None
+    if _ml_agreement:
+        _ml_btts_yes = (((_ml_agreement.get("_ml_odds") or {}).get("ml_btts") or {})
+                        .get("probs", {}).get("yes"))
 
-    # Higher threshold for YES (was 0.08) to reduce false positives
-    if value_yes > 0.10 and value_yes >= value_no:
+    value_yes = p_btss - pick_base_rate(base_rates, "BTTS", "Yes")
+    value_no = p_btn - pick_base_rate(base_rates, "BTTS", "No")
+
+    # Higher threshold for YES (was 0.08) to reduce false positives, plus a
+    # two-model agreement requirement (ML must also lean Yes >=52%).
+    if (value_yes > 0.10 and value_yes >= value_no
+            and (not use_ml or (_ml_btts_yes is not None and _ml_btts_yes >= 0.52))):
         btss_conf = conv_label(50 + int(value_yes * 80))
         if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
         elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
@@ -3528,25 +3743,60 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if CONF_RANK.get(btss_conf, 99) < CONF_RANK[_max_conf]:
                 btss_conf = _max_conf
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
+        if _ml_btts_yes is not None:
+            btss_reason += f" ml{_ml_btts_yes:.0%}"
         if fb_btts_yes is not None:
             btss_reason += f" fb{fb_btts_yes}%"
         add("BTTS", "Yes", btss_conf, btss_reason, model_prob=p_btss)
-    elif value_no > 0.08:
-        btss_conf = conv_label(50 + int(value_no * 80))
-        if vol >= 0.25 and btss_conf in ("Near Certain", "High"): btss_conf = "Medium-High"
-        elif vol >= 0.15 and btss_conf == "Near Certain": btss_conf = "High"
-        # High-scoring league cap — BTTS NO less reliable when avg_goals > 3.0
-        if profile.get("avg_goals", 2.8) > 3.0 and btss_conf in ("Near Certain", "High"):
-            btss_conf = "Medium-High"
-        # League-reliability damping (same logic as O/U)
-        if league_reliability < 1.0:
-            _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
-            if CONF_RANK.get(btss_conf, 99) < CONF_RANK[_max_conf]:
-                btss_conf = _max_conf
+    elif value_no > 0.14 and p_btn >= 0.58:
+        # BTTS No is historically -EV (backtest ~45% hit). Only emit on a
+        # strong signal and cap confidence so it stays a backup pick.
+        btss_conf = "Medium"
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
         if fb_btts_no:
             btss_reason += f" fb{fb_btts_no}%"
         add("BTTS", "No", btss_conf, btss_reason, model_prob=p_btn)
+
+    # ── O/U 2.5 reconciliation: when the two models disagree on direction,
+    # flip to the ML model's direction. Measured on settled matches: when the
+    # models split on O/U 2.5 the main pick hit only 16.7%, while the ML's
+    # opposite pick hit 83% — the ML contradiction is a genuine signal, so its
+    # direction wins the tie (floor 0.52, same as the BTTS agreement gate).
+    _ou_flipped = False
+    if _ml_agreement:
+        _ml_ou25 = next((p for p in _ml_agreement.get("all_picks", [])
+                         if p.get("market") == "O/U" and str(p.get("pick", "")).endswith("2.5")), None)
+        if _ml_ou25 and _ml_ou25.get("model_prob") and _ml_ou25["model_prob"] >= 0.52:
+            _ml_dir = "Under" if "Under" in _ml_ou25["pick"] else "Over"
+            _ml_prob = _ml_ou25["model_prob"]
+            for _c in candidates:
+                if _c.get("market") == "O/U" and str(_c.get("pick", "")).endswith("2.5"):
+                    _c_dir = "Under" if "Under" in _c["pick"] else "Over"
+                    if _c_dir == _ml_dir:
+                        continue
+                    _c["pick"] = _ml_ou25["pick"]
+                    _c["model_prob"] = _ml_prob
+                    _c["implied_prob"] = (1.0 / _pick_odds("O/U", _c["pick"])
+                                          if (_pick_odds("O/U", _c["pick"]) or 0) > 1.0 else None)
+                    _c["value_ratio"] = (_ml_prob / _c["implied_prob"]
+                                         if _c["implied_prob"] else None)
+                    _flip_val = _ml_prob - pick_base_rate(base_rates, "O/U", _c["pick"])
+                    if _flip_val > 0.45: _c["confidence"] = "Near Certain"
+                    elif _flip_val > 0.35: _c["confidence"] = "High"
+                    elif _flip_val > 0.18: _c["confidence"] = "Medium-High"
+                    elif _flip_val > 0.10: _c["confidence"] = "Medium"
+                    else: _c["confidence"] = "Low"
+                    if league_reliability < 1.0:
+                        _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
+                        if CONF_RANK.get(_c["confidence"], 99) < CONF_RANK[_max_conf]:
+                            _c["confidence"] = _max_conf
+                    _c["rank"] = CONF_RANK.get(_c["confidence"], 99)
+                    _c["reason"] = (f"ML disagreement → flipped to {_ml_ou25['pick']} "
+                                    f"(ML {_ml_prob:.0%}, main {_c_dir})")
+                    _c["_ml_flipped"] = True
+                    _ou_flipped = True
+    if _ou_flipped:
+        method_parts.append("ou-flip")
 
     # ── Suppress combined picks (e.g. "1 and NO") when favorite odds are low ──
     for c in candidates:
@@ -3633,6 +3883,19 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     non_show = [c for c in candidates if not c.get('_always_show')]
     primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
 
+    # BTTS No is historically -EV (backtest ~45% hit) — never let it become the
+    # primary pick; fall back to the next best candidate.
+    if primary.get("market") == "BTTS" and primary.get("pick") == "No":
+        def _non_no(c):
+            return not (c["market"] == "BTTS" and c["pick"] == "No")
+        fallback = (next((c for c in candidates if c is not primary and _non_no(c) and c.get("confidence") != "Low"), None)
+                    or next((c for c in candidates if c is not primary and _non_no(c)), None))
+        if fallback:
+            primary = fallback
+            reasoning.append("⚠ BTTS No downgraded to backup (historically -EV)")
+        else:
+            primary["confidence"] = "Low"
+
     # ── League-reliability pick rate gate ──
     # For leagues with <50% accuracy, suppress Medium-High picks to reduce noise
     if _ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0 and _ld["accuracy"] < 50:
@@ -3651,7 +3914,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # Simply the next highest probability pick
     backup = None
     if len(non_show) > 1:
-        backup = non_show[1]
+        backup = next((c for c in non_show[1:] if c is not primary), None)
 
     # ── Build reasoning ──
     for c in candidates[:6]:  # top 6
@@ -3873,7 +4136,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_warnings": warnings,
         "_backup": {"pick": backup["pick"], "market": backup["market"],
                     "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
-        "_ml_analysis": analyze_ml_only(data) if use_ml else None,
+        "_ml_analysis": _ml_agreement,
         "_derby": derby,
         "_scoring_analysis": _scoring_analysis,
     }
@@ -3939,33 +4202,52 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         return text
 
     def _verdict_signal(r: dict) -> str:
-        """One-line signal: where does the model lean and how strongly."""
-        synth = (r.get("_synthesis_rationale") or "").lower()
-        if "favours home" in synth or "favors home" in synth:
-            return "Home side favoured"
-        if "favours away" in synth or "favors away" in synth:
-            return "Away side favoured"
-        if "draw tendency" in synth or "drawish" in synth:
+        """One-line signal: where does the model lean and how strongly.
+
+        Uses the model's own final 1X2 probabilities (not the synthesis
+        consensus, which blends in the bookmaker odds + form and can point
+        the other way). The headline should never contradict the picks.
+        """
+        ph, pd, pa = r.get("_poisson_probs", (0.0, 0.0, 0.0))
+        if not (ph or pd or pa):
+            synth = (r.get("_synthesis_rationale") or "").lower()
+            if "favours home" in synth or "favors home" in synth:
+                return "Home side favoured"
+            if "favours away" in synth or "favors away" in synth:
+                return "Away side favoured"
+            if "draw tendency" in synth or "drawish" in synth:
+                return "Draw-leaning matchup"
+            return "Balanced model signal"
+        if pd >= ph and pd >= pa and pd >= 0.34:
             return "Draw-leaning matchup"
-        # fallback: use primary pick direction
-        pk = r.get("pick", "")
-        if pk == "Home win":
-            return "Home-side signal"
-        if pk == "Away win":
-            return "Away-side signal"
-        if pk == "Draw":
-            return "Neutral / draw signal"
-        return "Balanced model signal"
+        margin = pa - ph
+        if abs(margin) < 0.04:
+            return "Balanced model signal"
+        side = "Away" if margin > 0 else "Home"
+        strength = ("strongly" if abs(margin) >= 0.15
+                    else "moderately" if abs(margin) >= 0.08 else "mildly")
+        return f"{side} side favoured ({strength})"
 
     def _verdict_outlook(r: dict) -> str:
-        """What the model expects in plain terms."""
+        """What the model expects in plain terms — follows the directional data
+        (same source as the Signal box), then goals + the market pick."""
         eh, ea = r.get("_exp_goals", (None, None))
         total = (eh + ea) if eh is not None and ea is not None else None
-        pk = r.get("pick", "")
-        market = r.get("market", "")
+        ph, pd, pa = r.get("_poisson_probs", (0.0, 0.0, 0.0))
         parts = []
+        if ph or pd or pa:
+            if pd >= ph and pd >= pa and pd >= 0.34:
+                parts.append("draw-leaning")
+            else:
+                margin = pa - ph
+                if margin >= 0.04:
+                    parts.append("Away side favoured")
+                elif margin <= -0.04:
+                    parts.append("Home side favoured")
         if total is not None:
             parts.append(f"{total:.1f} expected goals total")
+        pk = r.get("pick", "")
+        market = r.get("market", "")
         if market == "O/U":
             parts.append(f"lean {pk}")
         elif market == "1X2":
@@ -3981,7 +4263,9 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         return "; ".join(parts)
 
     def _verdict_verdict(r: dict) -> str:
-        """The final recommendation in one line."""
+        """The final recommendation in one line — the top data-driven pick.
+        When the model clearly leans a 1X2 side, that lean is reported too,
+        so the box can never contradict the Signal box."""
         market = r.get("market", "")
         pick = r.get("pick", "")
         conf = r.get("confidence", "")
@@ -3994,7 +4278,22 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         dv = top.get("decision_value")
         if dv is not None:
             edge += f" synth {dv:.2f}"
-        return f"{pick} ({market}) · {conf}{edge}"
+        text = f"{pick} ({market}) · {conf}{edge}"
+        # Directional lean note when the bet isn't itself the lean side
+        ph, pd, pa = r.get("_poisson_probs", (0.0, 0.0, 0.0))
+        if (ph or pd or pa) and market != "1X2":
+            side = None
+            if pd >= ph and pd >= pa and pd >= 0.34:
+                side = "Draw"
+            else:
+                margin = pa - ph
+                if margin >= 0.04:
+                    side = "Away win"
+                elif margin <= -0.04:
+                    side = "Home win"
+            if side and side != pick:
+                text += f" · 1X2: {side}"
+        return text
 
     def _ml_reason_style(line: str) -> str:
         """Return inline CSS for ML-only reasoning lines."""
@@ -4012,7 +4311,9 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 
     def _comparison_table(r):
         """Consensus picks (both models agree ≥69.5%) plus the best alternative pick,
-        evaluated across EVERY option from both models (incl. 1X2) — not just Forebet."""
+        evaluated across EVERY option from both models (incl. 1X2) — not just Forebet.
+        The Best-alt combined score weights each model by its historical strength
+        in that market, not a naive 50/50 average."""
         ml = r.get("_ml_analysis")
         if not ml:
             return ""
@@ -4020,6 +4321,18 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         ml_all = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob")}
         if not fb_all and not ml_all:
             return ""
+
+        # ── Per-market model strengths (FB vs ML) for Best-alt weighting ──
+        _strength_cache = {}
+
+        def _strengths(mkt):
+            if mkt not in _strength_cache:
+                _strength_cache[mkt] = _model_market_strengths(mkt)
+            return _strength_cache[mkt]
+
+        def _weighted_comb(mkt, fp_p, mp_p):
+            st = _strengths(mkt)
+            return (st["fb_w"] * fp_p + st["ml_w"] * mp_p) / (st["fb_w"] + st["ml_w"])
 
         agree_thresh = 0.695
         agreed_keys = sorted(
@@ -4029,16 +4342,23 @@ def _write_html(results, all_urls, compare_forebet, high_only,
             reverse=True)
         agreed_set = set(agreed_keys)
 
-        # ── Best alt: score EVERY option from both models (incl. 1X2) ──
-        # Combined score = average of both models' probabilities when both have
-        # the pick; otherwise the single model that carries it.
-        primary_key = f"{r.get('market')}|{r.get('pick')}"
+        # The default pick (what the report actually recommends) gets highlighted,
+        # and is NOT excluded from Best alt — if it scores highest it appears under
+        # both sections, showing it's the superior pick.
+        default_key = f"{r.get('market')}|{r.get('pick')}"
+        default_style = ('style="background:rgba(251,191,36,0.16);border:1px solid #fbbf24;"')
+        default_star = '<span style="color:#fbbf24">★</span> '
+
+        # ── Best pick: score EVERY option from both models (incl. 1X2) ──
+        # Combined score = strength-weighted blend of both models' probabilities
+        # when both have the pick; otherwise the single model that carries it.
         scored = []
         for k in set(fb_all) | set(ml_all):
+            mkt = k.split("|", 1)[0]
             fp_p = fb_all[k]["model_prob"] if k in fb_all else None
             mp_p = ml_all[k]["model_prob"] if k in ml_all else None
             if fp_p is not None and mp_p is not None:
-                comb = (fp_p + mp_p) / 2
+                comb = _weighted_comb(mkt, fp_p, mp_p)
             else:
                 comb = fp_p if fp_p is not None else mp_p
             if comb:
@@ -4047,14 +4367,15 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 
         best_alt = None
         for comb, k, fp_p, mp_p in scored:
-            if k == primary_key or k in agreed_set:
-                continue
-            if comb >= 0.50:  # only worth flagging a genuine alternative
+            if comb >= 0.50:  # only worth flagging a genuine pick
                 best_alt = (comb, k, fp_p, mp_p)
                 break
 
         def _cell(prob):
             return f'<td>{prob:.0%}</td>' if prob is not None else '<td style="color:#64748b">—</td>'
+
+        def _acc_str(acc):
+            return f"{acc*100:.0f}%" if acc is not None else "n/a"
 
         html = ""
         if agreed_keys:
@@ -4064,7 +4385,10 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                 mp = ml_all[k]
                 avg = (fp["model_prob"] + mp["model_prob"]) / 2
                 mkt, pick = k.split("|", 1)
-                agreed_rows += (f'<tr><td>{mkt}</td><td>{pick}</td>'
+                is_default = (k == default_key)
+                row_style = default_style if is_default else ""
+                label = default_star if is_default else ""
+                agreed_rows += (f'<tr {row_style}><td>{mkt}</td><td>{label}{pick}</td>'
                                 f'<td>{fp["model_prob"]:.0%}</td><td>{mp["model_prob"]:.0%}</td>'
                                 f'<td style="color:#22c55e;font-weight:600">{avg:.0%}</td></tr>')
             html += (f'<div style="font-weight:700;color:#86efac;margin-bottom:4px;">'
@@ -4076,14 +4400,29 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         if best_alt:
             comb, k, fp_p, mp_p = best_alt
             mkt, pick = k.split("|", 1)
-            html += (f'<div style="margin-top:8px;font-weight:700;color:#a5b4fc;">'
-                     f'★ Best alt (both models considered)</div>'
+            st = _strengths(mkt)
+            is_default = (k == default_key)
+            strength_note = (
+                f'<div style="margin-top:4px;color:#818cf8;font-size:0.76em;">'
+                f'Strength {mkt}: FB {_acc_str(st["fb_acc"])} (n={st["fb_n"]}) · '
+                f'ML {_acc_str(st["ml_acc"])} (n={st["ml_n"]}) → '
+                f'weighted {st["fb_w"]:.2f}/{st["ml_w"]:.2f} (FB/ML)</div>')
+            if is_default:
+                title = '★ Best pick (both models) — also the default pick'
+                color = '#fbbf24'
+                row_style = default_style
+            else:
+                title = '★ Best alt (both models considered)'
+                color = '#a5b4fc'
+                row_style = 'style="background:rgba(99,102,241,0.10);"'
+            html += (f'<div style="margin-top:8px;font-weight:700;color:{color};">'
+                     f'{title}</div>'
                      f'<table style="width:100%;font-size:0.9em;">'
                      f'<tr><th>Mkt</th><th>Pick</th><th>FB</th><th>ML</th><th>Comb</th></tr>'
-                     f'<tr style="background:rgba(99,102,241,0.10);">'
-                     f'<td>{mkt}</td><td>{pick}</td>{_cell(fp_p)}{_cell(mp_p)}'
-                     f'<td style="color:#a5b4fc;font-weight:600">{comb:.0%}</td></tr>'
-                     f'</table>')
+                     f'<tr {row_style}>'
+                     f'<td>{mkt}</td><td>{default_star if is_default else ""}{pick}</td>{_cell(fp_p)}{_cell(mp_p)}'
+                     f'<td style="color:{color};font-weight:600">{comb:.0%}</td></tr>'
+                     f'</table>{strength_note}')
 
         if not html:
             return ""
@@ -4284,13 +4623,17 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         else:
             league_perf_html = ""
 
-        # Build ML-only picks table rows
+        # Build ML-only picks table rows — ranked by probability like the
+        # Forebet panel (all_picks arrives dv-sorted from synthesize()).
         _ml_picks_html = ""
-        for p in r["_ml_analysis"].get("all_picks", [])[:4]:
-            _mp_s = f'{p["model_prob"]:.0%}' if p.get("model_prob") else ""
-            _dv_s = f'{p.get("decision_value",0):.2f}' if p.get("decision_value") else ""
-            _res_s = _pick_result(p, r) if has_result_h else ""
-            _ml_picks_html += f'<tr><td>{p["market"]}</td><td>{p["pick"]}</td><td>{_mp_s}</td><td>{_dv_s}</td>{_res_s}</tr>\n'
+        if _ml:
+            for p in sorted(_ml.get("all_picks", []),
+                            key=lambda x: x.get("model_prob") or 0,
+                            reverse=True)[:4]:
+                _mp_s = f'{p["model_prob"]:.0%}' if p.get("model_prob") else ""
+                _dv_s = f'{p.get("decision_value",0):.2f}' if p.get("decision_value") else ""
+                _res_s = _pick_result(p, r) if has_result_h else ""
+                _ml_picks_html += f'<tr><td>{p["market"]}</td><td>{p["pick"]}</td><td>{_mp_s}</td><td>{_dv_s}</td>{_res_s}</tr>\n'
 
         rows.append(f"""<div class="card" data-match-id="{r.get('match_id', '')}" data-exp-home="{exp_home}" data-exp-away="{exp_away}" data-exp-total="{exp_total}" data-market="{r['market']}" data-pick="{r['pick']}" data-date="{r.get('date', '')}" data-time="{r.get('time', '')}" style="border-left: 4px solid {_c(r['confidence'])};">
 <div class="card-header">
@@ -4341,7 +4684,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 {("<table><tr><th>Market</th><th>Pick</th><th>Prob</th><th>Score</th>" + ("<th>Result</th>" if has_result_h else "") + "</tr>" + picks_rows + "</table>") if picks_rows else ""}
 {("<div style='margin-top:8px;padding:6px 10px;background:rgba(99,102,241,0.1);border-radius:6px;font-size:0.82em;'><strong>Best alt:</strong> <span style='color:" + _c(r.get('_backup', {}).get('confidence', 'Low')) + "'>" + r['_backup']['market'] + ": " + r['_backup']['pick'] + " (" + r['_backup']['confidence'] + ")</span></div>") if r.get('_backup') else ""}
 </div>''')}
-{"".join(f'''<div class="model-panel model-ml">
+{("".join(f'''<div class="model-panel model-ml">
 <div class="model-header">
   <span style="font-weight:600;">🤖 ML-only</span>
   <span style="color:{_c(r["_ml_analysis"]["confidence"])};font-weight:700;font-size:0.85em;">{_star(r["_ml_analysis"]["confidence"])} {r["_ml_analysis"]["confidence"]}</span>
@@ -4360,7 +4703,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
   <tr><th>Market</th><th>Pick</th><th>Prob</th><th>Score</th>{"<th>Res</th>" if has_result_h else ""}</tr>
   {_ml_picks_html}
 </table>
-</div>''')}
+</div>''')) if _ml else ""}
 {_comparison_table(r)}
 </div>
 </div>""")
@@ -4709,10 +5052,88 @@ a:hover {{ text-decoration:underline; }}
     log(f"Index updated: {index_path.resolve()}")
 
 
+def fetch_today_links(leagues_file: str = "data/leagues_db.json",
+                      out_file: str = "links/today.html",
+                      today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
+                      now: datetime | None = None) -> str:
+    """Fetch today's upcoming matches and write match URLs to a links file.
+
+    Scrapes Forebet's "predictions for today" page (all leagues) plus each league
+    in leagues_db.json, then keeps matches kicking off between today 00:00 and
+    tomorrow 06:00 (all of today's fixtures plus the overnight 00:00–06:00 games).
+    Matches that have already kicked off are skipped.
+    """
+    import time
+    from datetime import timedelta
+    import cloudscraper
+    from forebet_scraper import scrape_league_upcoming
+
+    now = now or datetime.now()
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    cutoff = day_start + timedelta(days=1, hours=6)
+
+    all_matches = []
+    per_league = {}
+
+    def collect(name: str, rows: list) -> None:
+        kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
+        if kept:
+            per_league[name] = len(kept)
+            all_matches.extend(kept)
+
+    with open(leagues_file) as f:
+        leagues = json.load(f)
+
+    paths = [("All leagues (predictions-for-today)", today_page)]
+    for code, info in leagues.items():
+        path = info.get("league_url_path")
+        if not path:
+            continue
+        name = f"{info.get('country', '')} — {info.get('league', code)}"
+        paths.append((name, path))
+
+    total = len(paths)
+    session = cloudscraper.create_scraper()
+    for i, (name, path) in enumerate(paths, 1):
+        print(f"[{i}/{total}] {name}", flush=True)
+        collect(name, scrape_league_upcoming(path, league_name=name, session=session))
+        time.sleep(0.5)
+
+    # Deduplicate by URL (league pages can overlap fixtures)
+    seen = set()
+    uniq = []
+    for r in all_matches:
+        if r["url"] not in seen:
+            seen.add(r["url"])
+            uniq.append(r)
+
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    with open(out_file, "w") as f:
+        for r in uniq:
+            f.write(r["url"] + "\n")
+
+    print(f"\nScanned {total} pages — {len(uniq)} matches today + tonight (00:00–06:00)")
+    today_group = [(k, v) for k, v in per_league.items() if "predictions-for-today" in k]
+    by_country = {}
+    for name, n in per_league.items():
+        if "predictions-for-today" in name:
+            continue
+        country, _, league = name.partition(" — ")
+        by_country.setdefault(country, [0, 0])
+        by_country[country][0] += n
+        by_country[country][1] += 1
+    for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0]):
+        print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
+    if today_group:
+        print(f"  {'All leagues (predictions-for-today)':16s} {today_group[0][1]:3d} matches")
+    print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
+    return out_file
+
+
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                             high_only: bool = False, json_out: bool = False, html_out: bool = False,
                             compare_forebet: bool = True,
-                            use_ml: bool = False):
+                            use_ml: bool = False, single_link: bool = False):
     """Read Forebet links, scrape, analyze, store, and output predictions."""
     with open(links_path) as f:
         urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
@@ -4904,6 +5325,20 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                     poisson_correct = (poisson_12_pick == actual_outcome)
                     
                     record_ml_league_result(league_key, "1X2", ml_correct, poisson_correct)
+
+                    # ── Per-market model strengths (FB model pick vs ML model pick)
+                    # Drives the Best-alt weighting; records every market both models carry.
+                    from database import record_model_market_result
+                    _ml_an = pred.get("_ml_analysis") or {}
+                    fb_picks = {p["market"]: p["pick"] for p in (pred.get("all_picks") or [])}
+                    ml_picks = {p["market"]: p["pick"] for p in (_ml_an.get("all_picks") or [])}
+                    for _mkt in sorted(set(fb_picks) & set(ml_picks)):
+                        _fb_c = _pick_correct_for_result(_mkt, fb_picks[_mkt], actual_hg, actual_ag)
+                        _ml_c = _pick_correct_for_result(_mkt, ml_picks[_mkt], actual_hg, actual_ag)
+                        if _fb_c is not None:
+                            record_model_market_result("fb", _mkt, _fb_c)
+                        if _ml_c is not None:
+                            record_model_market_result("ml", _mkt, _ml_c)
                 except Exception:
                     pass
 
@@ -4997,7 +5432,25 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         return
 
     # ── Always generate HTML ──
-    report_path, hot_path = _write_html(results, match_urls, compare_forebet, high_only)
+    # Single-link searches write a home-team-named report and must NOT clobber
+    # latest.html (which holds the multi-link run).
+    if single_link and len(results) == 1:
+        import webbrowser
+        _r0 = results[0]
+        _base = re.sub(r'[^\w\s-]', '', _r0.get("home", "match"))
+        _base = re.sub(r'\s+', ' ', _base).strip().replace(" ", "_") or "match"
+        _single_path = Path(__file__).parent / "predictions" / f"{_base}.html"
+        _write_html(results, match_urls, compare_forebet, high_only,
+                    _save_to=_single_path,
+                    _title_suffix=f" — {_r0.get('home', '')} vs {_r0.get('away', '')}")
+        log(f"HTML report: {_single_path.resolve()}")
+        webbrowser.open(str(_single_path.resolve()))
+        report_path, hot_path = _single_path, None
+    elif single_link:
+        # No usable result for a single-link search — don't touch latest.html.
+        report_path, hot_path = None, None
+    else:
+        report_path, hot_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
@@ -5112,8 +5565,10 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             ml_ou = ml_odds.get("ml_ou", {})
             ml_btts = ml_odds.get("ml_btts", {})
             print(f"    Odds: 1X2 H:{ml_1x2.get('odds',{}).get('home',0):.2f} D:{ml_1x2.get('odds',{}).get('draw',0):.2f} A:{ml_1x2.get('odds',{}).get('away',0):.2f} | O/U O:{ml_ou.get('odds',{}).get('over',0):.2f} U:{ml_ou.get('odds',{}).get('under',0):.2f} | BTTS Y:{ml_btts.get('odds',{}).get('yes',0):.2f} N:{ml_btts.get('odds',{}).get('no',0):.2f}")
-            # ML picks summary
-            ml_picks = ml_analysis.get("all_picks", [])[:3]
+            # ML picks summary (probability-ranked like the report tables)
+            ml_picks = sorted(ml_analysis.get("all_picks", []),
+                              key=lambda x: x.get("model_prob") or 0,
+                              reverse=True)[:3]
             for mp in ml_picks:
                 dv = mp.get("decision_value", 0)
                 mp_s = f"{mp['model_prob']:.0%}" if mp.get("model_prob") else ""
@@ -5131,7 +5586,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                     print(f"    {line}")
 
         # Line 4: HTML path
-        print(f"→ predictions/latest.html")
+        if report_path:
+            print(f"→ {report_path}")
     print(f"\nSaved to database: history.db")
 
     # ── Hot leagues summary ──
@@ -5445,6 +5901,7 @@ def ensure_alias():
 # ─────────────────────────────────────────────
 
 def main():
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     parser = argparse.ArgumentParser(
         description="Football Match Predictor v2 — Forebet-powered analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -5484,6 +5941,7 @@ Options:
     parser.add_argument("--no-reasoning", action="store_true", help="Hide reasoning")
     parser.add_argument("--no-ml", "--classic", action="store_true", help="Disable ML-enhanced prediction (use classic model)")
     parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
+    parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
 
     args = parser.parse_args()
 
@@ -5503,7 +5961,10 @@ Options:
         _maybe_auto_calibrate()
 
     if args.auto_learn:
-        from auto_learn import run_full_pipeline
+        try:
+            from auto_learn import run_full_pipeline
+        except ImportError:
+            from scripts.auto_learn import run_full_pipeline
         run_full_pipeline(
             days_back=30,
             delay=0.3,
@@ -5552,6 +6013,10 @@ Options:
         run_review(urls_file=None if args.review is True else args.review)
         return
 
+    if args.today:
+        fetch_today_links()
+        return
+
     if args.file:
         # Detect if argument is a URL or a file path
         if args.file.startswith("http://") or args.file.startswith("https://"):
@@ -5567,6 +6032,7 @@ Options:
                 html_out=args.html,
                 compare_forebet=not args.no_compare,
                 use_ml=not args.no_ml,
+                single_link=True,
             )
             os.unlink(tmp_path)
         else:
