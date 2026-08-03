@@ -726,5 +726,516 @@
     "home_team": "Bod\u00f8 / Glimt W",
     "away_team": "Molde W",
     "added": "2026-08-02T18:53:19.885438"
+  },
+  {
+    "match_id": 9985,
+    "forebet_url": "https://www.forebet.com/en/football/matches/djurg%C3%A5rdens-vasteras-sk-fk-2448426",
+    "home_team": "Djurg\u00e5rdens",
+    "away_team": "Vasteras SK FK",
+    "added": "2026-08-03T09:14:00.634187"
+  },
+  {
+    "match_id": 9986,
+    "forebet_url": "https://www.forebet.com/en/football/matches/vojvodina-macva-sabac-2468641",
+    "home_team": "Vojvodina",
+    "away_team": "Macva Sabac",
+    "added": "2026-08-03T09:15:15.464089"
+  },
+  {
+    "match_id": 9987,
+    "forebet_url": "https://www.forebet.com/en/football/matches/chrobry-glogow-odra-opole-2473750",
+    "home_team": "Chrobry Glogow",
+    "away_team": "Odra Opole",
+    "added": "2026-08-03T09:15:54.531108"
+  },
+  {
+    "match_id": 9988,
+    "forebet_url": "https://www.forebet.com/en/football/matches/odense-bk-sonderjyske-2469509",
+    "home_team": "Odense BK",
+    "away_team": "Sonderjyske",
+    "added": "2026-08-03T09:18:46.911904"
+  },
+  {
+    "match_id": 9989,
+    "forebet_url": "https://www.forebet.com/en/football/matches/fk-veles-moscow-rotor-volgograd-2470765",
+    "home_team": "FK Veles Moscow",
+    "away_team": "Rotor Volgograd",
+    "added": "2026-08-03T09:19:47.445580"
+  },
+  {
+    "match_id": 9990,
+    "forebet_url": "https://www.forebet.com/en/football/matches/panevezys-dziugas-fc-2467239",
+    "home_team": "Panevezys",
+    "away_team": "Dziugas FC",
+    "added": "2026-08-03T09:20:52.068365"
+  },
+  {
+    "match_id": 9991,
+    "forebet_url": "https://www.forebet.com/en/football/matches/kerry-cobh-ramblers-2424092",
+    "home_team": "Kerry",
+    "away_team": "Cobh Ramblers",
+    "added": "2026-08-03T09:22:50.545247"
+  },
+  {
+    "match_id": 9992,
+    "forebet_url": "https://www.forebet.com/en/football/matches/seinajoen-jk-hjk-helsinki-2448657",
+    "home_team": "Seinajoen JK",
+    "away_team": "HJK Helsinki",
+    "added": "2026-08-03T09:24:14.878692"
+  },
+  {
+    "match_id": 9993,
+    "forebet_url": "https://www.forebet.com/en/football/matches/viimsi-jk-jk-tallinna-kalev-2433884",
+    "home_team": "Viimsi JK",
+    "away_team": "JK Tallinna Kalev",
+    "added": "2026-08-03T09:25:49.220898"
+  },
+  {
+    "match_id": 9994,
+    "forebet_url": "https://www.forebet.com/en/football/matches/alashkert-ararat-yerevan-2478544",
+    "home_team": "Alashkert",
+    "away_team": "Ararat Yerevan",
+    "added": "2026-08-03T09:26:32.364469"
+  },
+  {
+    "match_id": 9995,
+    "forebet_url": "https://www.forebet.com/en/football/matches/dinamo-samarkand-neftchi-fergana-2430316",
+    "home_team": "Dinamo Samarkand",
+    "away_team": "Neftchi Fergana",
+    "added": "2026-08-03T09:31:46.791268"
+  },
+  {
+    "match_id": 9996,
+    "forebet_url": "https://www.forebet.com/en/football/matches/univ-cluj-napoca-fc-botosani-2468236",
+    "home_team": "Univ Cluj-Napoca",
+    "away_team": "FC Botosani",
+    "added": "2026-08-03T09:33:34.718826"
+  },
+  {
+    "match_id": 9997,
+    "forebet_url": "https://www.forebet.com/en/football/matches/fc-agmk-nasaf-qarshi-2430319",
+    "home_team": "FC AGMK",
+    "away_team": "Nasaf Qarshi",
+    "added": "2026-08-03T09:35:38.108393"
+  },
+  {
+    "match_id": 9998,
+    "forebet_url": "https://www.forebet.com/en/football/matches/kudrivka-shakhtar-donetsk-2482040",
+    "home_team": "Kudrivka",
+    "away_team": "Shakhtar Donetsk",
+    "added": "2026-08-03T09:36:26.752368"
+  },
+  {
+    "match_id": 9999,
+    "forebet_url": "https://www.forebet.com/en/football/matches/inter-bratislava-msk-zilina-b-2474504",
+    "home_team": "Inter Bratislava",
+    "away_team": "MSK Zilina B",
+    "added": "2026-08-03T09:37:22.893926"
+  },
+  {
+    "match_id": 10000,
+    "forebet_url": "https://www.forebet.com/en/football/matches/vps-2-jaro-ii-2453981",
+    "home_team": "VPS 2",
+    "away_team": "Jaro II",
+    "added": "2026-08-03T09:38:18.751178"
+  },
+  {
+    "match_id": 10001,
+    "forebet_url": "https://www.forebet.com/en/football/matches/fk-ufa-kamaz-naberezhnye-chelny-2470766",
+    "home_team": "FK Ufa",
+    "away_team": "KAMAZ Naberezhnye Chelny",
+    "added": "2026-08-03T09:39:31.068565"
+  },
+  {
+    "match_id": 10002,
+    "forebet_url": "https://www.forebet.com/en/football/matches/vestri-grotta-2456947",
+    "home_team": "Vestri",
+    "away_team": "Grotta",
+    "added": "2026-08-03T09:40:25.740758"
+  },
+  {
+    "match_id": 10003,
+    "forebet_url": "https://www.forebet.com/en/football/matches/bukovyna-lnz-cherkasy-2482039",
+    "home_team": "Bukovyna",
+    "away_team": "LNZ Cherkasy",
+    "added": "2026-08-03T09:42:08.015248"
+  },
+  {
+    "match_id": 10004,
+    "forebet_url": "https://www.forebet.com/en/football/matches/independiente-yumbo-envigado-fc-2473321",
+    "home_team": "Independiente Yumbo",
+    "away_team": "Envigado FC",
+    "added": "2026-08-03T09:44:01.322887"
+  },
+  {
+    "match_id": 10005,
+    "forebet_url": "https://www.forebet.com/en/football/matches/3-de-noviembre-sportivo-carapegu%C3%A1-2486639",
+    "home_team": "3 de Noviembre",
+    "away_team": "Sportivo Carapegu\u00e1",
+    "added": "2026-08-03T09:44:45.492378"
+  },
+  {
+    "match_id": 10006,
+    "forebet_url": "https://www.forebet.com/en/football/matches/sarmiento-jun%C3%ADn-independiente-rivadavia-2417395",
+    "home_team": "Sarmiento Jun\u00edn",
+    "away_team": "Independiente Rivadavia",
+    "added": "2026-08-03T09:45:41.804099"
+  },
+  {
+    "match_id": 10007,
+    "forebet_url": "https://www.forebet.com/en/football/matches/valur-reykjavik-stjarnan-fc-2453547",
+    "home_team": "Valur Reykjavik",
+    "away_team": "Stjarnan FC",
+    "added": "2026-08-03T09:46:57.704328"
+  },
+  {
+    "match_id": 10008,
+    "forebet_url": "https://www.forebet.com/en/football/matches/zeleznicar-pancevo-mladost-lucani-2468638",
+    "home_team": "Zeleznicar Pancevo",
+    "away_team": "Mladost Lucani",
+    "added": "2026-08-03T09:47:53.071464"
+  },
+  {
+    "match_id": 10009,
+    "forebet_url": "https://www.forebet.com/en/football/matches/hammarby-ttf-fc-arlanda-2447949",
+    "home_team": "Hammarby TTF",
+    "away_team": "FC Arlanda",
+    "added": "2026-08-03T09:48:53.243386"
+  },
+  {
+    "match_id": 10010,
+    "forebet_url": "https://www.forebet.com/en/football/matches/yupanqui-ca%C3%B1uelas-fc-2486683",
+    "home_team": "Yupanqui",
+    "away_team": "Ca\u00f1uelas FC",
+    "added": "2026-08-03T09:49:31.258947"
+  },
+  {
+    "match_id": 10011,
+    "forebet_url": "https://www.forebet.com/en/football/matches/kimberley-mar-del-plata-argentino-monte-ma%C3%ADz-2487137",
+    "home_team": "Kimberley Mar del Plata",
+    "away_team": "Argentino Monte Ma\u00edz",
+    "added": "2026-08-03T09:50:53.415008"
+  },
+  {
+    "match_id": 10012,
+    "forebet_url": "https://www.forebet.com/en/football/matches/sutjeska-niksic-fk-buducnost-2484768",
+    "home_team": "Sutjeska Niksic",
+    "away_team": "FK Buducnost",
+    "added": "2026-08-03T09:51:38.847074"
+  },
+  {
+    "match_id": 10013,
+    "forebet_url": "https://www.forebet.com/en/football/matches/york-city-crawley-town-2486949",
+    "home_team": "York City",
+    "away_team": "Crawley Town",
+    "added": "2026-08-03T09:54:41.041589"
+  },
+  {
+    "match_id": 10014,
+    "forebet_url": "https://www.forebet.com/en/football/matches/defensores-pto-vilelas-sarmiento-resistencia-2487135",
+    "home_team": "Defensores Pto. Vilelas",
+    "away_team": "Sarmiento Resistencia",
+    "added": "2026-08-03T09:56:27.320651"
+  },
+  {
+    "match_id": 10015,
+    "forebet_url": "https://www.forebet.com/en/football/matches/fcsb-farul-constanta-2468238",
+    "home_team": "FCSB",
+    "away_team": "Farul Constanta",
+    "added": "2026-08-03T09:57:15.159366"
+  },
+  {
+    "match_id": 10016,
+    "forebet_url": "https://www.forebet.com/en/football/matches/sportivo-trinidense-cs-san-lorenzo-2473189",
+    "home_team": "Sportivo Trinidense",
+    "away_team": "CS San Lorenzo",
+    "added": "2026-08-03T09:59:38.510296"
+  },
+  {
+    "match_id": 10017,
+    "forebet_url": "https://www.forebet.com/en/football/matches/torns-if-staffanstorp-united-2445933",
+    "home_team": "Torns IF",
+    "away_team": "Staffanstorp United",
+    "added": "2026-08-03T10:01:41.610790"
+  },
+  {
+    "match_id": 10018,
+    "forebet_url": "https://www.forebet.com/en/football/matches/vittsjo-w-rosengard-w-2446149",
+    "home_team": "Vittsjo W",
+    "away_team": "Rosengard W",
+    "added": "2026-08-03T10:02:33.421454"
+  },
+  {
+    "match_id": 10019,
+    "forebet_url": "https://www.forebet.com/en/football/matches/vasalunds-if-sollentuna-fk-2447948",
+    "home_team": "Vasalunds IF",
+    "away_team": "Sollentuna FK",
+    "added": "2026-08-03T10:03:26.148351"
+  },
+  {
+    "match_id": 10020,
+    "forebet_url": "https://www.forebet.com/en/football/matches/%C3%96rebro-sk-ifk-varnamo-2447720",
+    "home_team": "\u00d6rebro SK",
+    "away_team": "IFK Varnamo",
+    "added": "2026-08-03T10:06:22.883368"
+  },
+  {
+    "match_id": 10021,
+    "forebet_url": "https://www.forebet.com/en/football/matches/hb-torshavn-ns%C3%8D-runav%C3%ADk-2434311",
+    "home_team": "HB Torshavn",
+    "away_team": "NS\u00cd Runav\u00edk",
+    "added": "2026-08-03T10:07:10.967479"
+  },
+  {
+    "match_id": 10022,
+    "forebet_url": "https://www.forebet.com/en/football/matches/wexford-youths-bray-wanderers-2424096",
+    "home_team": "Wexford Youths",
+    "away_team": "Bray Wanderers",
+    "added": "2026-08-03T10:08:06.280676"
+  },
+  {
+    "match_id": 10023,
+    "forebet_url": "https://www.forebet.com/en/football/matches/cork-city-athlone-town-2424093",
+    "home_team": "Cork City",
+    "away_team": "Athlone Town",
+    "added": "2026-08-03T10:08:51.013515"
+  },
+  {
+    "match_id": 10024,
+    "forebet_url": "https://www.forebet.com/en/football/matches/chelyabinsk-ii-dynamo-barnaul-2454967",
+    "home_team": "Chelyabinsk II",
+    "away_team": "Dynamo Barnaul",
+    "added": "2026-08-03T10:21:30.038644"
+  },
+  {
+    "match_id": 10025,
+    "forebet_url": "https://www.forebet.com/en/football/matches/atlet-rebel-2484629",
+    "home_team": "Atlet",
+    "away_team": "Rebel",
+    "added": "2026-08-03T10:21:35.622642"
+  },
+  {
+    "match_id": 10026,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ho-chi-minh-city-ii-w-ha-noi-ii-w-2466437",
+    "home_team": "Ho Chi Minh City II W",
+    "away_team": "Ha Noi II W",
+    "added": "2026-08-03T10:21:40.584092"
+  },
+  {
+    "match_id": 10027,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ho-chi-minh-city-w-ha-noi-w-2466438",
+    "home_team": "Ho Chi Minh City W",
+    "away_team": "Ha Noi W",
+    "added": "2026-08-03T10:21:45.521091"
+  },
+  {
+    "match_id": 10028,
+    "forebet_url": "https://www.forebet.com/en/football/matches/inhulets-petrove-polissya-ii-2475213",
+    "home_team": "Inhulets Petrove",
+    "away_team": "Polissya II",
+    "added": "2026-08-03T10:21:50.615893"
+  },
+  {
+    "match_id": 10029,
+    "forebet_url": "https://www.forebet.com/en/football/matches/tks-viet-nam-w-pp-ha-nam-w-2466439",
+    "home_team": "TKS Viet Nam W",
+    "away_team": "PP Ha Nam W",
+    "added": "2026-08-03T10:21:55.569801"
+  },
+  {
+    "match_id": 10030,
+    "forebet_url": "https://www.forebet.com/en/football/matches/bkma-2-yerevan-lernayin-artsakh-2486765",
+    "home_team": "BKMA-2 Yerevan",
+    "away_team": "Lernayin Artsakh",
+    "added": "2026-08-03T10:22:06.655283"
+  },
+  {
+    "match_id": 10031,
+    "forebet_url": "https://www.forebet.com/en/football/matches/olympia-yerevan-urartu-2-2486766",
+    "home_team": "Olympia Yerevan",
+    "away_team": "Urartu-2",
+    "added": "2026-08-03T10:22:12.418234"
+  },
+  {
+    "match_id": 10032,
+    "forebet_url": "https://www.forebet.com/en/football/matches/shirak-2-sardarapat-ii-2486767",
+    "home_team": "Shirak-2",
+    "away_team": "Sardarapat II",
+    "added": "2026-08-03T10:22:18.572350"
+  },
+  {
+    "match_id": 10033,
+    "forebet_url": "https://www.forebet.com/en/football/matches/qoqon-fk-surkhon-2430317",
+    "home_team": "Qoqon FK",
+    "away_team": "Surkhon",
+    "added": "2026-08-03T10:22:38.716615"
+  },
+  {
+    "match_id": 10034,
+    "forebet_url": "https://www.forebet.com/en/football/matches/fc-dordoi-kara-balta-2487264",
+    "home_team": "FC Dordoi",
+    "away_team": "Kara-Balta",
+    "added": "2026-08-03T10:22:44.905871"
+  },
+  {
+    "match_id": 10035,
+    "forebet_url": "https://www.forebet.com/en/football/matches/neftchi-kochkor-ata-fc-talant-2487265",
+    "home_team": "Neftchi Kochkor-Ata",
+    "away_team": "FC Talant",
+    "added": "2026-08-03T10:22:50.577474"
+  },
+  {
+    "match_id": 10036,
+    "forebet_url": "https://www.forebet.com/en/football/matches/shakhtar-donetsk-kudrivka-2482040",
+    "home_team": "Shakhtar Donetsk",
+    "away_team": "Kudrivka",
+    "added": "2026-08-03T10:22:56.695237"
+  },
+  {
+    "match_id": 10037,
+    "forebet_url": "https://www.forebet.com/en/football/matches/auda-fk-ogre-2434494",
+    "home_team": "Auda",
+    "away_team": "FK Ogre",
+    "added": "2026-08-03T10:23:03.541101"
+  },
+  {
+    "match_id": 10038,
+    "forebet_url": "https://www.forebet.com/en/football/matches/tukums-ii-jdfs-alberts-2441872",
+    "home_team": "Tukums II",
+    "away_team": "JDFS Alberts",
+    "added": "2026-08-03T10:23:47.074915"
+  },
+  {
+    "match_id": 10039,
+    "forebet_url": "https://www.forebet.com/en/football/matches/etar-veliko-tarnovo-yantra-gabrovo-2472581",
+    "home_team": "Etar Veliko Tarnovo",
+    "away_team": "Yantra Gabrovo",
+    "added": "2026-08-03T10:23:51.518097"
+  },
+  {
+    "match_id": 10040,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ucd-dublin-treaty-united-2424094",
+    "home_team": "UCD Dublin",
+    "away_team": "Treaty United",
+    "added": "2026-08-03T10:24:24.327126"
+  },
+  {
+    "match_id": 10041,
+    "forebet_url": "https://www.forebet.com/en/football/matches/longford-town-finn-harps-2424095",
+    "home_team": "Longford Town",
+    "away_team": "Finn Harps",
+    "added": "2026-08-03T10:24:30.648965"
+  },
+  {
+    "match_id": 10042,
+    "forebet_url": "https://www.forebet.com/en/football/matches/djurg\u00e5rdens-vasteras-sk-fk-2448426",
+    "home_team": "Djurg\u00e5rdens",
+    "away_team": "Vasteras SK FK",
+    "added": "2026-08-03T10:24:55.868596"
+  },
+  {
+    "match_id": 10043,
+    "forebet_url": "https://www.forebet.com/en/football/matches/pirin-blagoevgrad-cska-ii-sofia-2472583",
+    "home_team": "Pirin Blagoevgrad",
+    "away_team": "CSKA II Sofia",
+    "added": "2026-08-03T10:25:16.935612"
+  },
+  {
+    "match_id": 10044,
+    "forebet_url": "https://www.forebet.com/en/football/matches/central-c\u00f3rdoba-sde-san-lorenzo-2417399",
+    "home_team": "Central C\u00f3rdoba SdE",
+    "away_team": "San Lorenzo",
+    "added": "2026-08-03T10:25:23.668101"
+  },
+  {
+    "match_id": 10045,
+    "forebet_url": "https://www.forebet.com/en/football/matches/3-de-noviembre-sportivo-carapegu\u00e1-2486639",
+    "home_team": "3 de Noviembre",
+    "away_team": "Sportivo Carapegu\u00e1",
+    "added": "2026-08-03T10:25:28.935787"
+  },
+  {
+    "match_id": 10046,
+    "forebet_url": "https://www.forebet.com/en/football/matches/paraguari-deportivo-capiat\u00e1-2486640",
+    "home_team": "Paraguari",
+    "away_team": "Deportivo Capiat\u00e1",
+    "added": "2026-08-03T10:25:34.275686"
+  },
+  {
+    "match_id": 10047,
+    "forebet_url": "https://www.forebet.com/en/football/matches/kimberley-mar-del-plata-argentino-monte-ma\u00edz-2487137",
+    "home_team": "Kimberley Mar del Plata",
+    "away_team": "Argentino Monte Ma\u00edz",
+    "added": "2026-08-03T10:25:45.445470"
+  },
+  {
+    "match_id": 10048,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ca-platense-talleres-c\u00f3rdoba-2417396",
+    "home_team": "CA Platense",
+    "away_team": "Talleres C\u00f3rdoba",
+    "added": "2026-08-03T10:25:57.014076"
+  },
+  {
+    "match_id": 10049,
+    "forebet_url": "https://www.forebet.com/en/football/matches/v\u00e9lez-s\u00e1rsfield-independiente-2417403",
+    "home_team": "V\u00e9lez S\u00e1rsfield",
+    "away_team": "Independiente",
+    "added": "2026-08-03T10:26:02.202134"
+  },
+  {
+    "match_id": 10050,
+    "forebet_url": "https://www.forebet.com/en/football/matches/sarmiento-jun\u00edn-independiente-rivadavia-2417395",
+    "home_team": "Sarmiento Jun\u00edn",
+    "away_team": "Independiente Rivadavia",
+    "added": "2026-08-03T10:26:06.981257"
+  },
+  {
+    "match_id": 10051,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ca-hurac\u00e1n-atl\u00e9tico-tucum\u00e1n-2417390",
+    "home_team": "CA Hurac\u00e1n",
+    "away_team": "Atl\u00e9tico Tucum\u00e1n",
+    "added": "2026-08-03T10:26:11.774053"
+  },
+  {
+    "match_id": 10052,
+    "forebet_url": "https://www.forebet.com/en/football/matches/ca-g\u00fcemes-trist\u00e1n-su\u00e1rez-2461494",
+    "home_team": "CA G\u00fcemes",
+    "away_team": "Trist\u00e1n Su\u00e1rez",
+    "added": "2026-08-03T10:26:17.501829"
+  },
+  {
+    "match_id": 10053,
+    "forebet_url": "https://www.forebet.com/en/football/matches/yupanqui-ca\u00f1uelas-fc-2486683",
+    "home_team": "Yupanqui",
+    "away_team": "Ca\u00f1uelas FC",
+    "added": "2026-08-03T10:26:23.241027"
+  },
+  {
+    "match_id": 10054,
+    "forebet_url": "https://www.forebet.com/en/football/matches/flamengo-w-corinthians-w-2425326",
+    "home_team": "Flamengo W",
+    "away_team": "Corinthians W",
+    "added": "2026-08-03T10:26:28.793804"
+  },
+  {
+    "match_id": 10055,
+    "forebet_url": "https://www.forebet.com/en/football/matches/gr\u00eamio-prudente-linense-sp-2469472",
+    "home_team": "Gr\u00eamio Prudente",
+    "away_team": "Linense SP",
+    "added": "2026-08-03T10:26:34.593467"
+  },
+  {
+    "match_id": 10056,
+    "forebet_url": "https://www.forebet.com/en/football/matches/deportivo-recoleta-nacional-asunci\u00f3n-2473190",
+    "home_team": "Deportivo Recoleta",
+    "away_team": "Nacional Asunci\u00f3n",
+    "added": "2026-08-03T10:26:58.562701"
+  },
+  {
+    "match_id": 10057,
+    "forebet_url": "https://www.forebet.com/en/football/matches/\u00d6rebro-sk-ifk-varnamo-2447720",
+    "home_team": "\u00d6rebro SK",
+    "away_team": "IFK Varnamo",
+    "added": "2026-08-03T10:27:28.246575"
   }
 ]

@@ -4151,6 +4151,24 @@ def log(msg, end="\n"):
     print(msg, end=end, file=sys.stderr, flush=True)
 
 
+def _fb_1x2_comparison(r):
+    """Compare our 1X2 pick against Forebet's 1X2 prediction.
+
+    Returns (our_label, fb_label, agrees):
+      our_label/fb_label in ('Home', 'Draw', 'Away') or None when unavailable.
+      agrees is True/False only when both sides have a comparable pick.
+    """
+    fb = r.get("forebet")
+    fb_label = {"1": "Home", "X": "Draw", "2": "Away"}.get(fb)
+    picks_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
+    our_pick = picks_12[0]["pick"] if picks_12 else r.get("pick")
+    our_val = {"Home win": "1", "Draw": "X", "Away win": "2"}.get(our_pick)
+    our_label = {"1": "Home", "X": "Draw", "2": "Away"}.get(our_val)
+    if fb_label is None:
+        return our_label, None, None
+    return our_label, fb_label, (our_val == fb)
+
+
 def _write_html(results, all_urls, compare_forebet, high_only,
                 _save_to=None, _title_suffix=""):
     """Generate an HTML report of predictions and update index."""
@@ -4176,11 +4194,9 @@ def _write_html(results, all_urls, compare_forebet, high_only,
     total_fb = 0
     if compare_forebet:
         for r in filtered:
-            if r.get("forebet"):
-                picks_12 = [p for p in (r.get("all_picks") or []) if p["market"] == "1X2"]
-                our_12 = picks_12[0]["pick"] if picks_12 else r["pick"]
-                fb_val = {"Home win": "1", "Draw": "X", "Away win": "2"}.get(our_12, "")
-                if fb_val and r["forebet"] == fb_val:
+            _our_l, _fb_l, _agrees = _fb_1x2_comparison(r)
+            if _fb_l is not None:
+                if _agrees:
                     agreements += 1
                 total_fb += 1
 
@@ -4623,6 +4639,24 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         else:
             league_perf_html = ""
 
+        # Forebet 1X2 agreement badge
+        _our_l, _fb_l, _fb_agrees = _fb_1x2_comparison(r)
+        if _fb_l is not None:
+            if _fb_agrees and _our_l:
+                fb_badge_html = (f'<div style="display:inline-block;margin:0 0 8px;padding:3px 10px;border-radius:999px;'
+                                 f'font-size:0.78rem;font-weight:700;background:rgba(34,197,94,0.15);color:#86efac;">'
+                                 f'🤝 Forebet agrees: {_our_l} ({r["forebet"]})</div>')
+            elif _our_l:
+                fb_badge_html = (f'<div style="display:inline-block;margin:0 0 8px;padding:3px 10px;border-radius:999px;'
+                                 f'font-size:0.78rem;font-weight:700;background:rgba(234,179,8,0.12);color:#fde68a;">'
+                                 f'Forebet: {_fb_l} ({r["forebet"]}) vs our {_our_l}</div>')
+            else:
+                fb_badge_html = (f'<div style="display:inline-block;margin:0 0 8px;padding:3px 10px;border-radius:999px;'
+                                 f'font-size:0.78rem;font-weight:600;background:rgba(148,163,184,0.15);color:#cbd5e1;">'
+                                 f'Forebet pick: {_fb_l} ({r["forebet"]})</div>')
+        else:
+            fb_badge_html = ""
+
         # Build ML-only picks table rows — ranked by probability like the
         # Forebet panel (all_picks arrives dv-sorted from synthesize()).
         _ml_picks_html = ""
@@ -4642,6 +4676,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 </div>
 <div class="card-meta">{r.get('league', '')} &middot; {r.get('date', '')} {r.get('time', '')} &middot; <a href="{r['url']}">Forebet</a>{method_tag}</div>
 {league_perf_html}
+{fb_badge_html}
 <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:8px 0;font-size:0.82em;">
   <div style="background:#1e293b;border-radius:6px;padding:8px 10px;border-left:3px solid #60a5fa;">
     <div style="color:#94a3b8;font-size:0.75em;text-transform:uppercase;letter-spacing:0.05em;">Signal</div>
@@ -5542,9 +5577,14 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         eh, ea = r.get("_exp_goals", (None, None))
         if eh is not None and ea is not None:
             pick_line += f" • \033[35mExp: {eh:.1f}-{ea:.1f}\033[0m"
-        fb = r.get("forebet")
-        if fb:
-            pick_line += f" • Forebet: {fb}"
+        _our_l, _fb_l, _fb_agrees = _fb_1x2_comparison(r)
+        if _fb_l is not None:
+            if _fb_agrees and _our_l:
+                pick_line += f" • \033[32mForebet: {_fb_l} ✓ (agree)\033[0m"
+            elif _our_l:
+                pick_line += f" • \033[33mForebet: {_fb_l} (ours: {_our_l}) ✗\033[0m"
+            else:
+                pick_line += f" • Forebet: {_fb_l}"
         kelly_pct = r.get("kelly_stake", 0) * 100
         if kelly_pct > 0:
             pick_line += f" • Kelly: {kelly_pct:.1f}% ({_kelly_interpretation(kelly_pct)})"
