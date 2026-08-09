@@ -461,6 +461,17 @@ CALIBRATED_THRESHOLDS = {
     "draw_medium": 0.33,
 }
 
+# ── Per-market auto-calibrated thresholds ──
+# Pooling all markets masks real per-market accuracy: the all-market High
+# bucket sits near 68% while 1X2-only High is ~50% and BTTS-only ~45%. Each
+# market's thresholds are therefore calibrated from its own calibration_log
+# rows in _auto_calibrate_thresholds() and used where that market's confidence
+# is assigned.  Initialized from the pooled values; only ever tightened.
+_MARKET_THRESHOLDS = {
+    market: dict(CALIBRATED_THRESHOLDS)
+    for market in ("1X2", "O/U", "BTTS", "DC", "DNB", "default")
+}
+
 def _get_league_difficulty(league: str) -> dict:
     """Return difficulty info for a league based on historical accuracy.
     
@@ -791,9 +802,10 @@ def _kelly_interpretation(kelly_pct: float) -> str:
 
 
 def _auto_calibrate_thresholds():
-    """Load calibration data from DB and conservatively adjust thresholds.
-    Requires sufficient sample size and only tightens (raises) thresholds
-    when overconfidence is detected — never loosens with small samples."""
+    """Load calibration data from DB and conservatively adjust thresholds,
+    per market.  Requires sufficient sample size and only tightens (raises)
+    thresholds when overconfidence is detected — never loosens with small
+    samples."""
     try:
         from database import get_db
         conn = get_db()
@@ -805,19 +817,12 @@ def _auto_calibrate_thresholds():
             return
 
         rows = conn.execute("""
-            SELECT confidence,
+            SELECT market, confidence,
                    COUNT(*) as total,
                    SUM(correct) as correct,
                    ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct
             FROM calibration_log
-            GROUP BY confidence
-            ORDER BY CASE confidence
-                WHEN 'Near Certain' THEN 1
-                WHEN 'High' THEN 2
-                WHEN 'Medium-High' THEN 3
-                WHEN 'Medium' THEN 4
-                WHEN 'Low' THEN 5
-            END
+            GROUP BY market, confidence
         """).fetchall()
         conn.close()
 
@@ -829,11 +834,26 @@ def _auto_calibrate_thresholds():
             "Medium-High": 0.55,
             "Medium": 0.50,
         }
+        key_map = {
+            "Near Certain": "near_certain",
+            "High": "high",
+            "Medium-High": "medium_high",
+            "Medium": "medium",
+        }
+        cap_map = {"near_certain": 0.78, "high": 0.65, "medium_high": 0.55, "medium": 0.50}
+        # 1X2-style markets are badly overconfident, so High gets a bigger step
+        step_map = {"near_certain": 0.04, "high": 0.08, "medium_high": 0.03, "medium": 0.02}
 
         for row in rows:
-            conf = row["confidence"]
+            market = row["market"] or "default"
+            key = key_map.get(row["confidence"])
+            if key is None:
+                continue
+            store = _MARKET_THRESHOLDS.get(market) or _MARKET_THRESHOLDS["default"]
+            if store is None:
+                continue
             actual_pct = row["pct"] / 100.0
-            target = target_map.get(conf, 0.50)
+            target = target_map.get(row["confidence"], 0.50)
             n = row["total"]
             if n < min_samples:
                 continue
@@ -841,29 +861,20 @@ def _auto_calibrate_thresholds():
             # Only tighten (raise thresholds) when overconfident
             # Never loosen (lower thresholds) automatically — that introduces risk
             if actual_pct < target - 0.03:
-                if conf == "Near Certain":
-                    CALIBRATED_THRESHOLDS["near_certain"] = min(0.78, CALIBRATED_THRESHOLDS["near_certain"] + 0.04)
-                    adjusted += 1
-                elif conf == "High":
-                    CALIBRATED_THRESHOLDS["high"] = min(0.65, CALIBRATED_THRESHOLDS["high"] + 0.04)
-                    adjusted += 1
-                elif conf == "Medium-High":
-                    CALIBRATED_THRESHOLDS["medium_high"] = min(0.55, CALIBRATED_THRESHOLDS["medium_high"] + 0.03)
-                    adjusted += 1
-                elif conf == "Medium":
-                    CALIBRATED_THRESHOLDS["medium"] = min(0.50, CALIBRATED_THRESHOLDS["medium"] + 0.02)
-                    adjusted += 1
+                store[key] = min(cap_map[key], store[key] + step_map[key])
+                adjusted += 1
 
-        # Validate hierarchy: Near_Certain > High > Medium-High > Medium
-        nc = CALIBRATED_THRESHOLDS["near_certain"]
-        hi = CALIBRATED_THRESHOLDS["high"]
-        mh = CALIBRATED_THRESHOLDS["medium_high"]
-        me = CALIBRATED_THRESHOLDS["medium"]
-        if not (nc > hi > mh > me):
-            CALIBRATED_THRESHOLDS["near_certain"] = max(nc, hi + 0.05)
-            CALIBRATED_THRESHOLDS["high"] = max(hi, mh + 0.05)
-            CALIBRATED_THRESHOLDS["medium_high"] = max(mh, me + 0.05)
-            adjusted += 1
+        # Validate hierarchy per market: Near_Certain > High > Medium-High > Medium
+        for store in [CALIBRATED_THRESHOLDS] + list(_MARKET_THRESHOLDS.values()):
+            nc = store["near_certain"]
+            hi = store["high"]
+            mh = store["medium_high"]
+            me = store["medium"]
+            if not (nc > hi > mh > me):
+                store["near_certain"] = max(nc, hi + 0.05)
+                store["high"] = max(hi, mh + 0.05)
+                store["medium_high"] = max(mh, me + 0.05)
+                adjusted += 1
 
         if adjusted:
             print(f"[calibrate] Thresholds tightened from {total_pool} calibration records ({adjusted} changes)")
@@ -2308,16 +2319,17 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
         return round(1 / max(prob, min_p), 2)
 
     # ── 1X2 with draw signal ──
-    nc_thresh = CALIBRATED_THRESHOLDS["near_certain"]
-    nc_margin = CALIBRATED_THRESHOLDS["near_certain_margin"]
+    _mkt_thresh = _MARKET_THRESHOLDS["1X2"]
+    nc_thresh = _mkt_thresh["near_certain"]
+    nc_margin = _mkt_thresh["near_certain_margin"]
     for name, prob in [("Home win", ph), ("Away win", pa)]:
         if prob >= nc_thresh and abs(ph - pa) >= nc_margin:
             conf = "Near Certain"
-        elif prob >= CALIBRATED_THRESHOLDS["high"]:
+        elif prob >= _mkt_thresh["high"]:
             conf = "High"
-        elif prob >= CALIBRATED_THRESHOLDS["medium_high"]:
+        elif prob >= _mkt_thresh["medium_high"]:
             conf = "Medium-High"
-        elif prob >= CALIBRATED_THRESHOLDS["medium"]:
+        elif prob >= _mkt_thresh["medium"]:
             conf = "Medium"
         else: conf = "Low"
         add("1X2", name, conf, f"ML model {prob:.0%}", model_prob=prob,
@@ -2931,19 +2943,46 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             fb_top = max(fb_probs, key=fb_probs.get)
             our_probs = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
             our_top = max(our_probs, key=our_probs.get)
+            # Pure-ML direction (from the ensemble's ML component) for agreement gating
+            _ml_comp = _ml_from_ensemble or {}
+            _ml_pick = None
+            if _ml_comp:
+                _ml_dir = max(("Home", "Draw", "Away"),
+                              key={"Home": _ml_comp.get("ml_prob_home", 0),
+                                   "Draw": _ml_comp.get("ml_prob_draw", 0),
+                                   "Away": _ml_comp.get("ml_prob_away", 0)}.get)
+                _ml_pick = {"Home": "Home win", "Draw": "Draw", "Away": "Away win"}[_ml_dir]
             if fb_top == our_top and fb_probs[fb_top] > 0.50:
-                boost = 0.05 if fb_probs[fb_top] > 0.60 else 0.03
-                if fb_top == "Home win":
-                    p_home = min(p_home + boost, 0.95)
-                elif fb_top == "Draw":
-                    p_draw = min(p_draw + boost, 0.95)
+                # Boost only when the ML component also agrees — otherwise the
+                # Poisson-only top pick would get amplified against both models
+                if _ml_pick is None or _ml_pick == our_top:
+                    boost = 0.05 if fb_probs[fb_top] > 0.60 else 0.03
+                    if fb_top == "Home win":
+                        p_home = min(p_home + boost, 0.95)
+                    elif fb_top == "Draw":
+                        p_draw = min(p_draw + boost, 0.95)
+                    else:
+                        p_away = min(p_away + boost, 0.95)
+                    total_p = p_home + p_draw + p_away
+                    p_home /= total_p
+                    p_draw /= total_p
+                    p_away /= total_p
+                    method_parts.append("concordance")
+            elif fb_top != our_top and fb_probs[fb_top] > 0.55:
+                # Forebet confidently disagrees with our top pick → symmetric
+                # penalty instead of the previous no-op (added 08/03). Dampens
+                # the top prob without blindly shifting toward Forebet.
+                if our_top == "Home win":
+                    p_home = max(p_home - 0.03, 0.05)
+                elif our_top == "Draw":
+                    p_draw = max(p_draw - 0.03, 0.05)
                 else:
-                    p_away = min(p_away + boost, 0.95)
+                    p_away = max(p_away - 0.03, 0.05)
                 total_p = p_home + p_draw + p_away
                 p_home /= total_p
                 p_draw /= total_p
                 p_away /= total_p
-                method_parts.append("concordance")
+                method_parts.append("fb-disagree")
     else:
         # Enhanced Poisson with Dixon-Coles even without ML
         from ml_model import poisson_predict as ml_poisson_predict
@@ -3095,7 +3134,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             else:
                 exp_a = min(exp_a + _h2h_shift, 3.2)
                 exp_h = max(exp_h - _h2h_shift * 0.25, 0.05)
-            signal_blend = min(0.65, signal_blend + _h2h_shift * 1.25)
+            signal_blend = min(0.65, signal_blend + min(0.05, _h2h_shift * 1.25))
             method_parts.append("h2h-last")
             _lho_verb = "won" if _lho["result"] == "W" else "lost"
             reasoning.append(
@@ -3117,7 +3156,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if _ou_factor:
                 exp_h = min(exp_h * _ou_factor, 3.2)
                 exp_a = min(exp_a * _ou_factor, 3.2)
-                signal_blend = min(0.65, signal_blend + 0.15 * _ou_strength)
+                # Cap the blend contribution — h2h-ou is a weak prior, must not
+                # override the ML/DC base (added 08/03, inflated signal_blend)
+                signal_blend = min(0.65, signal_blend + min(0.06, 0.15 * _ou_strength))
                 method_parts.append("h2h-ou")
                 reasoning.append(
                     f"[H2H-OU] Last H2H had {_lho['total_goals']} goals — "
@@ -3299,15 +3340,18 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     best_12_conf = "Low"
     best_12_reason = ""
 
-    # Use calibrated thresholds (improvement 10)
-    nc_thresh = CALIBRATED_THRESHOLDS["near_certain"]
-    nc_margin = CALIBRATED_THRESHOLDS["near_certain_margin"]
-    hi_thresh = CALIBRATED_THRESHOLDS["high"]
-    hi_margin = CALIBRATED_THRESHOLDS["high_margin"]
-    mh_thresh = CALIBRATED_THRESHOLDS["medium_high"]
-    mh_margin = CALIBRATED_THRESHOLDS["medium_high_margin"]
-    med_thresh = CALIBRATED_THRESHOLDS["medium"]
-    med_margin = CALIBRATED_THRESHOLDS["medium_margin"]
+    # Use calibrated thresholds (improvement 10) — 1X2 has its own
+    # per-market store, tightened from 1X2-only accuracy in
+    # _auto_calibrate_thresholds (pooled High ~68% masks 1X2 High ~50%).
+    _mkt_thresh = _MARKET_THRESHOLDS["1X2"]
+    nc_thresh = _mkt_thresh["near_certain"]
+    nc_margin = _mkt_thresh["near_certain_margin"]
+    hi_thresh = _mkt_thresh["high"]
+    hi_margin = _mkt_thresh["high_margin"]
+    mh_thresh = _mkt_thresh["medium_high"]
+    mh_margin = _mkt_thresh["medium_high_margin"]
+    med_thresh = _mkt_thresh["medium"]
+    med_margin = _mkt_thresh["medium_margin"]
 
     # ML ensemble agreement adjustment: high agreement → slightly lower thresholds
     # (easier to reach higher confidence), low agreement → raise thresholds
@@ -3318,9 +3362,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     # Draws are harder to predict — use tighter thresholds
     if top_pick == "Draw":
-        draw_mh = CALIBRATED_THRESHOLDS["draw_medium_high"]
-        draw_mh_margin = CALIBRATED_THRESHOLDS["draw_medium_high_margin"]
-        draw_med = CALIBRATED_THRESHOLDS["draw_medium"]
+        draw_mh = _mkt_thresh["draw_medium_high"]
+        draw_mh_margin = _mkt_thresh["draw_medium_high_margin"]
+        draw_med = _mkt_thresh["draw_medium"]
         if top_prob >= draw_mh and margin >= draw_mh_margin:
             best_12_conf = "Medium-High"
         elif top_prob >= draw_med:
@@ -3359,15 +3403,19 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             best_12_conf = "High"
 
     # League reliability damping for 1X2: unreliable leagues
-    # produce false-confidence picks — cap them down
-    if _ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0:
-        if _ld["accuracy"] < 45:
+    # produce false-confidence picks — cap them down.  Applies both to
+    # measured hard leagues and to leagues with insufficient calibration
+    # data (unknown ≈ default ~38% accuracy — worse than every real bucket).
+    _insufficient = _ld.get("matches", 0) < 5
+    if (_ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0) or _insufficient:
+        _ld_acc = _ld.get("accuracy", 0) or 38.0
+        if _insufficient or _ld_acc < 45:
             # Very unreliable: Near Certain → High, High → Medium-High
             if best_12_conf == "Near Certain":
                 best_12_conf = "High"
             if best_12_conf == "High":
                 best_12_conf = "Medium-High"
-        elif _ld["accuracy"] < 65:
+        elif _ld_acc < 65:
             # Unreliable: High → Medium-High
             if best_12_conf == "High":
                 best_12_conf = "Medium-High"
@@ -4032,19 +4080,55 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         else:
             primary["confidence"] = "Low"
 
+    # ── Disagreement veto (1X2) ──
+    # When BOTH the ML-only panel and Forebet pick a different 1X2 direction,
+    # the main pick is overconfident: measured on settled matches, emitting a
+    # High 1X2 against both other models is a coin flip.  Cap confidence down.
+    if primary.get("market") == "1X2" and primary.get("confidence") != "Low":
+        _our12 = {"Home win": "Home", "Draw": "Draw", "Away win": "Away"}.get(primary.get("pick"))
+        _fb12 = {"1": "Home", "X": "Draw", "2": "Away"}.get(data.get("forebet_pred") or "")
+        _ml12 = None
+        if _ml_agreement:
+            _ml_1x2s = [p for p in _ml_agreement.get("all_picks", [])
+                        if p.get("market") == "1X2"]
+            if _ml_1x2s:
+                _best_ml = max(_ml_1x2s, key=lambda p: p.get("model_prob") or 0)
+                _ml12 = {"Home win": "Home", "Draw": "Draw", "Away win": "Away"}.get(_best_ml.get("pick"))
+        if _our12 and _fb12 and _ml12 and _fb12 != _our12 and _ml12 != _our12:
+            _veto_conf = "Medium" if (primary.get("model_prob") or 0) >= 0.40 else "Low"
+            # CONF_RANK: smaller = more confident; only apply if it actually downgrades
+            if CONF_RANK.get(_veto_conf, 99) > CONF_RANK.get(primary["confidence"], 99):
+                reasoning.append(
+                    f"⚠ Disagreement veto: ML panel ({_ml12}) and Forebet ({_fb12}) "
+                    f"both oppose our {_our12} pick — capped {primary['confidence']} → {_veto_conf}")
+                primary["confidence"] = _veto_conf
+                primary["_disagree_vetoed"] = True
+
     # ── League-reliability pick rate gate ──
-    # For leagues with <50% accuracy, suppress Medium-High picks to reduce noise
-    if _ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0 and _ld["accuracy"] < 50:
-        # Only keep Medium picks that are truly strong (top prob >= 0.45)
+    # For leagues with <50% accuracy, suppress Medium-High picks to reduce noise.
+    # Extended to also cap High picks (the 08/08/2026 slate failures were all
+    # High-confidence picks in low-tier leagues) and to treat leagues with
+    # insufficient calibration data (unknown ≈ default ~38%) as hard.
+    _ld_insufficient = _ld.get("matches", 0) < 5
+    _ld_acc = _ld.get("accuracy", 0) or 0
+    _ld_hard = _ld.get("level") == "hard" and _ld_acc > 0
+    if (_ld_hard or _ld_insufficient) and (_ld_hard and _ld_acc < 55 or _ld_insufficient):
+        # High → Medium-High in unreliable / insufficient-data leagues
+        if primary.get("confidence") == "High":
+            primary["confidence"] = "Medium-High"
+            _acc_label = f"{_ld_acc:.0f}%" if _ld_acc > 0 else "insufficient data"
+            reasoning.append(f"⚠ League reliability gate: capped High pick (league accuracy {_acc_label})")
+        # Only keep Medium-High picks that are truly strong (top prob >= 0.45)
         if primary.get("confidence") == "Medium-High":
             if primary.get("model_prob", 0) < 0.45:
                 primary["confidence"] = "Low"
-                reasoning.append(f"⚠ League reliability gate: suppressed Medium-High pick (league accuracy {_ld['accuracy']:.0f}%)")
+                _acc_label = f"{_ld_acc:.0f}%" if _ld_acc > 0 else "insufficient data"
+                reasoning.append(f"⚠ League reliability gate: suppressed Medium-High pick (league accuracy {_acc_label})")
         # Also suppress Medium picks for very unreliable leagues (<40% accuracy)
-        if _ld["accuracy"] < 40 and primary.get("confidence") == "Medium":
+        if _ld_acc < 40 and primary.get("confidence") == "Medium":
             if primary.get("model_prob", 0) < 0.50:
                 primary["confidence"] = "Low"
-                reasoning.append(f"⚠ League reliability gate: suppressed Medium pick (league accuracy {_ld['accuracy']:.0f}%)")
+                reasoning.append(f"⚠ League reliability gate: suppressed Medium pick (league accuracy {_ld_acc:.0f}%)")
 
     # Backup pick: best alternative if primary fails
     # Simply the next highest probability pick
@@ -4250,6 +4334,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "market": primary["market"],
         "confidence": primary["confidence"],
         "all_picks": candidates,
+        "_disagree_vetoed": primary.get("_disagree_vetoed", False),
         "picks_summary": picks_summary,
         "score_lean": correct_score,
         "reasoning": reasoning,
@@ -4761,6 +4846,12 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         else:
             _compare_badge = ""
 
+        # Disagreement veto badge: both ML panel + Forebet opposed the pick
+        if r.get("_disagree_vetoed"):
+            _veto_badge = '<div style="margin:8px 0;padding:6px 10px;border-radius:6px;font-size:0.82em;font-weight:600;background:rgba(239,68,68,0.12);color:#fca5a5;">🚫 Disagreement veto: ML panel and Forebet both opposed this pick — confidence capped</div>'
+        else:
+            _veto_badge = ""
+
         # Build league recent performance HTML badge
         _lr = r.get("league_recent", {})
         if _lr and _lr.get("overall", {}).get("total", 0) > 0:
@@ -4842,6 +4933,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 {"<p>H2H: " + str(r.get('h2h_home_wins', 0)) + "W-" + str(r.get('h2h_draws', 0)) + "D-" + str(r.get('h2h_away_wins', 0)) + "L &ndash; GF/GA: " + str(r.get('h2h_goals_for', 0)) + "/" + str(r.get('h2h_goals_against', 0)) + " &ndash; avg " + str(r.get('h2h_avg_total_goals', 0)) + " goals (" + str(r.get('h2h_matches', 0)) + " matches)</p>" if r.get('h2h_matches', 0) >= 3 else ""}
 {_venue_stats_html(r)}
 {_compare_badge}
+{_veto_badge}
 <div class="two-models">
 {"".join(f'''<div class="model-panel model-forebet">
 <div class="model-header">
@@ -5223,16 +5315,104 @@ a:hover {{ text-decoration:underline; }}
     log(f"Index updated: {index_path.resolve()}")
 
 
+def _forebet_match_slug(name: str) -> str:
+    """Build the URL slug Forebet uses for a team name.
+
+    Matches the JS buildlnk() rule: lowercase, spaces→'-', drop anything that is
+    not a letter/digit/'-' (accents kept), collapse runs of '-', strip edges.
+    """
+    x = name.lower().strip().replace(" ", "-")
+    x = re.sub(r"[^a-z0-9\u00c0-\u024fäöüßéèêëñíìîúùûç-]", "", x)
+    x = re.sub(r"-+", "-", x)
+    return x.strip("-")
+
+
+def _getrs_params(today_page: str, session) -> dict | None:
+    """Extract the AJAX params Forebet uses to lazy-load today's match list.
+
+    Returns a dict (tp, in, ord, tz, tzs, tze) parsed from the 'More' button's
+    ltodrows(...) call on the today page, or None if not found.
+    """
+    resp = session.get(today_page, timeout=30)
+    if resp.status_code != 200:
+        return None
+    m = re.search(r'ltodrows\("([^"]+)","([^"]+)","[^"]*","([^"]+)","([^"]+)","(\d+)","(\d+)"\)', resp.text)
+    if not m:
+        return None
+    return {
+        "tp": m.group(1),
+        "in": m.group(2),
+        "ord": m.group(3),
+        "tz": m.group(4),
+        "tzs": m.group(5),
+        "tze": m.group(6),
+    }
+
+
+def _fetch_getrs_matches(params: dict, session,
+                         now: datetime, cutoff: datetime) -> tuple[list, dict, dict]:
+    """Fetch all matches for a date from Forebet's getrs.php AJAX endpoint.
+
+    Args:
+        params: dict with tp, in, ord, tz, tzs, tze (see _getrs_params).
+        session: cloudscraper session.
+        now, cutoff: only matches with now <= kickoff < cutoff are kept.
+
+    Returns (kept_matches, league_map, kept_by_league) where kept_matches is a
+    list of dicts (url, home_team, away_team, kickoff, league), and
+    kept_by_league maps league name → count.
+    """
+    url = ("https://www.forebet.com/scripts/getrs.php?ln=en"
+           f"&tp={params['tp']}&in={params['in']}&ord={params['ord']}"
+           f"&tz={params['tz']}&tzs={params['tzs']}&tze={params['tze']}")
+    resp = session.get(url, timeout=30)
+    if resp.status_code != 200:
+        return [], {}, {}
+    try:
+        data = json.loads(resp.text)
+    except ValueError:
+        return [], {}, {}
+    matches, league_map = data[0], data[1] if len(data) > 1 else {}
+
+    kept = []
+    by_league = {}
+    for m in matches:
+        if m.get("Host_SC") is not None:
+            continue
+        try:
+            kickoff = datetime.strptime(m["DATE_BAH"], "%Y-%m-%d %H:%M:%S")
+        except (KeyError, ValueError):
+            continue
+        if not (now <= kickoff < cutoff):
+            continue
+        host = (m.get("HOST_NAME") or "").strip()
+        guest = (m.get("GUEST_NAME") or "").strip()
+        if not host or not guest or not m.get("id"):
+            continue
+        mid = str(m["id"])
+        url = (f"https://www.forebet.com/en/football/matches/"
+               f"{_forebet_match_slug(host)}-{_forebet_match_slug(guest)}-{mid}")
+        lmeta = league_map.get(m.get("league_id"))
+        league = f"{lmeta[0]} — {lmeta[1]}" if lmeta and len(lmeta) >= 2 else ""
+        kept.append({"url": url, "home_team": host, "away_team": guest,
+                     "kickoff": kickoff, "league": league})
+        if league:
+            by_league[league] = by_league.get(league, 0) + 1
+    return kept, league_map, by_league
+
+
 def fetch_today_links(leagues_file: str = "data/leagues_db.json",
                       out_file: str = "links/today.html",
                       today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
                       now: datetime | None = None) -> str:
     """Fetch today's upcoming matches and write match URLs to a links file.
 
-    Scrapes Forebet's "predictions for today" page (all leagues) plus each league
-    in leagues_db.json, then keeps matches kicking off between today 00:00 and
-    tomorrow 06:00 (all of today's fixtures plus the overnight 00:00–06:00 games).
-    Matches that have already kicked off are skipped.
+    Primary source: Forebet's getrs.php AJAX endpoint (the same one that powers
+    the "Predictions for TODAY" counter on the page). It returns the complete
+    fixture list, not just the ~40 rows rendered in the initial HTML. Falls back
+    to scraping the today page + leagues_db.json league pages if the AJAX fails.
+    Keeps matches kicking off between now and tomorrow 06:00 (all of today's
+    remaining fixtures plus the overnight 00:00–06:00 games).
     """
     import time
     from datetime import timedelta
@@ -5243,60 +5423,81 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     cutoff = day_start + timedelta(days=1, hours=6)
 
-    all_matches = []
+    session = cloudscraper.create_scraper()
+
+    uniq = []
     per_league = {}
 
-    def collect(name: str, rows: list) -> None:
-        kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
-        if kept:
-            per_league[name] = len(kept)
-            all_matches.extend(kept)
+    try:
+        params = _getrs_params(today_page, session)
+        if params:
+            today_matches, _, today_by_league = _fetch_getrs_matches(
+                params, session, now, cutoff)
+            tomorrow_params = dict(params)
+            tomorrow_params["in"] = (day_start + timedelta(days=1)).strftime("%Y-%m-%d")
+            tomorrow_params["tzs"] = str(int(params["tzs"]) + 86400)
+            tomorrow_params["tze"] = str(int(params["tze"]) + 86400)
+            tomorrow_matches, _, tomorrow_by_league = _fetch_getrs_matches(
+                tomorrow_params, session, now, cutoff)
 
-    with open(leagues_file) as f:
-        leagues = json.load(f)
+            seen = set()
+            for r in today_matches + tomorrow_matches:
+                if r["url"] not in seen:
+                    seen.add(r["url"])
+                    uniq.append(r)
+            per_league = {**today_by_league}
+            for league, n in tomorrow_by_league.items():
+                per_league[league] = per_league.get(league, 0) + n
+    except Exception as e:
+        print(f"[AJAX fetch failed ({e}) — falling back to HTML scraping]")
 
-    paths = [("All leagues (predictions-for-today)", today_page)]
-    for code, info in leagues.items():
-        path = info.get("league_url_path")
-        if not path:
-            continue
-        name = f"{info.get('country', '')} — {info.get('league', code)}"
-        paths.append((name, path))
+    if not uniq:
+        # Fallback: scrape today page + league pages from leagues_db.json
+        all_matches = []
 
-    total = len(paths)
-    session = cloudscraper.create_scraper()
-    for i, (name, path) in enumerate(paths, 1):
-        print(f"[{i}/{total}] {name}", flush=True)
-        collect(name, scrape_league_upcoming(path, league_name=name, session=session))
-        time.sleep(0.5)
+        def collect(name: str, rows: list) -> None:
+            kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
+            if kept:
+                per_league[name] = len(kept)
+                all_matches.extend(kept)
 
-    # Deduplicate by URL (league pages can overlap fixtures)
-    seen = set()
-    uniq = []
-    for r in all_matches:
-        if r["url"] not in seen:
-            seen.add(r["url"])
-            uniq.append(r)
+        with open(leagues_file) as f:
+            leagues = json.load(f)
+
+        paths = [("All leagues (predictions-for-today)", today_page)]
+        for code, info in leagues.items():
+            path = info.get("league_url_path")
+            if not path:
+                continue
+            name = f"{info.get('country', '')} — {info.get('league', code)}"
+            paths.append((name, path))
+
+        total = len(paths)
+        for i, (name, path) in enumerate(paths, 1):
+            print(f"[{i}/{total}] {name}", flush=True)
+            collect(name, scrape_league_upcoming(path, league_name=name, session=session))
+            time.sleep(0.5)
+
+        seen = set()
+        for r in all_matches:
+            if r["url"] not in seen:
+                seen.add(r["url"])
+                uniq.append(r)
 
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
     with open(out_file, "w") as f:
         for r in uniq:
             f.write(r["url"] + "\n")
 
-    print(f"\nScanned {total} pages — {len(uniq)} matches today + tonight (00:00–06:00)")
-    today_group = [(k, v) for k, v in per_league.items() if "predictions-for-today" in k]
+    print(f"\nFetched {len(uniq)} matches today + tonight (00:00–06:00)")
     by_country = {}
     for name, n in per_league.items():
-        if "predictions-for-today" in name:
-            continue
         country, _, league = name.partition(" — ")
         by_country.setdefault(country, [0, 0])
         by_country[country][0] += n
         by_country[country][1] += 1
-    for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0]):
+    for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0])[:25]:
         print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
-    if today_group:
-        print(f"  {'All leagues (predictions-for-today)':16s} {today_group[0][1]:3d} matches")
     print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
     return out_file
 
