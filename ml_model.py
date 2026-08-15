@@ -38,6 +38,12 @@ import lightgbm as lgb
 
 warnings.filterwarnings("ignore")
 
+_PARALLEL_MISUSE = "`sklearn.utils.parallel.delayed` should be used with"
+if _PARALLEL_MISUSE not in os.environ.get("PYTHONWARNINGS", ""):
+    _cur_warn = os.environ.get("PYTHONWARNINGS", "")
+    os.environ["PYTHONWARNINGS"] = (_cur_warn + "," if _cur_warn else "") + f"ignore:{_PARALLEL_MISUSE}:UserWarning"
+warnings.filterwarnings("ignore", message=_PARALLEL_MISUSE)
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
