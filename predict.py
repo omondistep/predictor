@@ -4546,18 +4546,19 @@ def _write_html(results, all_urls, compare_forebet, high_only,
             return "color:#94a3b8;font-weight:600;"
         return "color:#cbd5e1;"
 
-    def _comparison_table(r):
-        """Consensus picks (both models agree ≥69.5%) plus the best alternative pick,
-        evaluated across EVERY option from both models (incl. 1X2) — not just Forebet.
-        The Best-alt combined score weights each model by its historical strength
-        in that market, not a naive 50/50 average."""
+    def _comparison_data(r):
+        """Compute consensus (both models ≥69.5%) and best-pick data for a match.
+
+        Shared by the HTML comparison table and the yellow-border / consensus
+        reports, so the filtering logic always matches what the report shows.
+        Returns None when there is nothing to compare."""
         ml = r.get("_ml_analysis")
         if not ml:
-            return ""
+            return None
         fb_all = {f"{p['market']}|{p['pick']}": p for p in (r.get("all_picks") or []) if p.get("model_prob")}
         ml_all = {f"{p['market']}|{p['pick']}": p for p in ml.get("all_picks", []) if p.get("model_prob")}
         if not fb_all and not ml_all:
-            return ""
+            return None
 
         # ── Per-market model strengths (FB vs ML) for Best-alt weighting ──
         _strength_cache = {}
@@ -4577,14 +4578,11 @@ def _write_html(results, all_urls, compare_forebet, high_only,
              if fb_all[k]["model_prob"] >= agree_thresh and ml_all[k]["model_prob"] >= agree_thresh),
             key=lambda k: (fb_all[k]["model_prob"] + ml_all[k]["model_prob"]) / 2,
             reverse=True)
-        agreed_set = set(agreed_keys)
 
         # The default pick (what the report actually recommends) gets highlighted,
         # and is NOT excluded from Best alt — if it scores highest it appears under
         # both sections, showing it's the superior pick.
         default_key = f"{r.get('market')}|{r.get('pick')}"
-        default_style = ('style="background:rgba(251,191,36,0.16);border:1px solid #fbbf24;"')
-        default_star = '<span style="color:#fbbf24">★</span> '
 
         # ── Best pick: score EVERY option from both models (incl. 1X2) ──
         # Combined score = strength-weighted blend of both models' probabilities
@@ -4607,6 +4605,33 @@ def _write_html(results, all_urls, compare_forebet, high_only,
             if comb >= 0.50:  # only worth flagging a genuine pick
                 best_alt = (comb, k, fp_p, mp_p)
                 break
+
+        return {
+            "fb_all": fb_all,
+            "ml_all": ml_all,
+            "agreed_keys": agreed_keys,
+            "default_key": default_key,
+            "best_alt": best_alt,
+            "strengths": _strengths,
+        }
+
+    def _comparison_table(r):
+        """Consensus picks (both models agree ≥69.5%) plus the best alternative pick,
+        evaluated across EVERY option from both models (incl. 1X2) — not just Forebet.
+        The Best-alt combined score weights each model by its historical strength
+        in that market, not a naive 50/50 average."""
+        data = _comparison_data(r)
+        if not data:
+            return ""
+        fb_all = data["fb_all"]
+        ml_all = data["ml_all"]
+        agreed_keys = data["agreed_keys"]
+        default_key = data["default_key"]
+        best_alt = data["best_alt"]
+        _strengths = data["strengths"]
+
+        default_style = ('style="background:rgba(251,191,36,0.16);border:1px solid #fbbf24;"')
+        default_star = '<span style="color:#fbbf24">★</span> '
 
         def _cell(prob):
             return f'<td>{prob:.0%}</td>' if prob is not None else '<td style="color:#64748b">—</td>'
@@ -4666,6 +4691,47 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         return (f'<div style="margin-top:10px;padding:8px 10px;'
                 f'background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.2);'
                 f'border-radius:6px;font-size:0.82em;">{html}</div>')
+
+    # ── Report filters: yellow-border (default pick) and consensus↔best ──
+    # Consistency = the two picks reinforce each other: identical, or one implies
+    # the other (e.g. BTTS Yes → O/U Over 1.5, since both scoring forces ≥2 goals).
+    _PICK_IMPLIES = {
+        ("1X2", "Home win"): {("DC", "1X"), ("DC", "12"), ("DNB", "Home")},
+        ("1X2", "Away win"): {("DC", "X2"), ("DC", "12"), ("DNB", "Away")},
+        ("1X2", "Draw"):    {("DC", "1X"), ("DC", "X2")},
+        ("O/U", "Over 2.5"):  {("O/U", "Over 1.5")},
+        ("O/U", "Under 1.5"): {("O/U", "Under 2.5")},
+        ("BTTS", "Yes"):    {("O/U", "Over 1.5")},
+        ("DNB", "Home"):    {("DC", "1X")},
+        ("DNB", "Away"):    {("DC", "X2")},
+    }
+
+    def _picks_consistent(k1, k2):
+        if k1 == k2:
+            return True
+        a = tuple(k1.split("|", 1))
+        b = tuple(k2.split("|", 1))
+        return b in _PICK_IMPLIES.get(a, set()) or a in _PICK_IMPLIES.get(b, set())
+
+    def _has_yellow_pick(r):
+        """Match where the default pick is highlighted yellow — i.e. it is a
+        consensus pick (both models ≥69.5%) or the best combined pick."""
+        data = _comparison_data(r)
+        if not data:
+            return False
+        if data["default_key"] in data["agreed_keys"]:
+            return True
+        ba = data["best_alt"]
+        return bool(ba and ba[1] == data["default_key"])
+
+    def _consensus_consistent_with_best(r):
+        """Match where a consensus pick (both models ≥69.5%) is consistent with
+        the best combined pick (e.g. consensus BTTS Yes + best Over 1.5)."""
+        data = _comparison_data(r)
+        if not data or not data["best_alt"] or not data["agreed_keys"]:
+            return False
+        best_key = data["best_alt"][1]
+        return any(_picks_consistent(k, best_key) for k in data["agreed_keys"])
 
     def _venue_stats_html(r):
         parts = []
@@ -5176,32 +5242,32 @@ function applyFilters() {{
     report_path.write_text(html)
     log(f"HTML report: {report_path.resolve()}")
 
-    # ── High-confidence-only report ──
-    high_results = [r for r in results if r["confidence"] in ("Near Certain", "High")]
-    high_path = None
-    if high_results and len(high_results) < len(results):
-        high_path = pred_dir / "high.html"
-        _write_html(high_results, all_urls, compare_forebet, high_only=False,
-                     _save_to=high_path, _title_suffix=" (High Confidence)")
-        log(f"High-confidence report: {high_path.resolve()}")
+    # ── Yellow-border (default pick confirmed by both models) report ──
+    yellow_results = [r for r in results if _has_yellow_pick(r)]
+    yellow_path = None
+    if yellow_results:
+        yellow_path = pred_dir / "best.html"
+        _write_html(yellow_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=yellow_path, _title_suffix=" (Best Picks — Yellow)")
+        log(f"Best-picks (yellow) report: {yellow_path.resolve()} ({len(yellow_results)} matches)")
 
-    # ── Hot-leagues-only report ──
-    hot_results = [r for r in results if r.get("league_recent", {}).get("rating") == "hot"]
-    hot_path = None
-    if hot_results:
-        hot_path = pred_dir / "hot.html"
-        _write_html(hot_results, all_urls, compare_forebet, high_only=False,
-                     _save_to=hot_path, _title_suffix=" (Hot Leagues — 7d)")
-        log(f"Hot-leagues report: {hot_path.resolve()} ({len(hot_results)} matches)")
+    # ── Consensus-consistent-with-best-pick report ──
+    consistent_results = [r for r in results if _consensus_consistent_with_best(r)]
+    consistent_path = None
+    if consistent_results:
+        consistent_path = pred_dir / "consistent.html"
+        _write_html(consistent_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=consistent_path, _title_suffix=" (Consensus ↔ Best)")
+        log(f"Consensus↔Best report: {consistent_path.resolve()} ({len(consistent_results)} matches)")
 
     # ── Auto-open in browser ──
     webbrowser.open(str(report_path.resolve()))
-    if high_path:
-        webbrowser.open(str(high_path.resolve()))
-    if hot_path:
-        webbrowser.open(str(hot_path.resolve()))
+    if yellow_path:
+        webbrowser.open(str(yellow_path.resolve()))
+    if consistent_path:
+        webbrowser.open(str(consistent_path.resolve()))
 
-    return report_path, hot_path
+    return report_path, yellow_path, consistent_path
 
 
 def _update_index(pred_dir: Path, current_time: str):
@@ -5817,12 +5883,12 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                     _title_suffix=f" — {_r0.get('home', '')} vs {_r0.get('away', '')}")
         log(f"HTML report: {_single_path.resolve()}")
         webbrowser.open(str(_single_path.resolve()))
-        report_path, hot_path = _single_path, None
+        report_path, yellow_path, consistent_path = _single_path, None, None
     elif single_link:
         # No usable result for a single-link search — don't touch latest.html.
-        report_path, hot_path = None, None
+        report_path, yellow_path, consistent_path = None, None, None
     else:
-        report_path, hot_path = _write_html(results, match_urls, compare_forebet, high_only)
+        report_path, yellow_path, consistent_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
@@ -5984,7 +6050,12 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             ov = lr["overall"]
             mk_parts = " | ".join(f"{mk} {mv['pct']:.0f}%" for mk, mv in lr.get("markets", {}).items())
             print(f"  \033[32m{prefix:5s}\033[0m {ov['pct']:5.1f}% ({ov['correct']}/{ov['total']})  {mk_parts}")
-        print(f"→ predictions/hot.html")
+
+    # ── Best-picks / consensus reports summary ──
+    if yellow_path:
+        print(f"→ predictions/best.html  ({len([r for r in results if _has_yellow_pick(r)])} yellow-border matches)")
+    if consistent_path:
+        print(f"→ predictions/consistent.html  ({len([r for r in results if _consensus_consistent_with_best(r)])} consensus↔best matches)")
 
     # Schedule retrain ~18h after games finish
     if preds_made > 0:
