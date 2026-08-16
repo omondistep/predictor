@@ -8,6 +8,7 @@
 | `pr <url>` | Predict a single match URL |
 | `pr results` | Scrape Forebet for scores, update DB + HTML reports |
 | `pr --today` | Auto-fetch today's + tonight's (00:00–06:00) matches per league → `links/today.html` |
+| `pr --weekday` | Auto-fetch all Mon–Fri matches (this week if mid-week, next week if weekend) via Forebet's AJAX per day → `links/weekday.html` |
 | `pr --high-only <file>` | Only show High / Near Certain picks |
 | `pr --no-ml <file>` | Classic Poisson only (no ML ensemble) |
 | `pr --json <file>` | JSON output |

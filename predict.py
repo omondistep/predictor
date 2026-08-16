@@ -2036,9 +2036,14 @@ def compute_ml_odds(data: dict) -> dict:
     home_conceded = data.get("home_conceded_pct", 50) or 50
     away_conceded = data.get("away_conceded_pct", 50) or 50
     
-    # Simple BTTS model: both teams score if both have >40% scoring rate
-    ml_prob_btts_yes = (home_scored / 100 * away_scored / 100) * 1.2  # boost for correlation
-    ml_prob_btts_yes = max(0.15, min(0.85, ml_prob_btts_yes))
+    # Simple BTTS model: scoring-rate product blended with Forebet's
+    # match-level BTTS forecast (primary signal) when available.
+    fb_match_btts = data.get("forebet_btts_yes_pct")
+    raw_btts = (home_scored / 100 * away_scored / 100)
+    if fb_match_btts is not None:
+        ml_prob_btts_yes = max(0.15, min(0.85, raw_btts * 0.55 + (fb_match_btts / 100.0) * 0.45))
+    else:
+        ml_prob_btts_yes = max(0.15, min(0.85, raw_btts * 1.2))
     ml_prob_btts_no = 1 - ml_prob_btts_yes
     
     ml_btts_odds = {
@@ -2170,7 +2175,11 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     # ── BTTS from scoring data ──
     home_scored = (data.get("home_scored_pct", 50) or 50) / 100.0
     away_scored = (data.get("away_scored_pct", 50) or 50) / 100.0
-    p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 1.2))
+    fb_match_btts = data.get("forebet_btts_yes_pct")
+    if fb_match_btts is not None:
+        p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 0.55 + (fb_match_btts / 100.0) * 0.45))
+    else:
+        p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 1.2))
     p_btts_no = 1 - p_btts_yes
 
     # DC / DNB from 1X2
@@ -3861,32 +3870,35 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             f"exp goals {exp_total:.1f} model {p_o_high:.0%}o",
             model_prob=p_o_high)
 
-    # ── BTTS (blended: Poisson + Forebet + venue rates) ──
+    # ── BTTS (blended: Poisson + Forebet match-level + team rates) ──
     dc_rho = profile.get("dixon_coles_rho", -0.12)
     p_btss_poisson = prob_btts(exp_h, exp_a, rho=dc_rho)
 
     # Collect BTTS signals from multiple sources
-    fb_btts_yes = data.get("home_btts_yes_pct")
-    fb_btts_no = data.get("home_btts_no_pct")
-    # Venue-specific BTTS rates (home/away splits)
-    h_btts_rate = data.get("home_btts_pct")  # home team's BTTS rate
-    a_btts_rate = data.get("away_btts_pct")  # away team's BTTS rate
+    # Match-level Forebet BTTS forecast — the primary independent signal
+    # (validated: FB match BTTS ≥69.5% → ~72-75% actual; <60% → ~50-60%).
+    fb_match_btts = data.get("forebet_btts_yes_pct")
+    # Individual team BTTS rates (secondary — team stats, not the match forecast)
+    h_team_btts = data.get("home_btts_yes_pct")
+    a_team_btts = data.get("away_btts_yes_pct")
+    if h_team_btts is not None and a_team_btts is not None:
+        team_avg_btts = ((h_team_btts or 0) + (a_team_btts or 0)) / 200.0
+    else:
+        team_avg_btts = None
 
     # Start with Poisson
     p_btss = p_btss_poisson
 
-    # Forebet BTTS (high quality signal)
-    if fb_btts_yes is not None and fb_btts_no is not None:
-        fb_btts_prob = fb_btts_yes / 100.0
-        # Stronger Forebet weight when both yes/no rates are available
-        p_btss = p_btss_poisson * 0.45 + fb_btts_prob * 0.55
-    elif fb_btts_yes is not None:
-        p_btss = p_btss_poisson * 0.55 + (fb_btts_yes / 100.0) * 0.45
+    # Forebet match-level BTTS (high quality signal) — dominant when present
+    if fb_match_btts is not None:
+        p_btss = p_btss_poisson * 0.50 + (fb_match_btts / 100.0) * 0.50
+    elif team_avg_btts is not None:
+        # No match-level forecast → fall back to both teams' BTTS rates
+        p_btss = p_btss_poisson * 0.55 + team_avg_btts * 0.45
 
-    # Venue-specific BTTS adjustment: blend in home/away BTTS rates
-    if h_btts_rate is not None and a_btts_rate is not None:
-        venue_btts = (h_btts_rate / 100.0 + a_btts_rate / 100.0) / 2.0
-        p_btss = p_btss * 0.70 + venue_btts * 0.30
+    # Team-level BTTS rates as a secondary factor only (can't override Forebet)
+    if fb_match_btts is not None and team_avg_btts is not None:
+        p_btss = p_btss * 0.85 + team_avg_btts * 0.15
 
     # Common opponent BTTS boost: if both teams scored consistently against shared opponents
     if _scoring_analysis["btts_rate"] >= 0.7:
@@ -3929,16 +3941,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
         if _ml_btts_yes is not None:
             btss_reason += f" ml{_ml_btts_yes:.0%}"
-        if fb_btts_yes is not None:
-            btss_reason += f" fb{fb_btts_yes}%"
+        if fb_match_btts is not None:
+            btss_reason += f" fb{fb_match_btts:.0f}%"
         add("BTTS", "Yes", btss_conf, btss_reason, model_prob=p_btss)
     elif value_no > 0.14 and p_btn >= 0.58:
         # BTTS No is historically -EV (backtest ~45% hit). Only emit on a
         # strong signal and cap confidence so it stays a backup pick.
         btss_conf = "Medium"
         btss_reason = f"blended {p_btss:.0%}y/{p_btn:.0%}n"
-        if fb_btts_no:
-            btss_reason += f" fb{fb_btts_no}%"
+        if fb_match_btts is not None:
+            btss_reason += f" fb{fb_match_btts:.0f}%"
         add("BTTS", "No", btss_conf, btss_reason, model_prob=p_btn)
 
     # ── O/U 2.5 reconciliation: when the two models disagree on direction,
@@ -4572,10 +4584,27 @@ def _write_html(results, all_urls, compare_forebet, high_only,
             st = _strengths(mkt)
             return (st["fb_w"] * fp_p + st["ml_w"] * mp_p) / (st["fb_w"] + st["ml_w"])
 
-        agree_thresh = 0.695
+        # BTTS Yes consensus requires Forebet's own match-level forecast to back
+        # it (validated on history.db: FB match BTTS ≥69.5% → ~72-75% actual,
+        # <60% → ~50-60%). Team-level BTTS rates are too noisy in small samples.
+        fb_match_btts = r.get("forebet_btts_yes_pct")
+
+        def _fb_supports(mkt, pick):
+            if mkt == "BTTS" and pick == "Yes" and fb_match_btts is not None:
+                return fb_match_btts >= 69.5
+            if mkt == "BTTS" and pick == "No" and fb_match_btts is not None:
+                return fb_match_btts < 50
+            return True
+
+        # BTTS is the market that has under-delivered most, so require a higher bar.
+        def _agree_thresh(mkt):
+            return 0.72 if mkt == "BTTS" else 0.695
+
         agreed_keys = sorted(
             (k for k in set(fb_all) & set(ml_all)
-             if fb_all[k]["model_prob"] >= agree_thresh and ml_all[k]["model_prob"] >= agree_thresh),
+             if _fb_supports(*k.split("|", 1))
+             and fb_all[k]["model_prob"] >= _agree_thresh(k.split("|", 1)[0])
+             and ml_all[k]["model_prob"] >= _agree_thresh(k.split("|", 1)[0])),
             key=lambda k: (fb_all[k]["model_prob"] + ml_all[k]["model_prob"]) / 2,
             reverse=True)
 
@@ -4589,7 +4618,9 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         # when both have the pick; otherwise the single model that carries it.
         scored = []
         for k in set(fb_all) | set(ml_all):
-            mkt = k.split("|", 1)[0]
+            mkt, pick = k.split("|", 1)
+            if not _fb_supports(mkt, pick):
+                continue
             fp_p = fb_all[k]["model_prob"] if k in fb_all else None
             mp_p = ml_all[k]["model_prob"] if k in ml_all else None
             if fp_p is not None and mp_p is not None:
@@ -5568,6 +5599,118 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
     return out_file
 
 
+def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
+                        out_file: str = "links/weekday.html",
+                        today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
+                        now: datetime | None = None) -> str:
+    """Fetch all upcoming matches kicking off Monday–Friday and write their
+    match URLs to a links file.
+
+    Primary source: Forebet's getrs.php AJAX endpoint (one call per target
+    day), the same endpoint that powers --today. When run during the week it
+    covers this week's Mon–Fri remaining fixtures; when run on the weekend it
+    targets next week's Mon–Fri. Falls back to scraping the league pages from
+    leagues_db.json if the AJAX fetch fails. Matches already in progress
+    (kickoff < now) are dropped.
+    """
+    import time
+    from datetime import timedelta
+    import cloudscraper
+    from forebet_scraper import scrape_league_upcoming
+
+    now = now or datetime.now()
+    today_dow = now.weekday()  # 0 = Monday
+    if today_dow < 5:
+        # During the week: this week's Monday (or today) through Friday
+        start_date = now.date() - timedelta(days=today_dow)
+        end_date = now.date() + timedelta(days=4 - today_dow)
+    else:
+        # Weekend: next week's Monday through Friday
+        start_date = now.date() + timedelta(days=7 - today_dow)
+        end_date = start_date + timedelta(days=4)
+    cutoff = datetime.combine(end_date, datetime.max.time())
+
+    session = cloudscraper.create_scraper()
+    uniq = []
+    per_league = {}
+
+    try:
+        params = _getrs_params(today_page, session)
+        if params:
+            base_tzs = int(params["tzs"]) + (start_date - now.date()).days * 86400
+            base_tze = int(params["tze"]) + (start_date - now.date()).days * 86400
+            d = start_date
+            while d <= end_date:
+                day_params = dict(params)
+                day_params["in"] = d.strftime("%Y-%m-%d")
+                shift = (d - start_date).days
+                day_params["tzs"] = str(base_tzs + shift * 86400)
+                day_params["tze"] = str(base_tze + shift * 86400)
+                day_matches, _, day_by_league = _fetch_getrs_matches(
+                    day_params, session, now, cutoff)
+                print(f"  {d.strftime('%A %Y-%m-%d')}: {len(day_matches)} matches")
+                seen = {m["url"] for m in uniq}
+                for r in day_matches:
+                    if r["url"] not in seen:
+                        seen.add(r["url"])
+                        uniq.append(r)
+                for league, n in day_by_league.items():
+                    per_league[league] = per_league.get(league, 0) + n
+                d += timedelta(days=1)
+    except Exception as e:
+        print(f"[AJAX fetch failed ({e}) — falling back to HTML scraping]")
+
+    if not uniq:
+        # Fallback: scrape league pages from leagues_db.json
+        all_matches = []
+
+        def collect(name: str, rows: list) -> None:
+            kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
+            if kept:
+                per_league[name] = len(kept)
+                all_matches.extend(kept)
+
+        with open(leagues_file) as f:
+            leagues = json.load(f)
+
+        paths = []
+        for code, info in leagues.items():
+            path = info.get("league_url_path")
+            if not path:
+                continue
+            name = f"{info.get('country', '')} — {info.get('league', code)}"
+            paths.append((name, path))
+
+        total = len(paths)
+        for i, (name, path) in enumerate(paths, 1):
+            print(f"[{i}/{total}] {name}", flush=True)
+            collect(name, scrape_league_upcoming(path, league_name=name, session=session))
+            time.sleep(0.5)
+
+        seen = set()
+        for r in all_matches:
+            if r["url"] not in seen:
+                seen.add(r["url"])
+                uniq.append(r)
+
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    with open(out_file, "w") as f:
+        for r in uniq:
+            f.write(r["url"] + "\n")
+
+    print(f"\nFetched {len(uniq)} matches Mon–Fri ({start_date} → {end_date})")
+    by_country = {}
+    for name, n in per_league.items():
+        country, _, league = name.partition(" — ")
+        by_country.setdefault(country, [0, 0])
+        by_country[country][0] += n
+        by_country[country][1] += 1
+    for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0])[:25]:
+        print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
+    print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
+    return out_file
+
+
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                             high_only: bool = False, json_out: bool = False, html_out: bool = False,
                             compare_forebet: bool = True,
@@ -6390,6 +6533,7 @@ Options:
     parser.add_argument("--no-ml", "--classic", action="store_true", help="Disable ML-enhanced prediction (use classic model)")
     parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
     parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
+    parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
 
     args = parser.parse_args()
 
@@ -6463,6 +6607,10 @@ Options:
 
     if args.today:
         fetch_today_links()
+        return
+
+    if args.weekday:
+        fetch_weekday_links()
         return
 
     if args.file:
