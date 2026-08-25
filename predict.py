@@ -29,6 +29,7 @@ from database import (
 )
 from calibration_learner import auto_retrain, apply_calibration
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
+from red_flags import detect_red_flags
 
 # ML-enhanced modules (optional)
 _ML_MODEL = None
@@ -3794,6 +3795,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if vol >= 0.25: ou_conf = "Medium-High"
             ou_val = max(ou_val, 0.3)
 
+        # Cap O/U 2.5 Over — too many 1-0/2-0 results even with high exp goals
+        if thresh == 2.5 and "Over" in ou_pick:
+            if CONF_RANK.get(ou_conf, 99) < CONF_RANK["Medium"]:
+                ou_conf = "Medium"
+
         # Forebet O/U % cross-check — adjust confidence when Forebet disagrees
         if thresh == 1.5:
             fb_over = data.get("forebet_over25_pct")  # Forebet gives O25 not O15
@@ -4142,6 +4148,34 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 primary["confidence"] = "Low"
                 reasoning.append(f"⚠ League reliability gate: suppressed Medium pick (league accuracy {_ld_acc:.0f}%)")
 
+    # ── Red-flag gate (data glitches / odds anomalies / market divergence) ──
+    # Critical flags (impossible or duplicated odds) cap confidence one rank;
+    # all flags are surfaced prominently and shrink the Kelly stake below.
+    red_flags = []
+    try:
+        red_flags = detect_red_flags(
+            data,
+            market=primary.get("market"), pick=primary.get("pick"),
+            model_prob=primary.get("model_prob"),
+            pick_odds=_pick_odds(primary.get("market", ""), primary.get("pick", "")),
+        )
+    except Exception:
+        red_flags = []
+    _crit_flags = [f for f in red_flags if f["severity"] == "critical"]
+    _high_flags = [f for f in red_flags if f["severity"] == "high"]
+    for f in _crit_flags + _high_flags:
+        reasoning.append(f"🚩 RED FLAG: {f['msg']}")
+    if _crit_flags:
+        _CONF_LADDER = ["Near Certain", "High", "Medium-High", "Medium", "Low"]
+        _cur_rank = CONF_RANK.get(primary.get("confidence", "Low"), 4)
+        if _cur_rank < 4:
+            _new_conf = _CONF_LADDER[_cur_rank + 1]
+            reasoning.append(
+                f"⚠ Red-flag gate: capped confidence "
+                f"{primary['confidence']} → {_new_conf} (critical data issue)")
+            primary["confidence"] = _new_conf
+            primary["_red_flag_vetoed"] = True
+
     # Backup pick: best alternative if primary fails
     # Simply the next highest probability pick
     backup = None
@@ -4231,6 +4265,12 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     fb_a = data.get("forebet_away_pct")
     if not fb_h and not fb_d and not fb_a:
         warnings.append("No Forebet data for this match")
+
+    # ── Red-flag surfacing (computed above, near pick selection) ──
+    for _rf in _crit_flags + _high_flags:
+        warnings.append(("🚩 " if _rf["severity"] == "critical" else "") + _rf["msg"])
+    for _fix in (data.get("stat_fixes") or []):
+        warnings.append(f"Stat corrected: {_fix}")
 
     # ── Transitive common-opponent display ──
     if _trans_analysis and _trans_analysis["reasoning"]:
@@ -4341,6 +4381,12 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _acc_factor = _pm_acc["pct"] / 100.0
         kelly_stake = round(kelly_stake * _acc_factor, 4)
 
+    # ── Red-flag stake haircut ──
+    if _high_flags:
+        kelly_stake = round(kelly_stake * 0.75, 4)
+    if _crit_flags:
+        kelly_stake = round(kelly_stake * 0.5, 4)
+
     return {
         "pick": primary["pick"],
         "market": primary["market"],
@@ -4367,6 +4413,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             for c in candidates[:6]
         ],
         "_warnings": warnings,
+        "_red_flags": red_flags,
         "_backup": {"pick": backup["pick"], "market": backup["market"],
                     "confidence": backup["confidence"], "coverage": backup["coverage"]} if backup else None,
         "_ml_analysis": _ml_agreement,
@@ -5017,6 +5064,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 </div>
 {"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("level") == "hard" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
 {"".join(f'<div style="background:#854d0e;color:#fde68a;padding:6px 10px;border-radius:6px;font-size:0.82rem;margin-bottom:8px;font-weight:600;">🏟 DERBY: {r["_derby"]["warning"]}</div>' if r.get("_derby", {}).get("is_derby") else "")}
+{"".join(f'<div style="background:#7f1d1d;color:#fecaca;padding:6px 10px;border-radius:6px;font-size:0.84rem;margin-bottom:8px;font-weight:700;border-left:4px solid #ef4444;">🚩 RED FLAG: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "critical")}
+{"".join(f'<div style="background:#78350f;color:#fcd34d;padding:5px 10px;border-radius:6px;font-size:0.80rem;margin-bottom:8px;font-weight:600;border-left:3px solid #f59e0b;">⚠ Flag: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "high")}
 {"".join(f'''<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);padding:6px 10px;border-radius:6px;font-size:0.78rem;margin-bottom:8px;">
 <strong>📊 Common Opponent Scoring:</strong> {r["_scoring_analysis"]["home_team"]} scored in {r["_scoring_analysis"]["home_scoring_rate"]:.0%} of shared matches, {r["_scoring_analysis"]["away_team"]} in {r["_scoring_analysis"]["away_scoring_rate"]:.0%} | BTTS rate: {r["_scoring_analysis"]["btts_rate"]:.0%} | O2.5 rate: {r["_scoring_analysis"]["over25_rate"]:.0%}
 </div>''' if r.get("_scoring_analysis", {}).get("btts_rate", 0) > 0 else "")}
@@ -5513,14 +5562,14 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
     """
     import time
     from datetime import timedelta
-    import cloudscraper
+    from webfetch import create_session
     from forebet_scraper import scrape_league_upcoming
 
     now = now or datetime.now()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     cutoff = day_start + timedelta(days=1, hours=6)
 
-    session = cloudscraper.create_scraper()
+    session = create_session()
 
     uniq = []
     per_league = {}
@@ -5615,7 +5664,7 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
     """
     import time
     from datetime import timedelta
-    import cloudscraper
+    from webfetch import create_session
     from forebet_scraper import scrape_league_upcoming
 
     now = now or datetime.now()
@@ -5630,7 +5679,7 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
         end_date = start_date + timedelta(days=4)
     cutoff = datetime.combine(end_date, datetime.max.time())
 
-    session = cloudscraper.create_scraper()
+    session = create_session()
     uniq = []
     per_league = {}
 
@@ -5999,6 +6048,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "home_clean_sheets_pct": data.get("home_clean_sheets_pct"),
             "away_clean_sheets_pct": data.get("away_clean_sheets_pct"),
             "match_id": match_id,
+            # Red-flag data-quality trail
+            "stat_fixes": data.get("stat_fixes") or [],
             # New fields
             "method": pred.get("_method", ""),
             "kelly_stake": pred.get("_kelly_stake", 0),
@@ -6095,6 +6146,15 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             if _mkt_parts:
                 _perf_str += f" | {' '.join(_mkt_parts)}"
             print(f"  {_perf_str}")
+
+        # ── Red flags: prominent, before the pick line ──
+        for _rf in r.get("_red_flags") or []:
+            if _rf["severity"] == "critical":
+                print(f"  \033[1;41;97m 🚩 {_rf['msg']} \033[0m")
+            else:
+                print(f"  \033[1;93m ⚠ {_rf['msg']} \033[0m")
+        for _fix in (r.get("stat_fixes") or []):
+            print(f"  \033[0;96m 🔧 Stat corrected: {_fix} \033[0m")
 
         # Line 2: Result (if finished)
         if r.get("actual_home_goals") is not None and r.get("actual_away_goals") is not None:
@@ -6534,6 +6594,7 @@ Options:
     parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
     parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
     parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
+    parser.add_argument("--fbref", nargs="?", const="all", default=None, help="Scrape FBref xG stats for leagues (e.g. --fbref 9 or --fbref all)")
 
     args = parser.parse_args()
 
@@ -6566,6 +6627,23 @@ Options:
 
     if args.learn:
         run_learn(args.learn)
+        return
+
+    if args.fbref:
+        from fbref_scraper import FBrefSquadScraper, save_fbref_stats, update_matches_with_fbref, FBREF_LEAGUES
+        leagues_to_scrape = list(FBREF_LEAGUES.keys()) if args.fbref == "all" else [args.fbref]
+        for lid in leagues_to_scrape:
+            if lid not in FBREF_LEAGUES:
+                print(f"Unknown league ID: {lid}. Available: {', '.join(FBREF_LEAGUES.keys())}")
+                continue
+            print(f"Scraping FBref for {FBREF_LEAGUES[lid]['name']} (ID {lid})...")
+            scraper = FBrefSquadScraper(use_selenium=False)
+            stats = scraper.scrape_league(lid)
+            if stats:
+                save_fbref_stats(stats)
+                update_matches_with_fbref(lid)
+            else:
+                print(f"  No stats scraped for {FBREF_LEAGUES[lid]['name']}")
         return
 
     if args.learn_calibration:

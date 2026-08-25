@@ -89,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File scripts\install.ps1
 ```
 
 The installer:
-1. Creates `.venv` and installs `requirements.txt` (includes xgboost, lightgbm, cloudscraper)
+1. Creates `.venv` and installs `requirements.txt` (includes xgboost, lightgbm, curl_cffi)
 2. Restores `data/{pending_results,leagues_db,predictions}.json` from `seed/data/`
 3. Verifies ML models load from git (only retrains if broken/missing)
 4. Installs the `pr` command — `~/.local/bin/pr` symlink on Linux/macOS,

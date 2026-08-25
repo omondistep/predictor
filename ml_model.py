@@ -964,71 +964,73 @@ class MLPredictor:
 
         print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
         self.rf_model_1x2 = RandomForestClassifier(
-            n_estimators=300, max_depth=8, min_samples_leaf=15,
-            min_samples_split=30, class_weight="balanced_subsample",
+            n_estimators=400, max_depth=5, min_samples_leaf=40,
+            min_samples_split=60, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for 1X2 ({len(X_train)} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
-            n_estimators=250, max_depth=4, min_samples_leaf=12,
-            learning_rate=0.05, subsample=0.80, random_state=42,
-            max_features="sqrt",
+            n_estimators=200, max_depth=3, min_samples_leaf=30,
+            learning_rate=0.03, subsample=0.70, random_state=42,
+            max_features="sqrt", min_samples_split=60,
         )
         self.gb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training RandomForest for O/U ({len(X_train)} examples)...")
         self.rf_model_ou = RandomForestClassifier(
-            n_estimators=250, max_depth=6, min_samples_leaf=20,
-            class_weight="balanced_subsample", random_state=42, n_jobs=-1,
-            max_features="sqrt",
+            n_estimators=400, max_depth=5, min_samples_leaf=40,
+            min_samples_split=60, class_weight="balanced_subsample",
+            random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for O/U ({len(X_train)} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
-            n_estimators=180, max_depth=4, min_samples_leaf=12,
-            learning_rate=0.06, subsample=0.80, random_state=42,
-            max_features="sqrt",
+            n_estimators=200, max_depth=3, min_samples_leaf=30,
+            learning_rate=0.04, subsample=0.70, random_state=42,
+            max_features="sqrt", min_samples_split=60,
         )
         self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         # XGBoost for 1X2
         print(f"Training XGBoost for 1X2 ({len(X_train)} examples)...")
         self.xgb_model_1x2 = xgb.XGBClassifier(
-            n_estimators=250, max_depth=4, learning_rate=0.05,
-            subsample=0.80, colsample_bytree=0.80, min_child_weight=10,
+            n_estimators=200, max_depth=3, learning_rate=0.03,
+            subsample=0.70, colsample_bytree=0.70, min_child_weight=30,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
-            use_label_encoder=False,
+            use_label_encoder=False, reg_alpha=0.1, reg_lambda=1.0,
         )
         self.xgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         # LightGBM for 1X2
         print(f"Training LightGBM for 1X2 ({len(X_train)} examples)...")
         self.lgb_model_1x2 = lgb.LGBMClassifier(
-            n_estimators=250, max_depth=5, learning_rate=0.05,
-            subsample=0.80, colsample_bytree=0.80, min_child_samples=20,
+            n_estimators=200, max_depth=4, learning_rate=0.03,
+            subsample=0.70, colsample_bytree=0.70, min_child_samples=40,
             random_state=42, n_jobs=-1, verbose=-1,
+            reg_alpha=0.1, reg_lambda=1.0,
         )
         self.lgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         # XGBoost for O/U
         print(f"Training XGBoost for O/U ({len(X_train)} examples)...")
         self.xgb_model_ou = xgb.XGBClassifier(
-            n_estimators=200, max_depth=4, learning_rate=0.06,
-            subsample=0.80, colsample_bytree=0.80, min_child_weight=10,
+            n_estimators=200, max_depth=3, learning_rate=0.04,
+            subsample=0.70, colsample_bytree=0.70, min_child_weight=30,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
-            use_label_encoder=False,
+            use_label_encoder=False, reg_alpha=0.1, reg_lambda=1.0,
         )
         self.xgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         # LightGBM for O/U
         print(f"Training LightGBM for O/U ({len(X_train)} examples)...")
         self.lgb_model_ou = lgb.LGBMClassifier(
-            n_estimators=200, max_depth=5, learning_rate=0.06,
-            subsample=0.80, colsample_bytree=0.80, min_child_samples=20,
+            n_estimators=200, max_depth=4, learning_rate=0.04,
+            subsample=0.70, colsample_bytree=0.70, min_child_samples=40,
             random_state=42, n_jobs=-1, verbose=-1,
+            reg_alpha=0.1, reg_lambda=1.0,
         )
         self.lgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
@@ -1100,6 +1102,22 @@ class MLPredictor:
         accs_ou = [(m.__class__.__name__, (m.predict(X_scaled) == y_ou).mean()) for m in all_ou]
         print(f"   In-sample 1X2: {', '.join(f'{n}={a:.3f}' for n, a in accs_1x2)}")
         print(f"   In-sample O/U: {', '.join(f'{n}={a:.3f}' for n, a in accs_ou)}")
+
+        # Overfitting detection: alert when train-CV gap is too large
+        gap_1x2 = self.accuracy_1x2 - self.cv_accuracy_1x2
+        gap_ou = self.accuracy_ou - self.cv_accuracy_ou
+        if gap_1x2 > 0.15:
+            print(f"   ⚠ OVERFITTING ALERT 1X2: train acc {self.accuracy_1x2:.1%} vs CV {self.cv_accuracy_1x2:.1%} "
+                  f"(gap {gap_1x2:.1%}). ML weight capped at 15%.")
+        if gap_ou > 0.15:
+            print(f"   ⚠ OVERFITTING ALERT O/U: train acc {self.accuracy_ou:.1%} vs CV {self.cv_accuracy_ou:.1%} "
+                  f"(gap {gap_ou:.1%}). ML weight capped at 15%.")
+        if self.cv_accuracy_1x2 < 0.45:
+            print(f"   ⚠ CV ACCURACY LOW 1X2: {self.cv_accuracy_1x2:.1%} < 45%. "
+                  f"ML component unreliable — using Poisson + Forebet dominance.")
+        if self.cv_accuracy_ou < 0.55:
+            print(f"   ⚠ CV ACCURACY LOW O/U: {self.cv_accuracy_ou:.1%} < 55%. "
+                  f"ML O/U component unreliable.")
 
     def predict_proba_1x2(self, X: np.ndarray) -> np.ndarray:
         """Return ensemble probabilities for [away, draw, home].
@@ -1655,6 +1673,16 @@ def ensemble_predict(
                 ml_effective_weight = w_ml
         except Exception:
             ml_effective_weight = w_ml
+
+    # Hard cap: ML component at max 15% of ensemble weight until CV accuracy
+    # proves it can contribute (current ML acc is 27.9% — worse than random).
+    MAX_ML_WEIGHT = 0.15
+    if ml_effective_weight > MAX_ML_WEIGHT:
+        ml_effective_weight = MAX_ML_WEIGHT
+        eff_total = w_poisson + ml_effective_weight + w_fb
+        if eff_total > 0:
+            w_poisson = w_poisson / eff_total * (1.0 - ml_effective_weight)
+            w_fb = w_fb / eff_total * (1.0 - ml_effective_weight)
 
     # Disagreement penalty: if ML and Poisson disagree on top pick, reduce ML weight
     if ml_pred and ml_effective_weight > 0.01:

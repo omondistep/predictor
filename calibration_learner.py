@@ -452,9 +452,10 @@ def retrain_from_results(force: bool = False):
             ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
             ir.fit(X, y)
             
+            # Store ONLY fitted parameters (thresholds + mapped values), not raw data
             calibration_data[market] = {
-                "X_train": X.tolist(),
-                "y_train": y.tolist(),
+                "X_thresholds": ir.X_thresholds_.tolist(),
+                "y_thresholds": ir.y_thresholds_.tolist(),
                 "n_samples": len(X_list),
             }
             
@@ -528,15 +529,31 @@ def apply_calibration(market: str, raw_prob: float) -> float:
     if market == "1X2":
         return raw_prob
 
-    # Re-fit isotonic regression from saved data
+    # Reconstruct isotonic regression from saved thresholds
     from sklearn.isotonic import IsotonicRegression
 
-    X = np.array(market_data["X_train"])
-    y = np.array(market_data["y_train"])
+    # Support both old format (X_train/y_train) and new format (X_thresholds/y_thresholds)
+    if "X_thresholds" in market_data:
+        X_thresholds = np.array(market_data["X_thresholds"])
+        y_thresholds = np.array(market_data["y_thresholds"])
+    elif "X_train" in market_data and "y_train" in market_data:
+        # Old format: re-fit from raw data
+        X = np.array(market_data["X_train"])
+        y = np.array(market_data["y_train"])
+        try:
+            ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
+            ir.fit(X, y)
+            X_thresholds = ir.X_thresholds_
+            y_thresholds = ir.y_thresholds_
+        except:
+            return raw_prob
+    else:
+        return raw_prob
 
     try:
         ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
-        ir.fit(X, y)
+        ir.X_thresholds_ = X_thresholds
+        ir.y_thresholds_ = y_thresholds
 
         # Apply calibration
         calibrated = ir.predict(np.array([raw_prob]))[0]

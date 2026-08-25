@@ -6,10 +6,16 @@ from forebet.com match pages for analysis.
 """
 
 import re
-import cloudscraper
 from bs4 import BeautifulSoup, Tag
 from typing import Optional
 from datetime import datetime
+
+try:
+    from webfetch import create_session
+except ImportError:  # allow running from other cwd
+    import os, sys
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from webfetch import create_session
 
 HEADERS = {
     "User-Agent": (
@@ -117,9 +123,11 @@ class ForebetScraper:
     def fetch(self) -> bool:
         """Fetch and parse the Forebet page. Returns True on success."""
         try:
-            scraper = cloudscraper.create_scraper()
+            scraper = create_session()
             resp = scraper.get(self.url, timeout=self.timeout)
             if resp.status_code != 200:
+                print(f"  [scraper] HTTP {resp.status_code} fetching {self.url} "
+                      f"(Cloudflare block?)")
                 return False
             self.soup = BeautifulSoup(resp.text, "html.parser")
             return True
@@ -1415,7 +1423,7 @@ def scrape_results_list(url: str) -> list:
     Returns list of dicts: {"url": str, "home_goals": int, "away_goals": int}
     """
     try:
-        scraper = cloudscraper.create_scraper()
+        scraper = create_session()
         resp = scraper.get(url, timeout=20)
         if resp.status_code != 200:
             return []
@@ -1478,7 +1486,7 @@ def scrape_league_upcoming(league_url_path: str, league_name: str = "", session=
         league_url_path: Path stored in leagues_db, e.g.
             "football-tips-and-predictions-for-brazil/serie-a"
         league_name: Display name for the league (used in output dicts).
-        session: Optional shared cloudscraper session to reuse across calls.
+        session: Optional shared HTTP session to reuse across calls.
 
     Returns:
         List of dicts: {"url", "home_team", "away_team",
@@ -1486,7 +1494,7 @@ def scrape_league_upcoming(league_url_path: str, league_name: str = "", session=
     """
     url = league_url_path if league_url_path.startswith("http") else "https://www.forebet.com/en/" + league_url_path.lstrip("/")
     try:
-        scraper = session or cloudscraper.create_scraper()
+        scraper = session or create_session()
         resp = scraper.get(url, timeout=25)
         if resp.status_code != 200:
             return []
@@ -1552,7 +1560,13 @@ def scrape_league_upcoming(league_url_path: str, league_name: str = "", session=
 def scrape_url(url: str) -> dict:
     """Scrape a single Forebet URL and return structured data."""
     scraper = ForebetScraper(url)
-    return scraper.scrape()
+    data = scraper.scrape()
+    try:
+        from red_flags import sanitize_scraped_stats
+        sanitize_scraped_stats(data)  # fix implausible stats before DB/predict
+    except Exception:
+        pass
+    return data
 
 
 def scrape_and_save(url: str) -> dict:
@@ -1587,9 +1601,7 @@ class InjuryScraper:
 
     def fetch(self) -> bool:
         try:
-            scraper = cloudscraper.create_scraper(
-                browser={"browser": "chrome", "platform": "linux", "mobile": False}
-            )
+            scraper = create_session()
             resp = scraper.get(self.INJURY_URL, timeout=self.timeout)
             if resp.status_code == 200:
                 self.soup = BeautifulSoup(resp.text, "html.parser")

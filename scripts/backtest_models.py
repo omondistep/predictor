@@ -98,15 +98,14 @@ def score_pick(market, pick, hg, ag):
 # ---------------------------------------------------------------------------
 
 def cmd_scrape(args):
-    import cloudscraper
     from forebet_scraper import scrape_url
 
     if not args.no_shared_session:
-        # Reuse one cloudscraper session for all fetches (forebet_scraper
+        # Reuse one shared session for all fetches (forebet_scraper
         # creates a fresh one per call otherwise).
-        _shared = cloudscraper.create_scraper()
         import forebet_scraper as fs
-        fs.cloudscraper.create_scraper = lambda *a, **k: _shared
+        _shared = fs.create_session()
+        fs.create_session = lambda *a, **k: _shared
 
     conn = sqlite3.connect(str(ROOT / "history.db"))
     rows = conn.execute(

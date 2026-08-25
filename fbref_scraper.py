@@ -12,7 +12,7 @@ import sqlite3
 from datetime import datetime
 from typing import Optional
 
-import cloudscraper
+from webfetch import create_session
 from bs4 import BeautifulSoup
 
 # ── Selenium imports (lazy) ──────────────────────────────────────────────
@@ -556,9 +556,7 @@ class FBrefSquadScraper:
     def __init__(self, use_selenium: bool = False):
         self.use_selenium = use_selenium and HAS_SELENIUM
         self.driver = None
-        self.scraper = cloudscraper.create_scraper(
-            browser={"browser": "chrome", "platform": "linux", "mobile": False}
-        )
+        self.scraper = create_session()
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (X11; Linux x86_64) "
@@ -739,29 +737,49 @@ class FBrefSquadScraper:
             try:
                 # Parse all cells
                 nums = []
+                texts = []
                 for cell in cells:
                     text = cell.get_text(strip=True)
+                    texts.append(text)
                     nums.append(self._parse_numeric(text))
 
-                # Find xG/xGA (typically after card columns)
+                # Find xG/xGA using header labels (more reliable than position)
                 xg = None
                 xga = None
                 xgd = None
                 poss = None
-                
-                for i, val in enumerate(nums):
-                    if val is None:
-                        continue
-                    # Possession: 30-70%
-                    if poss is None and 30 <= val <= 70 and i < 10:
-                        poss = val
-                    # xG: typically 20-100
-                    if xg is None and 20 < val < 120 and i > 12:
-                        xg = val
-                    elif xg and xga is None and 20 < val < 120:
-                        xga = val
-                    elif xga and xgd is None and -60 < val < 60:
-                        xgd = val
+
+                # First try to find by header labels
+                headers = [th.get_text(strip=True) for th in table.find_all("th")]
+                xg_cols = [i for i, h in enumerate(headers) if "xg" in h.lower() and "against" not in h.lower()]
+                xga_cols = [i for i, h in enumerate(headers) if ("xg" in h.lower() and "against" in h.lower()) or h.lower() == "xga"]
+                poss_cols = [i for i, h in enumerate(headers) if "poss" in h.lower()]
+
+                # Use header-based positions if found
+                if xg_cols and xg_cols[0] < len(nums) and nums[xg_cols[0]] is not None:
+                    xg = nums[xg_cols[0]]
+                if xga_cols and xga_cols[0] < len(nums) and nums[xga_cols[0]] is not None:
+                    xga = nums[xga_cols[0]]
+                if poss_cols and poss_cols[0] < len(nums) and nums[poss_cols[0]] is not None:
+                    poss = nums[poss_cols[0]]
+
+                # Fallback: heuristic position-based search
+                if xg is None:
+                    for i, val in enumerate(nums):
+                        if val is None:
+                            continue
+                        if poss is None and 30 <= val <= 70 and i < 10:
+                            poss = val
+                        if xg is None and 20 < val < 120 and i > 12:
+                            xg = val
+                        elif xg and xga is None and 20 < val < 120:
+                            xga = val
+                        elif xga and xgd is None and -60 < val < 60:
+                            xgd = val
+
+                # Calculate xGD if not found
+                if xg is not None and xga is not None and xgd is None:
+                    xgd = xg - xga
 
                 stats["squad_xg"] = xg
                 stats["squad_xga"] = xga

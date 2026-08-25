@@ -243,6 +243,27 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
         # crediting that raw probability lets them dominate every ranking.
         base = pick_base_rate(ctx.base_rates, market, pick)
         prob_component = max(0.0, prob - base)
+
+        # DC normalization: DC "1X" covers 2 outcomes so its raw prob is
+        # inherently higher than 1X2 "Home win" (1 outcome). Normalize by
+        # the probability mass of the covered outcomes to make cross-market
+        # comparison fair.
+        if market == "DC" and prob is not None:
+            if pick == "1X":
+                dc_mass = ctx.p_home + ctx.p_draw
+            elif pick == "X2":
+                dc_mass = ctx.p_draw + ctx.p_away
+            elif pick == "12":
+                dc_mass = ctx.p_home + ctx.p_away
+            else:
+                dc_mass = prob
+            if dc_mass > 0:
+                # Use the normalized probability (prob / mass of covered outcomes)
+                # so DC "1X" at 0.73 over mass 0.73 becomes 1.0, comparable to
+                # 1X2 "Home win" at 0.45
+                normalized_prob = prob / dc_mass
+                prob_component = max(0.0, normalized_prob - base)
+
         comp["prob"] = round(prob_component, 3)
 
         edge = edge_for(ctx, market, pick)
@@ -278,7 +299,7 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
                 value += 0.08  # moderate side pick bonus
 
         if drawish and market == "1X2" and pick != "Draw":
-            value *= 0.80
+            value *= 0.88  # reduced from 0.80 to let strong 1X2 side picks compete with DC
         if drawish and pick == "Draw":
             value *= 1.12
         if drawish and market == "O/U" and "Under" in pick:
