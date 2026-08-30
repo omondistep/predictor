@@ -4645,7 +4645,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 
         # BTTS is the market that has under-delivered most, so require a higher bar.
         def _agree_thresh(mkt):
-            return 0.72 if mkt == "BTTS" else 0.695
+            return 0.75 if mkt == "BTTS" else 0.695
 
         agreed_keys = sorted(
             (k for k in set(fb_all) & set(ml_all)
@@ -4793,7 +4793,14 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 
     def _has_yellow_pick(r):
         """Match where the default pick is highlighted yellow — i.e. it is a
-        consensus pick (both models ≥69.5%) or the best combined pick."""
+        consensus pick (both models ≥69.5%) or the best combined pick.
+
+        Gated on default-pick confidence ≥ Medium: Low-confidence picks hit
+        only 71% historically (best.html was ~83% overall), so a "best picks"
+        report that paid no attention to the confidence badge was structurally
+        diluted by its own Low entries."""
+        if CONF_RANK.get(r.get("confidence", ""), 99) > CONF_RANK["Medium"]:
+            return False
         data = _comparison_data(r)
         if not data:
             return False
@@ -4804,7 +4811,11 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 
     def _consensus_consistent_with_best(r):
         """Match where a consensus pick (both models ≥69.5%) is consistent with
-        the best combined pick (e.g. consensus BTTS Yes + best Over 1.5)."""
+        the best combined pick (e.g. consensus BTTS Yes + best Over 1.5).
+
+        Same confidence gate as best.html so the two reports stay aligned."""
+        if CONF_RANK.get(r.get("confidence", ""), 99) > CONF_RANK["Medium"]:
+            return False
         data = _comparison_data(r)
         if not data or not data["best_alt"] or not data["agreed_keys"]:
             return False
@@ -4942,7 +4953,16 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                     result_cell = '<td style="color:#64748b">—</td>'
 
             _dv_s = f"{p['decision_value']:.2f}" if p.get('decision_value') else ""
-            picks_rows += f"<tr><td>{p['market']}</td><td style='background:{_pick_bg};border-radius:4px;padding:2px 6px'>{p['pick']}</td><td>{mp_s}</td><td>{_dv_s}</td>{result_cell}</tr>\n"
+            _is_default = (p.get("market"), p.get("pick")) == (r.get("market"), r.get("pick"))
+            if _is_default:
+                _pick_label = '<span style="color:#fbbf24;font-weight:700">★ </span>' + p['pick']
+                _row_style = 'style="box-shadow:inset 2px 0 0 #fbbf24;"'
+            else:
+                _pick_label = p['pick']
+                _row_style = 'style="opacity:0.72;"'
+            picks_rows += (f"<tr {_row_style}><td>{p['market']}</td>"
+                           f"<td style='background:{_pick_bg};border-radius:4px;padding:2px 6px'>{_pick_label}</td>"
+                           f"<td>{mp_s}</td><td>{_dv_s}</td>{result_cell}</tr>\n")
 
         reason_html = ""
         if r.get("reasoning"):
