@@ -2329,16 +2329,12 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
         return round(1 / max(prob, min_p), 2)
 
     # ── 1X2 with draw signal ──
+    # ML-only 1X2 is historically unreliable (CV accuracy ~47-50%).
+    # Cap at Medium-High: only the main (blended) ensemble gets Near Certain/High.
     _mkt_thresh = _MARKET_THRESHOLDS["1X2"]
-    nc_thresh = _mkt_thresh["near_certain"]
-    nc_margin = _mkt_thresh["near_certain_margin"]
     for name, prob in [("Home win", ph), ("Away win", pa)]:
-        if prob >= nc_thresh and abs(ph - pa) >= nc_margin:
-            conf = "Near Certain"
-        elif prob >= _mkt_thresh["high"]:
-            conf = "High"
-        elif prob >= _mkt_thresh["medium_high"]:
-            conf = "Medium-High"
+        if prob >= _mkt_thresh["medium_high"]:
+            conf = "Medium-High"  # Cap ML-only 1X2 at Medium-High (was Near Certain)
         elif prob >= _mkt_thresh["medium"]:
             conf = "Medium"
         else: conf = "Low"
@@ -2354,17 +2350,19 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
         model_prob=p_draw_boosted, odds=prob_to_odds(p_draw_boosted))
 
     # ── DNB ──
+    # DNB is historically the weakest market (25.8% at Near Certain). Cap
+    # ML-only DNB at Medium-High — never High/Near Certain.
     if vol < 0.25:
         if ph > pa + 0.08:
-            if p_dnb_h >= 0.55: conf = "High"
-            elif p_dnb_h >= 0.50: conf = "Medium-High"
+            if p_dnb_h >= 0.55: conf = "Medium-High"  # capped from High
+            elif p_dnb_h >= 0.50: conf = "Medium"
             elif p_dnb_h >= 0.46: conf = "Medium"
             else: conf = "Low"
             add("DNB", "Home", conf, "derived from ML", model_prob=p_dnb_h,
                 odds=prob_to_odds(p_dnb_h))
         elif pa > ph + 0.10:
-            if p_dnb_a >= 0.58: conf = "High"
-            elif p_dnb_a >= 0.52: conf = "Medium-High"
+            if p_dnb_a >= 0.58: conf = "Medium-High"  # capped from High
+            elif p_dnb_a >= 0.52: conf = "Medium"
             elif p_dnb_a >= 0.48: conf = "Medium"
             else: conf = "Low"
             add("DNB", "Away", conf, "derived from ML", model_prob=p_dnb_a,
@@ -2373,13 +2371,37 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     # ── DC ──
     dc_thresh = 0.72
     if p_1x > dc_thresh:
-        add("DC", "1X", "Medium-High" if p_1x > 0.82 else "Medium", "derived from ML",
+        if p_1x > 0.92:
+            dc_conf = "Near Certain"
+        elif p_1x > 0.86:
+            dc_conf = "High"
+        elif p_1x > 0.82:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "1X", dc_conf, "derived from ML",
             model_prob=p_1x, odds=prob_to_odds(p_1x))
     if p_x2 > dc_thresh:
-        add("DC", "X2", "Medium-High" if p_x2 > 0.82 else "Medium", "derived from ML",
+        if p_x2 > 0.92:
+            dc_conf = "Near Certain"
+        elif p_x2 > 0.86:
+            dc_conf = "High"
+        elif p_x2 > 0.82:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "X2", dc_conf, "derived from ML",
             model_prob=p_x2, odds=prob_to_odds(p_x2))
     if p_12 > 0.86 and pd < 0.22:
-        add("DC", "12", "Medium-High" if p_12 > 0.92 else "Medium", "derived from ML",
+        if p_12 > 0.95:
+            dc_conf = "Near Certain"
+        elif p_12 > 0.90:
+            dc_conf = "High"
+        elif p_12 > 0.86:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "12", dc_conf, "derived from ML",
             model_prob=p_12, odds=prob_to_odds(p_12))
 
     # ── O/U multi-threshold ──
@@ -3586,17 +3608,17 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _draw_tendency = True  # Ensure backup pick logic activates
 
     # Always show all three 1X2 outcomes (home/draw/away) regardless of probability
+    # NOTE: 1X2 is historically the weakest market (~36% accuracy even at High
+    # confidence). These display thresholds are tightened to prevent secondary
+    # 1X2 picks from inflating to Medium-High on weak signals. Only the MAIN
+    # 1X2 pick (above) uses the per-market calibrated thresholds.
     existing_12 = {(c['market'], c['pick']) for c in candidates if c['market'] == '1X2'}
     for outcome_name, outcome_prob in [("Home win", p_home), ("Draw", p_draw), ("Away win", p_away)]:
         if ("1X2", outcome_name) not in existing_12:
-            if outcome_prob >= 0.50:
-                cnf = "High"
-            elif outcome_prob >= 0.38:
-                cnf = "Medium-High"
-            elif outcome_prob >= 0.30:
+            if outcome_prob >= 0.55:
+                cnf = "Medium-High"  # Never "High" for secondary 1X2 — 1X2 High is only ~50%
+            elif outcome_prob >= 0.40:
                 cnf = "Medium"
-            elif outcome_prob >= 0.20:
-                cnf = "Low"
             else:
                 cnf = "Low"
             candidates.append({
@@ -3627,22 +3649,25 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         data_quality = data_quality * 0.7 + ml_feature_quality * 0.3
 
     # ── Draw No Bet (derived from 1X2) — volatility-gated ──
-    # Skip DNB entirely in very high volatility (unpredictable leagues)
+    # DNB is historically the WEAKEST market (Near Certain = 25.8%, worse than
+    # random). Never assign Near Certain or High; cap at Medium-High even on
+    # strong signals, because 1X2 side confidence (which DNB inherits) is
+    # unreliable to begin with and DNB removes the draw safety net.
     dnb_home_conf = "Low"
     dnb_away_conf = "Low"
     if vol < 0.25:
         if p_home > p_away + 0.08:
             if top_prob >= 0.55 and best_12_conf in ("Near Certain", "High"):
-                dnb_home_conf = best_12_conf
+                dnb_home_conf = "Medium-High"  # capped from best_12_conf
             elif top_prob >= 0.50:
-                dnb_home_conf = "Medium-High"
+                dnb_home_conf = "Medium"
             elif top_prob >= 0.46:
                 dnb_home_conf = "Medium"
         elif p_away > p_home + 0.10:  # Away DNB needs bigger margin
             if top_prob >= 0.58 and best_12_conf in ("Near Certain", "High"):
-                dnb_away_conf = best_12_conf
+                dnb_away_conf = "Medium-High"  # capped from best_12_conf
             elif top_prob >= 0.52:
-                dnb_away_conf = "Medium-High"
+                dnb_away_conf = "Medium"
             elif top_prob >= 0.48:
                 dnb_away_conf = "Medium"
 
@@ -3681,21 +3706,47 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             model_prob=(p_away / dnb_denom_a) if dnb_denom_a > 0 else None)
 
     # ── Double Chance (derived from 1X2) — tightened thresholds ──
+    # DC is historically strong (~85% accuracy). Support Near Certain/High labels
+    # when the combined probability is very high, but require genuine strength.
     # data_quality and missing_data computed above (before DNB)
     dc_threshold = 0.72 / data_quality  # raise threshold when data is poor
 
     if p_home + p_draw > dc_threshold:
         dc_prob = (p_home + p_draw) * data_quality
-        add("DC", "1X", "Medium-High" if dc_prob > 0.82 else "Medium", "derived from model",
+        if dc_prob > 0.92:
+            dc_conf = "Near Certain"
+        elif dc_prob > 0.86:
+            dc_conf = "High"
+        elif dc_prob > 0.82:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "1X", dc_conf, "derived from model",
             model_prob=dc_prob)
     if p_away + p_draw > dc_threshold:
         dc_prob = (p_away + p_draw) * data_quality
-        add("DC", "X2", "Medium-High" if dc_prob > 0.82 else "Medium", "derived from model",
+        if dc_prob > 0.92:
+            dc_conf = "Near Certain"
+        elif dc_prob > 0.86:
+            dc_conf = "High"
+        elif dc_prob > 0.82:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "X2", dc_conf, "derived from model",
             model_prob=dc_prob)
     # '12' only in low-draw leagues with strong separation
     if p_home + p_away > 0.86 and p_draw < 0.22:
         dc_prob = (p_home + p_away) * data_quality
-        add("DC", "12", "Medium-High" if dc_prob > 0.92 else "Medium", "derived from model",
+        if dc_prob > 0.95:
+            dc_conf = "Near Certain"
+        elif dc_prob > 0.90:
+            dc_conf = "High"
+        elif dc_prob > 0.86:
+            dc_conf = "Medium-High"
+        else:
+            dc_conf = "Medium"
+        add("DC", "12", dc_conf, "derived from model",
             model_prob=dc_prob)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──

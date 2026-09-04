@@ -275,7 +275,12 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
             elif pick == "Away win":
                 dir_align = consensus
             else:
-                dir_align = (1.0 - abs(consensus)) if not drawish else 1.0
+                # Draw = "no clear side". A draw is the weakest, hardest-to-predict
+                # outcome; forcing align=1.0 on drawish matches let weak 1X2 Draw
+                # picks systematically outrank strong, well-calibrated O/U Under
+                # picks (1X2 overall ~36%, O/U ~67%). Cap it so draws must earn
+                # their rank via real probability/edge, not a free conviction boost.
+                dir_align = 0.2 * (1.0 - abs(consensus))
         else:
             dir_align = consensus * 0.3
         comp["align"] = round(dir_align, 3)
@@ -289,19 +294,36 @@ def synthesize(ctx: MatchContext, candidates: list, ml_only: bool = False) -> li
         )
         value += CONF_VALUE.get(c.get("confidence", "Low"), 0.15) * 0.12
 
-        # 1X2 conviction boost: when a side pick has strong alignment and
-        # the model is confident, boost it to compete with O/U's coverage advantage
-        # Skip this boost for ML-only mode to let the model pick independently
+        # Market-reliability rebalance. Measured calibration accuracies (from
+        # settled history) are: DC ~85%, O/U ~67%, DNB ~56%, BTTS ~53%,
+        # 1X2 ~36% (worst of all). The old code gave 1X2 the LARGEST bonus,
+        # boosting its weakest market the most. Flip that: reward the strong
+        # markets (O/U, DC) when they carry genuine value, and shrink the
+        # artificial 1X2 side-pick boost so near-random 1X2 picks don't
+        # outrank well-calibrated O/U/DC picks.
+
+        # Shrunk 1X2 side-pick boost: 1X2 is the weakest market, so it gets the
+        # smallest conviction bonus, not the largest (was +0.15/+0.08).
         if not ml_only and market == "1X2" and pick in ("Home win", "Away win"):
-            if prob and prob >= 0.50 and abs(dir_align) >= 0.3:
-                value += 0.15  # strong side pick bonus
-            elif prob and prob >= 0.45 and abs(dir_align) >= 0.2:
-                value += 0.08  # moderate side pick bonus
+            if prob and prob >= 0.52 and abs(dir_align) >= 0.35:
+                value += 0.06  # strong side pick bonus (reduced from 0.15)
+            elif prob and prob >= 0.46 and abs(dir_align) >= 0.25:
+                value += 0.03  # moderate side pick bonus (reduced from 0.08)
+
+        # Strong-market preference: reward O/U and DC picks that actually beat
+        # their league base rate (genuine value), so the proven-strong markets
+        # win ties and near-ties against 1X2. Gated on prob_component>0 and a
+        # non-trivial probability so we never surface a value-less O/U pick.
+        if market == "O/U" and prob_component > 0.02 and c.get("confidence") != "Low":
+            value += 0.07
+        elif market == "DC" and prob_component > 0.05 and c.get("confidence") != "Low":
+            value += 0.05
 
         if drawish and market == "1X2" and pick != "Draw":
             value *= 0.88  # reduced from 0.80 to let strong 1X2 side picks compete with DC
-        if drawish and pick == "Draw":
-            value *= 1.12
+        # NOTE: removed the old "drawish and pick == Draw: value *= 1.12" boost —
+        # it double-counted with the (already-capped) Draw alignment bonus and
+        # inflated 1X2 Draw above calibrated O/U picks, a proven weak-market bias.
         if drawish and market == "O/U" and "Under" in pick:
             value *= 1.05
 

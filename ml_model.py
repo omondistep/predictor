@@ -964,73 +964,73 @@ class MLPredictor:
 
         print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
         self.rf_model_1x2 = RandomForestClassifier(
-            n_estimators=400, max_depth=5, min_samples_leaf=40,
-            min_samples_split=60, class_weight="balanced_subsample",
+            n_estimators=300, max_depth=3, min_samples_leaf=60,
+            min_samples_split=100, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for 1X2 ({len(X_train)} examples)...")
         self.gb_model_1x2 = GradientBoostingClassifier(
-            n_estimators=200, max_depth=3, min_samples_leaf=30,
-            learning_rate=0.03, subsample=0.70, random_state=42,
-            max_features="sqrt", min_samples_split=60,
+            n_estimators=150, max_depth=2, min_samples_leaf=60,
+            learning_rate=0.025, subsample=0.60, random_state=42,
+            max_features="sqrt", min_samples_split=120,
         )
         self.gb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         print(f"Training RandomForest for O/U ({len(X_train)} examples)...")
         self.rf_model_ou = RandomForestClassifier(
-            n_estimators=400, max_depth=5, min_samples_leaf=40,
-            min_samples_split=60, class_weight="balanced_subsample",
+            n_estimators=300, max_depth=3, min_samples_leaf=60,
+            min_samples_split=100, class_weight="balanced_subsample",
             random_state=42, n_jobs=-1, max_features="sqrt",
         )
         self.rf_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         print(f"Training GradientBoosting for O/U ({len(X_train)} examples)...")
         self.gb_model_ou = GradientBoostingClassifier(
-            n_estimators=200, max_depth=3, min_samples_leaf=30,
-            learning_rate=0.04, subsample=0.70, random_state=42,
-            max_features="sqrt", min_samples_split=60,
+            n_estimators=150, max_depth=2, min_samples_leaf=60,
+            learning_rate=0.03, subsample=0.60, random_state=42,
+            max_features="sqrt", min_samples_split=120,
         )
         self.gb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         # XGBoost for 1X2
         print(f"Training XGBoost for 1X2 ({len(X_train)} examples)...")
         self.xgb_model_1x2 = xgb.XGBClassifier(
-            n_estimators=200, max_depth=3, learning_rate=0.03,
-            subsample=0.70, colsample_bytree=0.70, min_child_weight=30,
+            n_estimators=150, max_depth=2, learning_rate=0.025,
+            subsample=0.60, colsample_bytree=0.60, min_child_weight=60,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
-            use_label_encoder=False, reg_alpha=0.1, reg_lambda=1.0,
+            use_label_encoder=False, reg_alpha=0.5, reg_lambda=2.0,
         )
         self.xgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         # LightGBM for 1X2
         print(f"Training LightGBM for 1X2 ({len(X_train)} examples)...")
         self.lgb_model_1x2 = lgb.LGBMClassifier(
-            n_estimators=200, max_depth=4, learning_rate=0.03,
-            subsample=0.70, colsample_bytree=0.70, min_child_samples=40,
+            n_estimators=150, max_depth=3, learning_rate=0.025,
+            subsample=0.60, colsample_bytree=0.60, min_child_samples=80,
             random_state=42, n_jobs=-1, verbose=-1,
-            reg_alpha=0.1, reg_lambda=1.0,
+            reg_alpha=0.5, reg_lambda=2.0,
         )
         self.lgb_model_1x2.fit(X_train, y1_train, sample_weight=sw_train)
 
         # XGBoost for O/U
         print(f"Training XGBoost for O/U ({len(X_train)} examples)...")
         self.xgb_model_ou = xgb.XGBClassifier(
-            n_estimators=200, max_depth=3, learning_rate=0.04,
-            subsample=0.70, colsample_bytree=0.70, min_child_weight=30,
+            n_estimators=150, max_depth=2, learning_rate=0.03,
+            subsample=0.60, colsample_bytree=0.60, min_child_weight=60,
             random_state=42, n_jobs=-1, eval_metric="mlogloss",
-            use_label_encoder=False, reg_alpha=0.1, reg_lambda=1.0,
+            use_label_encoder=False, reg_alpha=0.5, reg_lambda=2.0,
         )
         self.xgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
         # LightGBM for O/U
         print(f"Training LightGBM for O/U ({len(X_train)} examples)...")
         self.lgb_model_ou = lgb.LGBMClassifier(
-            n_estimators=200, max_depth=4, learning_rate=0.04,
-            subsample=0.70, colsample_bytree=0.70, min_child_samples=40,
+            n_estimators=150, max_depth=3, learning_rate=0.03,
+            subsample=0.60, colsample_bytree=0.60, min_child_samples=80,
             random_state=42, n_jobs=-1, verbose=-1,
-            reg_alpha=0.1, reg_lambda=1.0,
+            reg_alpha=0.5, reg_lambda=2.0,
         )
         self.lgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
