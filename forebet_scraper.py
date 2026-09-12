@@ -7,7 +7,7 @@ from forebet.com match pages for analysis.
 
 import re
 from bs4 import BeautifulSoup, Tag
-from typing import Optional
+from typing import List, Optional
 from datetime import datetime
 
 try:
@@ -38,6 +38,7 @@ class ForebetScraper:
         self.url = url
         self.timeout = timeout
         self.soup = None
+        self.blocked = False
         self.data = {
             "forebet_url": url,
             "home_team": "",
@@ -120,20 +121,31 @@ class ForebetScraper:
             "ht_away_goals": None,
         }
 
-    def fetch(self) -> bool:
-        """Fetch and parse the Forebet page. Returns True on success."""
-        try:
-            scraper = create_session()
-            resp = scraper.get(self.url, timeout=self.timeout)
-            if resp.status_code != 200:
-                print(f"  [scraper] HTTP {resp.status_code} fetching {self.url} "
-                      f"(Cloudflare block?)")
-                return False
-            self.soup = BeautifulSoup(resp.text, "html.parser")
+    def fetch(self, retries: int = 4) -> bool:
+        """Fetch and parse the Forebet page. Returns True on success.
+
+        Uses rotate + backoff retries to ride out Forebet's per-IP Cloudflare
+        throttling, and treats a 200 challenge page as a block (no data) rather
+        than a genuine empty result.
+        """
+        from webfetch import fetch_with_retry, _looks_blocked
+
+        result = fetch_with_retry(
+            self.url, timeout=self.timeout, max_attempts=retries + 1
+        )
+        if result.ok:
+            self.soup = BeautifulSoup(result.text, "html.parser")
             return True
-        except Exception as e:
-            print(f"  [scraper] Error fetching {self.url}: {e}")
-            return False
+
+        if result.status_code:
+            print(f"  [scraper] HTTP {result.status_code} fetching "
+                  f"{self.url} (Cloudflare block — retried {retries}×)")
+        else:
+            msg = (result.text or "connection error").strip()
+            print(f"  [scraper] Error fetching {self.url}: {msg}")
+        # Distinguish "page loads but is a challenge" from a real empty page.
+        self.blocked = bool(result.text) and _looks_blocked(result.text)
+        return False
 
     def parse(self) -> dict:
         """Parse all data from the fetched page. Returns data dict."""
@@ -1324,12 +1336,113 @@ class ForebetScraper:
         if m3:
             self.data["forebet_btts_yes_pct"] = int(m3.group(2))
 
-    def _parse_odds(self):
-        """Extract match odds from the page.
+    def _market_code(self, lscr) -> Optional[str]:
+        """Return the market code from an odds cell's getHodd() click target.
 
-        Forebet has multiple .rcnt divs — one per market (1X2, O/U, BTTS, etc).
-        The first div is always the 1X2 market.
+        Forebet loads each market's prices on click via
+        ``getHodd(element, match_id[, 'code'])``.  The 1X2 row passes no code
+        (returns ``""``); O/U uses ``'uo'``; BTTS ``'gg'``; the "last price"
+        row uses ``'lp'`` and is not a market we price.  Returns None when the
+        cell is not a getHodd target at all.
         """
+        onclick = (lscr.get("onclick") or "") if lscr else ""
+        m = re.search(r"getHodd\(\s*this\s*,\s*\d+\s*(?:,\s*'([a-z0-9]*)'\s*)?\)",
+                      onclick)
+        if not m:
+            return None
+        return m.group(1) if m.group(1) is not None else ""
+
+    @staticmethod
+    def _haodd_numbers(div) -> List[float]:
+        """Collect the numeric outcome prices from a market row's .haodd box.
+
+        For 1X2 the box lists the three outcome prices in order (home, draw,
+        away); for O/U it is under, over; for BTTS yes, no.  The prominence
+        cell (.lscrsp) is deliberately skipped — it repeats the price of
+        Forebet's predicted outcome, which text-order parsers mistake for the
+        first outcome and is the cause of fake duplicates like 1.75/1.75/3.30.
+        """
+        haodd = div.find("div", {"class": "haodd"})
+        nums: List[float] = []
+        if haodd:
+            for span in haodd.find_all("span"):
+                raw = span.get_text(strip=True)
+                try:
+                    nums.append(float(raw))
+                except (TypeError, ValueError):
+                    pass
+        return nums
+
+    def _parse_odds(self):
+        """Extract match odds from the page's structured market rows.
+
+        Forebet embeds one .rcnt div per betting market.  Each holds a
+        .bigOnly.prmod box: a prominent .lscrsp price (the price of Forebet's
+        *predicted* outcome) plus a .haodd row of the actual outcome prices in
+        market order.  We key off the market code in the cell's getHodd()
+        onclick so the 1X2 row is found by structure, not by position:
+
+          * 1X2  (no code)      -> haodd = home, draw, away
+          * O/U  ('uo')         -> haodd = under, over
+          * BTTS ('gg')         -> haodd = yes, no
+
+        The old parser regexed every decimal after the temperature in text
+        order; because the predicted-outcome price comes first, a home-held
+       ("1") forecast made the "draw" slot come out identical to "home"
+        (e.g. 1.75/1.75/3.30) and an away forecast shifted the wrong value
+        into home.  A legacy text fallback is kept for pages that predate the
+        .prmod layout.
+        """
+        rcnt_divs = self.soup.find_all("div", {"class": "rcnt"})
+
+        # ── Forebet % + prediction from the first (match) row ──
+        if rcnt_divs:
+            text = rcnt_divs[0].get_text(" ", strip=True)
+            temp_match = re.search(r"(\d+)°", text)
+            before_temp = text[:temp_match.start()].strip() if temp_match else text
+            # Pattern: "... <home%> <draw%> <away%> <1|X|2> <score>..."
+            fb_match = re.search(r"(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s+([1X2])\s+\d+\s*-\s*\d+", before_temp)
+            if fb_match and self.data["forebet_home_pct"] is None:
+                self.data["forebet_home_pct"] = int(fb_match.group(1))
+                self.data["forebet_draw_pct"] = int(fb_match.group(2))
+                self.data["forebet_away_pct"] = int(fb_match.group(3))
+                self.data["forebet_pred"] = fb_match.group(4)
+
+        # ── Structured odds from the per-market .prmod rows ──
+        parsed_1x2 = parsed_ou = parsed_btts = False
+        for div in rcnt_divs:
+            prmod = div.find("div", {"class": "prmod"})
+            if not prmod:
+                continue
+            lscr = prmod.find("span", {"class": "lscrsp"})
+            if not lscr:
+                continue
+            code = self._market_code(lscr)
+            if code is None or code == "lp":
+                continue
+            nums = self._haodd_numbers(div)
+
+            if code == "" and not parsed_1x2 and len(nums) >= 3:
+                self.data["odds_home"] = nums[0]
+                self.data["odds_draw"] = nums[1]
+                self.data["odds_away"] = nums[2]
+                parsed_1x2 = True
+            elif code == "uo" and not parsed_ou and len(nums) >= 2:
+                self.data["odds_under25"] = nums[0]
+                self.data["odds_over25"] = nums[1]
+                parsed_ou = True
+            elif code == "gg" and not parsed_btts and len(nums) >= 2:
+                self.data["odds_btts_yes"] = nums[0]
+                self.data["odds_btts_no"] = nums[1]
+                parsed_btts = True
+
+        # ── Legacy text fallback for market groups the structured rows lack ──
+        if not (parsed_1x2 and parsed_ou and parsed_btts):
+            self._parse_odds_legacy(
+                skip_1x2=parsed_1x2, skip_ou=parsed_ou, skip_btts=parsed_btts)
+
+    def _parse_odds_legacy(self, skip_1x2=False, skip_ou=False, skip_btts=False):
+        """Pre-.prmod-layout fallback: positional float scan of each market row."""
         rcnt_divs = self.soup.find_all("div", {"class": "rcnt"})
 
         for idx, div in enumerate(rcnt_divs):
@@ -1338,21 +1451,9 @@ class ForebetScraper:
             if not temp_match:
                 continue
             after_temp = text[temp_match.end():].strip()
-            odds_nums_str = re.findall(r"\d+\.\d+", after_temp)
-            odds_nums = [float(n) for n in odds_nums_str]
+            odds_nums = [float(n) for n in re.findall(r"\d+\.\d+", after_temp)]
 
-            # First rcnt div = 1X2 market (3 values: home, draw, away)
-            if idx == 0:
-                # Also parse Forebet probabilities and prediction from before temp
-                before_temp = text[:temp_match.start()].strip()
-                # Pattern: "... <home%> <draw%> <away%> <1|X|2> <score>..."
-                fb_match = re.search(r"(\d{1,3})\s+(\d{1,3})\s+(\d{1,3})\s+([1X2])\s+\d+\s*-\s*\d+", before_temp)
-                if fb_match:
-                    self.data["forebet_home_pct"] = int(fb_match.group(1))
-                    self.data["forebet_draw_pct"] = int(fb_match.group(2))
-                    self.data["forebet_away_pct"] = int(fb_match.group(3))
-                    self.data["forebet_pred"] = fb_match.group(4)
-
+            if idx == 0 and not skip_1x2:
                 if len(odds_nums) >= 3:
                     self.data["odds_home"] = odds_nums[0]
                     self.data["odds_draw"] = odds_nums[1]
@@ -1361,18 +1462,17 @@ class ForebetScraper:
                         self.data["odds_over25"] = odds_nums[3]
                         self.data["odds_under25"] = odds_nums[4]
 
-            # Parse other markets from their respective divs
             txt_lower = text.lower()
+            if (("both to score" in txt_lower or "btts" in txt_lower)
+                    and not skip_btts and len(odds_nums) >= 2):
+                self.data["odds_btts_yes"] = odds_nums[1]
+                self.data["odds_btts_no"] = odds_nums[0]
 
-            if "both to score" in txt_lower or "btts" in txt_lower:
-                if len(odds_nums) >= 2:
-                    self.data["odds_btts_yes"] = odds_nums[1]
-                    self.data["odds_btts_no"] = odds_nums[0]
-
-            if "under/over" in txt_lower or "over/under" in txt_lower:
-                if len(odds_nums) >= 2 and self.data["odds_over25"] is None:
-                    self.data["odds_over25"] = odds_nums[0]
-                    self.data["odds_under25"] = odds_nums[1]
+            if (("under/over" in txt_lower or "over/under" in txt_lower)
+                    and not skip_ou and len(odds_nums) >= 2
+                    and self.data["odds_over25"] is None):
+                self.data["odds_over25"] = odds_nums[0]
+                self.data["odds_under25"] = odds_nums[1]
 
     # ── Helpers ──
 
@@ -1422,12 +1522,15 @@ def scrape_results_list(url: str) -> list:
     """Scrape a list of results from a Forebet page.
     Returns list of dicts: {"url": str, "home_goals": int, "away_goals": int}
     """
+    from webfetch import fetch_with_retry, _looks_blocked
+    result = fetch_with_retry(url, timeout=20)
+    if not result.ok:
+        if result.status_code and _looks_blocked(result.text):
+            print(f"  [scraper] HTTP {result.status_code} (Cloudflare blocked) "
+                  f"fetching {url}")
+        return []
     try:
-        scraper = create_session()
-        resp = scraper.get(url, timeout=20)
-        if resp.status_code != 200:
-            return []
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(result.text, "html.parser")
         
         results = []
         # Matches are usually in div blocks with class 'rcnt'
@@ -1493,12 +1596,12 @@ def scrape_league_upcoming(league_url_path: str, league_name: str = "", session=
                         "kickoff": datetime or None, "league": str}
     """
     url = league_url_path if league_url_path.startswith("http") else "https://www.forebet.com/en/" + league_url_path.lstrip("/")
+    from webfetch import fetch_with_retry
+    result = fetch_with_retry(url, timeout=25, session=session)
+    if not result.ok:
+        return []
     try:
-        scraper = session or create_session()
-        resp = scraper.get(url, timeout=25)
-        if resp.status_code != 200:
-            return []
-        soup = BeautifulSoup(resp.text, "html.parser")
+        soup = BeautifulSoup(result.text, "html.parser")
 
         rows = soup.find_all("div", {"class": "rcnt"})
         if not rows:
@@ -1561,6 +1664,8 @@ def scrape_url(url: str) -> dict:
     """Scrape a single Forebet URL and return structured data."""
     scraper = ForebetScraper(url)
     data = scraper.scrape()
+    if scraper.blocked:
+        data["_blocked"] = True
     try:
         from red_flags import sanitize_scraped_stats
         sanitize_scraped_stats(data)  # fix implausible stats before DB/predict
@@ -1576,6 +1681,9 @@ def scrape_and_save(url: str) -> dict:
     data = scrape_url(url)
     if data.get("home_team"):
         print(f"{data['home_team'][:20]} vs {data['away_team'][:20]}", file=sys.stderr)
+    elif data.get("_blocked"):
+        print("BLOCKED by Cloudflare (rate-limited) — data not retrievable right now",
+              file=sys.stderr)
     else:
         print("no data", file=sys.stderr)
     return data
@@ -1600,14 +1708,11 @@ class InjuryScraper:
         self.soup = None
 
     def fetch(self) -> bool:
-        try:
-            scraper = create_session()
-            resp = scraper.get(self.INJURY_URL, timeout=self.timeout)
-            if resp.status_code == 200:
-                self.soup = BeautifulSoup(resp.text, "html.parser")
-                return True
-        except Exception:
-            pass
+        from webfetch import fetch_with_retry
+        result = fetch_with_retry(self.INJURY_URL, timeout=self.timeout)
+        if result.ok:
+            self.soup = BeautifulSoup(result.text, "html.parser")
+            return True
         return False
 
     def parse(self) -> dict:

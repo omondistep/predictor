@@ -4,6 +4,13 @@
 Reads from data/pending_results.json (additive tracking file) instead of
 scanning HTML reports.  After updating the DB and any matching HTML files,
 completed entries are removed from the pending file.
+
+Fetching strategy (defeats Cloudflare rate-limiting):
+  1. Batch pass — one getrs.php AJAX call *per distinct match date*. That
+     endpoint returns every finished match (with scores) for a day in a single
+     JSON response, so ~700 per-match pages collapse into ~50 date requests.
+  2. Fallback pass — any match the date pages no longer carry is fetched via
+     the per-page scraper (which itself reuses baked cf_clearance cookies).
 """
 
 import re
@@ -44,6 +51,98 @@ def _match_started(match_id: int) -> bool:
         return datetime.now() >= match_dt
     except Exception:
         return True  # parse error → don't skip
+
+
+def _fetch_results_by_date(date_iso: str):
+    """Fetch ALL finished matches for one date via Forebet's getrs.php AJAX.
+
+    Returns (map, result) where map is ``str(forebet_id) -> (hg, ag, comment)``
+    for finished matches, or None when the fetch was blocked/failed, plus the
+    FetchResult so callers can distinguish a Cloudflare block from a glitch.
+    """
+    from webfetch import fetch_with_retry
+
+    url = ("https://www.forebet.com/scripts/getrs.php?ln=en&tp=1x2"
+           f"&in={date_iso}&ord=0&tz=%2B180&tzs=0&tze=0")
+    res = fetch_with_retry(url, timeout=30, max_attempts=4)
+    if not res.ok:
+        return None, res
+    try:
+        data = json.loads(res.text)
+    except (ValueError, TypeError):
+        return None, res
+    if not isinstance(data, list) or not data:
+        return {}, res
+    matches = data[0]
+    out = {}
+    for m in matches:
+        comment = (m.get("comment") or "").strip()
+        if comment not in ("FT", "AET", "Pen."):
+            continue
+        try:
+            hg = int(m["Host_SC"])
+            ag = int(m["Guest_SC"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        out[str(m.get("id"))] = (hg, ag, comment)
+    return out, res
+
+
+def _looks_cloudflare_blocked(res) -> bool:
+    """True when a fetch result is a Cloudflare block, not a mere miss."""
+    text = getattr(res, "text", "") or ""
+    if text:
+        from webfetch import _looks_blocked
+        return _looks_blocked(text)
+    return getattr(res, "status_code", 0) == 403
+
+
+def _forebet_id_from_url(url: str):
+    """Extract the trailing Forebet match id from a match URL (or None).
+
+    e.g. https://www.forebet.com/en/football/matches/bokelj-kotor-fk-otrant-2484797
+    -> "2484797".  getrs.php identifies matches by this id, which is NOT the
+    local DB match_id.
+    """
+    if not url:
+        return None
+    tail = url.rstrip("/").rsplit("-", 1)[-1]
+    return tail if tail.isdigit() else None
+
+
+def _apply_result(match_id: int, url: str, row, home_goals: int, away_goals: int,
+                  ht_home_goals=None, ht_away_goals=None) -> bool:
+    """Write one result to the DB + HTML card and drop it from pending.
+
+    Returns True when the result was newly written (not already present).
+    """
+    conn = get_db()
+    cur = conn.execute(
+        "SELECT actual_home_goals FROM matches WHERE id = ?", (match_id,)
+    ).fetchone()
+    conn.close()
+    if cur and cur[0] is not None:
+        remove_pending_result(url)
+        return False
+
+    update_result(match_id, home_goals, away_goals, ht_home_goals, ht_away_goals)
+
+    pred_dir = Path(__file__).parent / "predictions"
+    if pred_dir.exists():
+        for html_file in pred_dir.glob("*.html"):
+            if html_file.name == "index.html":
+                continue
+            card_pattern = r'<div class="card" data-match-id="(\d*)"'
+            html = html_file.read_text(encoding="utf-8")
+            if re.search(card_pattern, html) and f'data-match-id="{match_id}"' in html:
+                if update_html_with_result(html_file, match_id, home_goals, away_goals,
+                                           ht_home=ht_home_goals, ht_away=ht_away_goals):
+                    log(f"  Updated {html_file.name}: {row['home_team']} vs "
+                        f"{row['away_team']} {home_goals}-{away_goals}")
+                    break
+
+    remove_pending_result(url)
+    return True
 
 
 def update_html_with_result(html_path: Path, match_id: int, home_goals: int, away_goals: int,
@@ -93,12 +192,26 @@ def update_html_with_result(html_path: Path, match_id: int, home_goals: int, awa
         if pick == "1X": correct = outcome in ("Home win", "Draw")
         elif pick == "X2": correct = outcome in ("Away win", "Draw")
         elif pick == "12": correct = outcome in ("Home win", "Away win")
+    elif mkt == "1H":
+        # First-Half picks are decided by the HT score, not the final one
+        if ht_home is not None and ht_away is not None:
+            if ht_home > ht_away:
+                ht_outcome = "Home win"
+            elif ht_home < ht_away:
+                ht_outcome = "Away win"
+            else:
+                ht_outcome = "Draw"
+            correct = (pick == ht_outcome)
+        else:
+            correct = None
 
     ht_tag = f"  HT: {ht_home}-{ht_away}" if ht_home is not None and ht_away is not None else ""
     if correct is True:
         verdict = '<span style="color:#22c55e;font-weight:700">Correct!</span>'
     elif correct is False:
         verdict = f'<span style="color:#ef4444;font-weight:700">Incorrect</span> (picked {pick})'
+    elif mkt == "1H":
+        verdict = '<span style="color:#94a3b8;font-weight:700">Awaiting HT settle (1H)</span>'
     else:
         verdict = '<span style="color:#94a3b8;font-weight:700">Push (DNB)</span>'
 
@@ -129,67 +242,108 @@ def main():
 
     from forebet_scraper import scrape_url
 
-    updated_count = 0
-    for entry in list(pending):
-        url = entry.get("forebet_url", "")
-        match_id = entry.get("match_id")
+    # Load DB metadata for all pending matches once.
+    conn = get_db()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        "SELECT id, home_team, away_team, actual_home_goals, "
+        "match_date, match_time FROM matches"
+    ).fetchall()
+    conn.close()
+    db_by_id = {r["id"]: r for r in rows}
 
-        if not url or not match_id:
+    # ── Pass 1: batch fetch — one getrs.php AJAX call per distinct date ──
+    by_date = {}
+    for entry in pending:
+        mid = entry.get("match_id")
+        row = db_by_id.get(mid)
+        if not row or not row["match_date"]:
+            continue
+        by_date.setdefault(row["match_date"], []).append(entry)
+
+    updated_count = 0
+    handled_urls = set()
+    today = datetime.now().date()
+
+    date_keys = sorted(by_date)
+    for i, d in enumerate(date_keys, 1):
+        try:
+            iso = datetime.strptime(d, "%d/%m/%Y").strftime("%Y-%m-%d")
+            is_future = datetime.strptime(d, "%d/%m/%Y").date() > today
+        except ValueError:
+            continue
+        if is_future:
+            continue  # no results exist yet
+
+        log(f"  [{i}/{len(date_keys)}] {d}: fetch finished results ...")
+        results, res = _fetch_results_by_date(iso)
+
+        # A Cloudflare block on the AJAX endpoint aborts the whole run.
+        if results is None:
+            if _looks_cloudflare_blocked(res):
+                log("  Cloudflare rate-limited (blocked) — stopping results "
+                    "update; run again later")
+                return
+            log(f"  [scraper] no data for {iso} — falling back per-page")
             continue
 
-        if not _match_started(match_id):
+        for entry in by_date[d]:
+            url = entry.get("forebet_url", "")
+            mid = entry.get("match_id")
+            if not url or not mid:
+                continue
+            row = db_by_id.get(mid)
+            if not row:
+                log(f"  Match {mid} not in DB, skipping")
+                continue
+            fid = _forebet_id_from_url(url)
+            if fid is None:
+                continue
+            score = results.get(fid)
+            if score is None:
+                continue  # not finished / absent on the date page → fallback
+            hg, ag, _comment = score
+            if _apply_result(mid, url, row, hg, ag):
+                updated_count += 1
+            handled_urls.add(url)
+
+    # ── Pass 2: fallback — per-page scrape for anything the batch missed ──
+    backlog = [e for e in pending if e.get("forebet_url") not in handled_urls]
+    if backlog:
+        log(f"  {len(backlog)} matches not covered by batch — per-page fallback")
+    for entry in backlog:
+        url = entry.get("forebet_url", "")
+        mid = entry.get("match_id")
+        if not url or not mid:
+            continue
+        row = db_by_id.get(mid)
+        if not row:
+            continue
+        if row["actual_home_goals"] is not None:
+            remove_pending_result(url)
+            continue
+        if not _match_started(mid):
             log(f"  Skipping {url.split('/')[-1][:40]}... (match not started yet)")
             continue
-
         try:
             slug = url.split("/")[-1][:40]
             log(f"  Checking {slug}...")
-
             data = scrape_url(url)
             if not data or not data.get("home_team"):
+                if data and data.get("_blocked"):
+                    log("  Cloudflare rate-limited (blocked) — stopping results "
+                        "update; run again later")
+                    return
                 time.sleep(0.5)
                 continue
-
             if data.get("actual_home_goals") is None:
                 time.sleep(0.5)
                 continue
-
-            home_goals = data["actual_home_goals"]
-            away_goals = data["actual_away_goals"]
-
-            conn = get_db()
-            conn.row_factory = sqlite3.Row
-            match = conn.execute("""
-                SELECT id, home_team, away_team, actual_home_goals
-                FROM matches WHERE id = ?
-            """, (match_id,)).fetchone()
-            conn.close()
-
-            if not match:
-                log(f"  Match {match_id} not in DB, skipping")
-                continue
-
-            if match["actual_home_goals"] is not None:
-                remove_pending_result(url)
-                continue
-
-            update_result(match_id, home_goals, away_goals)
-
-            pred_dir = Path(__file__).parent / "predictions"
-            if pred_dir.exists():
-                for html_file in pred_dir.glob("*.html"):
-                    if html_file.name == "index.html":
-                        continue
-                    card_pattern = r'<div class="card" data-match-id="(\d*)"'
-                    html = html_file.read_text(encoding="utf-8")
-                    if re.search(card_pattern, html) and f'data-match-id="{match_id}"' in html:
-                        if update_html_with_result(html_file, match_id, home_goals, away_goals):
-                            log(f"  Updated {html_file.name}: {match['home_team']} vs {match['away_team']} {home_goals}-{away_goals}")
-                            break
-
-            remove_pending_result(url)
-            updated_count += 1
-
+            if _apply_result(mid, url, row, data["actual_home_goals"],
+                             data["actual_away_goals"],
+                             data.get("ht_home_goals"),
+                             data.get("ht_away_goals")):
+                updated_count += 1
         except Exception as e:
             log(f"  Error processing {url}: {e}")
             continue

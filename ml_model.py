@@ -50,7 +50,18 @@ warnings.filterwarnings("ignore", message=_PARALLEL_MISUSE)
 BASE = Path(__file__).parent
 MODELS_DIR = BASE / "ml_models"
 DB_PATH = BASE / "history.db"
-GAME_DATA = Path(os.environ.get("GAME_DATA_PATH", "/home/stdk/game/data/historical_matches_combined.json"))
+
+configured_game_data = os.environ.get("GAME_DATA_PATH")
+if configured_game_data:
+    GAME_DATA = Path(configured_game_data)
+else:
+    GAME_DATA = next(
+        (path for path in (
+            Path("/home/stdk/new/game/data/historical_matches_combined.json"),
+            Path("/home/stdk/game/data/historical_matches_combined.json"),
+        ) if path.exists()),
+        Path("/home/stdk/game/data/historical_matches_combined.json"),
+    )
 GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", "/home/stdk/game/models"))
 # Override via env var
 if os.environ.get("ML_MODELS_DIR"):

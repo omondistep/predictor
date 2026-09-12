@@ -472,6 +472,21 @@ _MARKET_THRESHOLDS = {
     market: dict(CALIBRATED_THRESHOLDS)
     for market in ("1X2", "O/U", "BTTS", "DC", "DNB", "default")
 }
+# First-half 3-Way is structurally draw-heavy and rarely pushes one outcome to
+# 50%+, so it gets a dedicated, more generous profile. Confidence is also
+# capped at Medium-High in the analysis until accuracy data accumulates.
+_MARKET_THRESHOLDS["1H"] = {
+    "near_certain": 0.58, "near_certain_margin": 0.14,
+    "high": 0.46, "high_margin": 0.10,
+    "medium_high": 0.40, "medium_high_margin": 0.07,
+    "medium": 0.36, "medium_margin": 0.04,
+    "draw_medium_high": 0.34, "draw_medium_high_margin": 0.04,
+    "draw_medium": 0.32,
+}
+
+# Minimum estimated success probability for a match to qualify as a Banker
+# bet (highest probability-of-success report).
+BANKER_MIN_PCT = 0.72
 
 def _get_league_difficulty(league: str) -> dict:
     """Return difficulty info for a league based on historical accuracy.
@@ -705,6 +720,140 @@ def _pick_correct_for_result(market: str, pick: str, hg, ag) -> bool | None:
         if pick == "12":
             return outcome in ("Home win", "Away win")
     return None
+
+
+# ── Past-performance calibration for derived markets ──
+# Isotonic regressions trained from historical calibration_log accuracy live in
+# calibration_params.json.  We apply them at prediction time for the derived /
+# binary markets (BTTS, DNB, DC) with two safety guards: shrinkage toward the
+# raw estimate for small training samples, and a hard cap on any single point's
+# movement (stale-params guard).  1X2 stays raw by design (its per-outcome
+# isotonic fit collapses) and O/U stays raw (documented distortion of Over).
+_ISOTONIC_CACHE = {}
+
+
+class _IsotonicMap:
+    """Thin isotonic map reconstructed once and cached per market."""
+
+    def __init__(self, md: dict):
+        import numpy as np
+        if "X_thresholds" in md:
+            X = np.asarray(md["X_thresholds"], dtype=float)
+            y = np.asarray(md["y_thresholds"], dtype=float)
+        elif "X_train" in md and "y_train" in md:
+            from sklearn.isotonic import IsotonicRegression
+            ir = IsotonicRegression(increasing="auto", out_of_bounds="clip")
+            ir.fit(np.asarray(md["X_train"], dtype=float),
+                   np.asarray(md["y_train"], dtype=float))
+            X, y = ir.X_thresholds_, ir.y_thresholds_
+        else:
+            X, y = None, None
+        self.X = X
+        self.Y = y
+        self.n = int(md.get("n_samples") or 0)
+
+    def predict(self, prob: float) -> float:
+        import numpy as np
+        if self.X is None or len(self.X) == 0:
+            return None
+        x = float(np.clip(prob, float(self.X[0]), float(self.X[-1])))
+        return float(np.interp(x, self.X, self.Y))
+
+
+def _market_calibrate(market: str, prob: float) -> float:
+    """Apply the past-performance isotonic map for a derived market, with
+    small-sample shrinkage and a ±0.12 per-point movement cap."""
+    if prob is None or prob <= 0:
+        return prob
+    if market not in _ISOTONIC_CACHE:
+        _m = None
+        try:
+            with (Path(__file__).parent / "calibration_params.json").open() as f:
+                _store = json.load(f)
+            _md = (_store.get("markets") or {}).get(market)
+            if _md:
+                _m = _IsotonicMap(_md)
+        except Exception:
+            _m = None
+        _ISOTONIC_CACHE[market] = _m
+    m = _ISOTONIC_CACHE[market]
+    if m is None:
+        return prob
+    try:
+        cal = m.predict(prob)
+    except Exception:
+        return prob
+    if cal is None:
+        return prob
+    w = 1.0 if m.n >= 1200 else (0.4 + 0.6 * (m.n / 1200.0))
+    cal = prob * (1 - w) + cal * w
+    if abs(cal - prob) > 0.12:
+        cal = prob + (0.12 if cal > prob else -0.12)
+    return float(cal)
+
+
+# ── First-half goal shares ──
+# HT goals as a fraction of full-time goals, learned from history.db.  Only a
+# few thousand tracked matches have HT scores, so per-league estimates are
+# shrunk hard toward the global prior.
+_HT_SHARES = None
+
+
+def _first_half_shares(league_key: str) -> tuple:
+    """Return (home_share, away_share) = fraction of FT goals scored before HT.
+
+    Used to derive expected first-half goals from the full-match expected
+    goals, which drives the 1H 3-Way market."""
+    global _HT_SHARES
+    if _HT_SHARES is None:
+        shares = {"global": {"home": 0.40, "away": 0.40, "n": 0}}
+        rows = []
+        try:
+            from database import get_db
+            conn = get_db()
+            rows = conn.execute(
+                "SELECT league, actual_home_goals, actual_away_goals, "
+                "ht_home_goals, ht_away_goals FROM matches "
+                "WHERE ht_home_goals IS NOT NULL AND actual_home_goals IS NOT NULL "
+                "AND actual_home_goals + actual_away_goals > 0").fetchall()
+            conn.close()
+        except Exception:
+            rows = []
+        sums = {}
+        for r in rows:
+            g = sums.setdefault("__global__", {"hh": 0, "hh_ft": 0, "ah": 0, "ah_ft": 0, "n": 0})
+            g["hh"] += r["ht_home_goals"] or 0
+            g["hh_ft"] += r["actual_home_goals"] or 0
+            g["ah"] += r["ht_away_goals"] or 0
+            g["ah_ft"] += r["actual_away_goals"] or 0
+            g["n"] += 1
+            lk = _resolve_league_prefix(r["league"] or "") or (r["league"] or "Unknown")
+            s = sums.setdefault(lk, {"hh": 0, "hh_ft": 0, "ah": 0, "ah_ft": 0, "n": 0})
+            s["hh"] += r["ht_home_goals"] or 0
+            s["hh_ft"] += r["actual_home_goals"] or 0
+            s["ah"] += r["ht_away_goals"] or 0
+            s["ah_ft"] += r["actual_away_goals"] or 0
+            s["n"] += 1
+        glob = sums.get("__global__")
+        if glob and glob["n"] > 20:
+            if glob["hh_ft"]:
+                shares["global"]["home"] = glob["hh"] / glob["hh_ft"]
+            if glob["ah_ft"]:
+                shares["global"]["away"] = glob["ah"] / glob["ah_ft"]
+            shares["global"]["n"] = glob["n"]
+        gh = shares["global"]
+        for lk, s in sums.items():
+            if lk == "__global__" or s["n"] < 15:
+                continue
+            lh = s["hh"] / s["hh_ft"] if s["hh_ft"] else gh["home"]
+            la = s["ah"] / s["ah_ft"] if s["ah_ft"] else gh["away"]
+            w = s["n"] / float(s["n"] + 40)
+            shares[lk] = {"home": gh["home"] * (1 - w) + lh * w,
+                          "away": gh["away"] * (1 - w) + la * w,
+                          "n": s["n"]}
+        _HT_SHARES = shares
+    s = _HT_SHARES.get(league_key) or _HT_SHARES["global"]
+    return (s["home"], s["away"])
 
 
 def _model_market_strengths(market: str, min_samples: int = 10) -> dict:
@@ -3700,10 +3849,10 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     dnb_denom_a = p_away + p_draw
     if dnb_home_conf != "Low":
         add("DNB", "Home", dnb_home_conf, "derived from model",
-            model_prob=(p_home / dnb_denom_h) if dnb_denom_h > 0 else None)
+            model_prob=_market_calibrate("DNB", (p_home / dnb_denom_h) if dnb_denom_h > 0 else None))
     if dnb_away_conf != "Low":
         add("DNB", "Away", dnb_away_conf, "derived from model",
-            model_prob=(p_away / dnb_denom_a) if dnb_denom_a > 0 else None)
+            model_prob=_market_calibrate("DNB", (p_away / dnb_denom_a) if dnb_denom_a > 0 else None))
 
     # ── Double Chance (derived from 1X2) — tightened thresholds ──
     # DC is historically strong (~85% accuracy). Support Near Certain/High labels
@@ -3712,7 +3861,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     dc_threshold = 0.72 / data_quality  # raise threshold when data is poor
 
     if p_home + p_draw > dc_threshold:
-        dc_prob = (p_home + p_draw) * data_quality
+        dc_prob = _market_calibrate("DC", (p_home + p_draw) * data_quality)
         if dc_prob > 0.92:
             dc_conf = "Near Certain"
         elif dc_prob > 0.86:
@@ -3724,7 +3873,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         add("DC", "1X", dc_conf, "derived from model",
             model_prob=dc_prob)
     if p_away + p_draw > dc_threshold:
-        dc_prob = (p_away + p_draw) * data_quality
+        dc_prob = _market_calibrate("DC", (p_away + p_draw) * data_quality)
         if dc_prob > 0.92:
             dc_conf = "Near Certain"
         elif dc_prob > 0.86:
@@ -3737,7 +3886,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             model_prob=dc_prob)
     # '12' only in low-draw leagues with strong separation
     if p_home + p_away > 0.86 and p_draw < 0.22:
-        dc_prob = (p_home + p_away) * data_quality
+        dc_prob = _market_calibrate("DC", (p_home + p_away) * data_quality)
         if dc_prob > 0.95:
             dc_conf = "Near Certain"
         elif dc_prob > 0.90:
@@ -3748,6 +3897,56 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             dc_conf = "Medium"
         add("DC", "12", dc_conf, "derived from model",
             model_prob=dc_prob)
+
+    # ── First-Half 3-Way (1H) — Poisson on expected first-half goals ──
+    # Derives 1H expected goals from full-match xG scaled by the historical
+    # first-half share (HT goals ÷ FT goals, from matches with HT scores).
+    # First-half outcomes are structurally draw-heavy and rarely reach 50%,
+    # so the dedicated looser "1H" threshold profile is used and confidence is
+    # capped at Medium-High until accuracy data accumulates.
+    _h1_exp_h = exp_h * _first_half_shares(league_key)[0]
+    _h1_exp_a = exp_a * _first_half_shares(league_key)[1]
+    _h1_probs = [("Home win", prob_home_win(_h1_exp_h, _h1_exp_a)),
+                 ("Draw", prob_draw(_h1_exp_h, _h1_exp_a)),
+                 ("Away win", prob_away_win(_h1_exp_h, _h1_exp_a))]
+    _h1_total = sum(_p for _, _p in _h1_probs)
+    _h1_pick_v, _h1_prob = max(_h1_probs, key=lambda x: x[1])
+    _h1_second = sorted((_p for _, _p in _h1_probs), reverse=True)[1]
+    if _h1_total > 0:
+        _h1_prob /= _h1_total
+        _h1_second /= _h1_total
+    _h1_margin = _h1_prob - _h1_second
+    # First-half draws are more common than top-skill Poisson suggests — a
+    # mild floor keeps the draw from being routinely wiped by a small edge.
+    if _h1_pick_v != "Draw":
+        _h1_draw_p = dict(_h1_probs)["Draw"] / (_h1_total if _h1_total > 0 else 1.0)
+        if _h1_draw_p < 0.27:
+            _diff = (0.27 - _h1_draw_p) * 0.5
+            _h1_prob = max(_h1_prob - _diff, 0.0)
+            _h1_margin = max(_h1_margin - _diff, 0.0)
+    _1h_th = _MARKET_THRESHOLDS["1H"]
+    _h1_conf = "Low"
+    if _h1_pick_v == "Draw":
+        if _h1_prob >= _1h_th["draw_medium_high"] and _h1_margin >= _1h_th["draw_medium_high_margin"]:
+            _h1_conf = "Medium-High"
+        elif _h1_prob >= _1h_th["draw_medium"]:
+            _h1_conf = "Medium"
+    else:
+        if _h1_prob >= _1h_th["near_certain"] and _h1_margin >= _1h_th["near_certain_margin"]:
+            _h1_conf = "Near Certain"
+        elif _h1_prob >= _1h_th["high"] and _h1_margin >= _1h_th["high_margin"]:
+            _h1_conf = "High"
+        elif _h1_prob >= _1h_th["medium_high"] and _h1_margin >= _1h_th["medium_high_margin"]:
+            _h1_conf = "Medium-High"
+        elif _h1_prob >= _1h_th["medium"] and _h1_margin >= _1h_th["medium_margin"]:
+            _h1_conf = "Medium"
+    if _h1_conf in ("Near Certain", "High"):
+        _h1_conf = "Medium-High"
+    if _h1_conf != "Low":
+        add("1H", _h1_pick_v, _h1_conf,
+            f"first-half model {_h1_prob:.0%} vs {_h1_second:.0%} "
+            f"(1H exp {_h1_exp_h:.2f}-{_h1_exp_a:.2f})",
+            model_prob=_h1_prob)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
     # ML ensemble O/U probability (for 2.5 threshold) — used as blending signal
@@ -3969,6 +4168,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     p_btn = 1.0 - p_btss
 
+    # Past-performance isotonic map (learned from historical BTTS accuracy),
+    # shrunk to raw for small samples and capped for stale-params safety.
+    p_btss = _market_calibrate("BTTS", p_btss)
+    p_btn = 1.0 - p_btss
+
     # ── BTTS Yes agreement: emit only where the ML model also leans Yes.
     # Run the ML analysis once here and reuse the result at return, so the
     # agreement check costs nothing beyond the single call per match.
@@ -4073,6 +4277,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         ("BTTS", "Yes"): 3, ("BTTS", "No"): 3,
         ("DNB", "Home"): 1, ("DNB", "Away"): 1,
         ("1X2", "Home win"): 1, ("1X2", "Draw"): 1, ("1X2", "Away win"): 1,
+        ("1H", "Home win"): 1, ("1H", "Draw"): 1, ("1H", "Away win"): 1,
     }
     for c in candidates:
         c["coverage"] = COVERAGE.get((c["market"], c["pick"]), 1)
@@ -4508,6 +4713,26 @@ def _write_html(results, all_urls, compare_forebet, high_only,
     now_file = datetime.now().strftime("%Y%m%d_%H%M%S")
     filtered = [r for r in results if r["confidence"] in ("Near Certain", "High")] if high_only else results
 
+    # ── Live historical hit-rate per confidence tier ──
+    # Powers the Banker report's probability-of-success estimate (a match's
+    # default pick is assigned its tier's real calibrated accuracy, not a guess).
+    CONF_HIST = {}
+    try:
+        from database import get_db as _gdb
+        _conn = _gdb()
+        _agg = {}
+        for _row in _conn.execute(
+                "SELECT confidence, correct FROM calibration_log "
+                "WHERE correct IS NOT NULL"):
+            _c = _row[0] or "Low"
+            _agg.setdefault(_c, [0, 0])
+            _agg[_c][0] += int(_row[1])
+            _agg[_c][1] += 1
+        _conn.close()
+        CONF_HIST = {c: a[0] / a[1] for c, a in _agg.items() if a[1] >= 30}
+    except Exception:
+        CONF_HIST = {}
+
     # ── Calculate per-report accuracy ──
     report_correct = 0
     report_total = 0
@@ -4873,6 +5098,146 @@ def _write_html(results, all_urls, compare_forebet, high_only,
         best_key = data["best_alt"][1]
         return any(_picks_consistent(k, best_key) for k in data["agreed_keys"])
 
+    # ── High-conviction (>80%) report ──────────────────────────────────
+    # Matches where either model assigns a probability >80% to some outcome,
+    # highlighting the two strongest signals:
+    #   * BOTH models >80% on the SAME outcome    ("shared")
+    #   * BOTH models >80% on DIFFERENT outcomes  ("separate")
+
+    def _high80_data(r):
+        """Per-model picks with model_prob > 0.80, keyed "market|pick".
+
+        Returns None when neither model clears the bar, otherwise
+        {"fb": ..., "ml": ..., "shared": [keys both clear],
+         "separate": (fb_key, fb_prob, ml_key, ml_prob)} where separate holds
+        the strongest distinct outcome from each model."""
+        ml = r.get("_ml_analysis") or {}
+        fb = {f"{p['market']}|{p['pick']}": p["model_prob"]
+              for p in (r.get("all_picks") or [])
+              if (p.get("model_prob") or 0) > 0.80}
+        mld = {f"{p['market']}|{p['pick']}": p["model_prob"]
+               for p in ml.get("all_picks", [])
+               if (p.get("model_prob") or 0) > 0.80}
+        if not fb and not mld:
+            return None
+        shared = sorted(set(fb) & set(mld),
+                        key=lambda k: (fb[k] + mld[k]), reverse=True)
+        separate = None
+        if fb and mld:
+            best_fb = max(fb, key=fb.get)
+            best_ml = max(mld, key=mld.get)
+            if best_fb != best_ml:
+                separate = (best_fb, fb[best_fb], best_ml, mld[best_ml])
+        return {"fb": fb, "ml": mld, "shared": shared, "separate": separate}
+
+    def _high80_picks(r):
+        return _high80_data(r) is not None
+
+    def _high80_banner(r):
+        """Highlight banner for the >80% report card."""
+        d = _high80_data(r)
+        if not d:
+            return ""
+        if d["shared"]:
+            cols = " · ".join(
+                f'{k.split("|", 1)[0]} <strong>{k.split("|", 1)[1]}</strong>'
+                f' (FB {d["fb"][k]:.0%} · ML {d["ml"][k]:.0%})'
+                for k in d["shared"])
+            return (f'<div style="background:rgba(34,197,94,0.14);'
+                    f'border:1px solid #22c55e;color:#86efac;padding:6px 10px;'
+                    f'border-radius:6px;font-size:0.82rem;margin-bottom:8px;'
+                    f'font-weight:700;">🔥 BOTH models &gt;80% on the same '
+                    f'outcome: {cols}</div>')
+        if d["separate"]:
+            fk, fp, mk, mp = d["separate"]
+            fm, fpick = fk.split("|", 1)
+            mm, mpick = mk.split("|", 1)
+            return (f'<div style="background:rgba(59,130,246,0.14);'
+                    f'border:1px solid #3b82f6;color:#93c5fd;padding:6px 10px;'
+                    f'border-radius:6px;font-size:0.82rem;margin-bottom:8px;'
+                    f'font-weight:700;">🔥 Both models &gt;80% on separate '
+                    f'outcomes: FB <strong>{fm} {fpick}</strong> ({fp:.0%}) vs '
+                    f'ML <strong>{mm} {mpick}</strong> ({mp:.0%})</div>')
+        src, dk = ("Forebet", d["fb"]) if d["fb"] else ("ML-only", d["ml"])
+        k = max(dk, key=dk.get)
+        m, p = k.split("|", 1)
+        return (f'<div style="background:rgba(250,204,21,0.1);'
+                f'border:1px solid #fbbf24;color:#fde68a;padding:6px 10px;'
+                f'border-radius:6px;font-size:0.82rem;margin-bottom:8px;'
+                f'font-weight:600;">🔥 {src} &gt;80% on '
+                f'<strong>{m} {p}</strong> ({dk[k]:.0%})</div>')
+
+    # ── Bankers: highest probability-of-success report ───────────────────
+    # Estimate the probability of success of each match's default pick from its
+    # confidence tier's LIVE calibrated accuracy, uplifted by independent,
+    # historically-validated confirmations (dual-model >80%, consensus/best,
+    # Forebet agreement, positive Kelly edge).
+    CONF_BASE = {"Near Certain": 0.85, "High": 0.78,
+                 "Medium-High": 0.70, "Medium": 0.62, "Low": 0.52}
+
+    def _banker_eval(r):
+        """Estimated success probability for the default pick, else None when
+        the pick is too weak to bank on."""
+        conf = r.get("confidence", "")
+        if CONF_RANK.get(conf, 99) > CONF_RANK["Medium"]:
+            return None
+        base = CONF_HIST.get(conf, CONF_BASE.get(conf, 0.52))
+        scr, sigs = base, []
+        d80 = _high80_data(r)
+        if d80 and d80["shared"]:
+            scr += 0.10
+            sigs.append("both models >80% on the same outcome")
+        if _has_yellow_pick(r):
+            scr += 0.04
+            sigs.append("consensus pick / best-combined == default")
+        if _consensus_consistent_with_best(r):
+            scr += 0.02
+            sigs.append("consensus pick consistent with best-combined")
+        _, _, fb_agrees = _fb_1x2_comparison(r)
+        if fb_agrees:
+            scr += 0.03
+            sigs.append("Forebet 1X2 agrees")
+        if (r.get("kelly_stake") or 0) > 0:
+            scr += 0.02
+            sigs.append("positive Kelly value")
+        return {"pct": min(scr, 0.97), "base": base, "signals": sigs}
+
+    def _banker_banner(r):
+        pct = r.get("_banker_pct")
+        if not pct:
+            return ""
+        sigs = " · ".join(r.get("_banker_signals") or [])
+        return (f'<div style="background:rgba(34,197,94,0.14);border:1px solid #22c55e;'
+                f'color:#86efac;padding:6px 10px;border-radius:6px;font-size:0.82rem;'
+                f'margin-bottom:8px;font-weight:700;">🏆 BANKER #{r.get("_banker_rank","")} '
+                f'&middot; estimated success {pct:.0%}'
+                f'<div style="font-weight:400;color:#bbf7d0;margin-top:2px;">{sigs}</div></div>')
+
+    def _banker_ticket(results_l):
+        banked = [r for r in results_l if r.get("_banker_pct")]
+        if not banked:
+            return ""
+        avg = sum(r["_banker_pct"] for r in banked) / len(banked)
+        rows_html = "".join(
+            f'<tr><td style="font-weight:700;color:#22c55e;">#{r.get("_banker_rank","")}</td>'
+            f'<td>{r.get("home","")} vs {r.get("away","")}</td>'
+            f'<td>{r.get("league","")}</td><td>{r.get("date","")}</td>'
+            f'<td><strong>{r.get("pick","")}</strong> <span style="color:#94a3b8">({r.get("market","")})</span></td>'
+            f'<td>{r["_banker_pct"]:.0%}</td>'
+            f'<td>{(r.get("kelly_stake") or 0)*100:.1f}%</td></tr>\n'
+            for r in banked)
+        return (f'<h2>🏆 Banker Ticket <span style="font-weight:400;font-size:0.8rem;color:#94a3b8;">'
+                f'highest probability-of-success picks, ranked &middot; play as singles '
+                f'at the Kelly stake</span></h2>'
+                f'<div style="background:#052e16;border:1px solid #22c55e;border-radius:8px;'
+                f'padding:12px 14px;margin-bottom:16px;">'
+                f'<table style="width:100%;font-size:0.84rem;">'
+                f'<tr><th>#</th><th>Match</th><th>League</th><th>Date</th><th>Bet</th>'
+                f'<th>Est. success</th><th>Kelly stake</th></tr>{rows_html}</table>'
+                f'<p style="margin:8px 0 0;font-size:0.78rem;color:#94a3b8;">Avg estimated success: '
+                f'<strong style="color:#86efac;">{avg:.0%}</strong> &middot; {len(banked)} banker(s) '
+                f'&middot; model estimate — flat-stake discipline.</p></div>')
+
     def _venue_stats_html(r):
         parts = []
         hh_gf = r.get("home_home_avg_goals_for")
@@ -4994,6 +5359,11 @@ def _write_html(results, all_urls, compare_forebet, high_only,
                     if ppk == "1X": pc = actual_out in ("Home win", "Draw")
                     elif ppk == "X2": pc = actual_out in ("Away win", "Draw")
                     elif ppk == "12": pc = actual_out in ("Home win", "Away win")
+                elif pmk == "1H":
+                    hth_h, hth_a = r.get("ht_home_goals"), r.get("ht_away_goals")
+                    if hth_h is not None and hth_a is not None:
+                        ht_out = "Home win" if hth_h > hth_a else ("Away win" if hth_h < hth_a else "Draw")
+                        pc = (ppk == ht_out)
                 if pc is True:
                     result_cell = '<td style="color:#22c55e;font-weight:700">✓</td>'
                 elif pc is False:
@@ -5151,6 +5521,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 {_venue_stats_html(r)}
 {_compare_badge}
 {_veto_badge}
+{_high80_banner(r)}
+{_banker_banner(r)}
 <div class="two-models">
 {"".join(f'''<div class="model-panel model-forebet">
 <div class="model-header">
@@ -5245,6 +5617,7 @@ select {{ cursor:pointer; }}
 {"".join(f'<div class="stat" style="border-left:3px solid {_c(c)}">{c} <span style="color:{_c(c)}">{n}</span></div>' for c, n in conf_counts.items())}
 {f'<div class="stat">Forebet 1X2 agreement <span>{agreements}/{total_fb} ({100*agreements//total_fb if total_fb else 0}%)</span></div>' if compare_forebet and total_fb else ""}
 </div>
+{_banker_ticket(filtered)}
 
 <h2>Model Accuracy</h2>
 <div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:16px;">{"".join(f'<div class="stat" style="border-left:3px solid #888"><span style="color:#888">{m["market"]}</span> <span>{m["correct"]}/{m["total"]} ({m["accuracy"]:.0f}%)</span></div>' for m in market_accuracy_data if m["market"])}
@@ -5411,14 +5784,58 @@ function applyFilters() {{
                      _save_to=consistent_path, _title_suffix=" (Consensus ↔ Best)")
         log(f"Consensus↔Best report: {consistent_path.resolve()} ({len(consistent_results)} matches)")
 
+    # ── High-conviction (>80%) report ──
+    high80_results = [r for r in results if _high80_picks(r)]
+    high80_path = None
+    if high80_results:
+        high80_path = pred_dir / "high80.html"
+        _write_html(high80_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=high80_path, _title_suffix=" (High Conviction >80%)")
+        log(f"High>80% report: {high80_path.resolve()} ({len(high80_results)} matches)")
+
+    # ── Bankers report: highest probability-of-success matches, ranked ──
+    banker_results = []
+    for r in results:
+        be = _banker_eval(r)
+        if be and be["pct"] >= BANKER_MIN_PCT:
+            r["_banker_pct"] = be["pct"]
+            r["_banker_base"] = be["base"]
+            r["_banker_signals"] = be["signals"]
+            banker_results.append(r)
+    banker_results.sort(key=lambda x: x["_banker_pct"], reverse=True)
+    for i, r in enumerate(banker_results, 1):
+        r["_banker_rank"] = i
+    banker_path = None
+    if banker_results:
+        banker_path = pred_dir / "bankers.html"
+        _write_html(banker_results, all_urls, compare_forebet, high_only=False,
+                     _save_to=banker_path, _title_suffix=" (Bankers — Highest Success Probability)")
+        log(f"Bankers report: {banker_path.resolve()} ({len(banker_results)} matches)")
+
     # ── Auto-open in browser ──
     webbrowser.open(str(report_path.resolve()))
     if yellow_path:
         webbrowser.open(str(yellow_path.resolve()))
     if consistent_path:
         webbrowser.open(str(consistent_path.resolve()))
+    if high80_path:
+        webbrowser.open(str(high80_path.resolve()))
+    if banker_path:
+        webbrowser.open(str(banker_path.resolve()))
 
-    return report_path, yellow_path, consistent_path
+    # ── Best-picks / consensus / high-conviction reports summary ──
+    if yellow_path:
+        print(f"→ predictions/best.html  ({len([r for r in results if _has_yellow_pick(r)])} yellow-border matches)")
+    if consistent_path:
+        print(f"→ predictions/consistent.html  ({len([r for r in results if _consensus_consistent_with_best(r)])} consensus↔best matches)")
+    if high80_path:
+        n_same = len([r for r in results if _high80_data(r) and _high80_data(r)["shared"]])
+        n_sep = len([r for r in results if _high80_data(r) and not _high80_data(r)["shared"] and _high80_data(r)["separate"]])
+        print(f"→ predictions/high80.html  ({len([r for r in results if _high80_picks(r)])} matches >80% | {n_same} shared-outcome, {n_sep} separate-outcome)")
+    if banker_path:
+        print(f"→ predictions/bankers.html  ({len(banker_results)} highest-probability-of-success matches)")
+
+    return report_path, yellow_path, consistent_path, high80_path, banker_path
 
 
 def _update_index(pred_dir: Path, current_time: str):
@@ -5865,7 +6282,10 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         log(f"[{i}/{len(match_urls)}]", end=" ")
         data = scrape_and_save(url)
         if not data.get("home_team"):
-            log("  [Skipped — no data]")
+            if data.get("_blocked"):
+                log("  [Skipped — Cloudflare rate-limited; wait and re-run]")
+            else:
+                log("  [Skipped — no data]")
             continue
 
         # Analyze
@@ -5938,6 +6358,11 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 if our_main == "1X": correct_pick = actual_outcome in ("Home win", "Draw")
                 elif our_main == "X2": correct_pick = actual_outcome in ("Away win", "Draw")
                 elif our_main == "12": correct_pick = actual_outcome in ("Home win", "Away win")
+            elif our_market == "1H":
+                hth, hta = data.get("ht_home_goals"), data.get("ht_away_goals")
+                if hth is not None and hta is not None:
+                    ht_outcome = "Home win" if hth > hta else ("Away win" if hth < hta else "Draw")
+                    correct_pick = (our_main == ht_outcome)
 
         # Store in DB (map analysis keys to DB column names)
         poisson_probs = pred.get("_poisson_probs", (None, None, None))
@@ -6148,12 +6573,12 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                     _title_suffix=f" — {_r0.get('home', '')} vs {_r0.get('away', '')}")
         log(f"HTML report: {_single_path.resolve()}")
         webbrowser.open(str(_single_path.resolve()))
-        report_path, yellow_path, consistent_path = _single_path, None, None
+        report_path, yellow_path, consistent_path, high80_path, banker_path = _single_path, None, None, None, None
     elif single_link:
         # No usable result for a single-link search — don't touch latest.html.
-        report_path, yellow_path, consistent_path = None, None, None
+        report_path, yellow_path, consistent_path, high80_path, banker_path = None, None, None, None, None
     else:
-        report_path, yellow_path, consistent_path = _write_html(results, match_urls, compare_forebet, high_only)
+        report_path, yellow_path, consistent_path, high80_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:
@@ -6324,12 +6749,6 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             ov = lr["overall"]
             mk_parts = " | ".join(f"{mk} {mv['pct']:.0f}%" for mk, mv in lr.get("markets", {}).items())
             print(f"  \033[32m{prefix:5s}\033[0m {ov['pct']:5.1f}% ({ov['correct']}/{ov['total']})  {mk_parts}")
-
-    # ── Best-picks / consensus reports summary ──
-    if yellow_path:
-        print(f"→ predictions/best.html  ({len([r for r in results if _has_yellow_pick(r)])} yellow-border matches)")
-    if consistent_path:
-        print(f"→ predictions/consistent.html  ({len([r for r in results if _consensus_consistent_with_best(r)])} consensus↔best matches)")
 
     # Schedule retrain ~18h after games finish
     if preds_made > 0:

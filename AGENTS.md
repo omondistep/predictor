@@ -34,9 +34,10 @@ pr --calibrate            # Show accuracy stats per confidence level and league
 ```
 
 ### 4. View reports
-- Report saved to `predictions/latest.html` (overwritten each run, old versions in `predictions/archive/`)
+- `predictions/latest.html` (overwritten each run, old versions in `predictions/archive/`)
 - `predictions/best.html` — matches where the default pick is highlighted yellow (it's a consensus pick or the best combined pick); auto-opened in browser
 - `predictions/consistent.html` — matches where a consensus pick (both models ≥69.5%) is consistent with the best combined pick (e.g. consensus BTTS Yes + best Over 1.5)
+- `predictions/high80.html` — matches where either model assigns a probability >80% to an outcome; cards are highlighted green when **both** models clear 80% on the *same* outcome, blue when they clear 80% on *separate* outcomes
 
 ## How It All Fits Together
 

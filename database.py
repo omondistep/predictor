@@ -645,8 +645,14 @@ def _prediction_correct(pred: str, home_goals: int, away_goals: int) -> bool:
     return False
 
 
-def update_result(match_id: int, home_goals: int, away_goals: int):
-    """Record actual result for a match."""
+def update_result(match_id: int, home_goals: int, away_goals: int,
+                  ht_home_goals=None, ht_away_goals=None):
+    """Record actual result for a match.
+
+    Picks on the First-Half ("1H") market are scored against the half-time
+    result when HT scores are supplied; without them the calibration entry is
+    skipped (a 1H pick cannot be judged by the full-time score). HT scores, when
+    given, are also persisted so the reviews never judge a 1H pick on FT."""
     result = "Home win" if home_goals > away_goals else (
         "Away win" if away_goals > home_goals else "Draw"
     )
@@ -658,6 +664,11 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
             reviewed_at = datetime('now')
         WHERE id = ?
     """, (home_goals, away_goals, result, match_id))
+    if ht_home_goals is not None and ht_away_goals is not None:
+        conn.execute("""
+            UPDATE matches SET ht_home_goals = ?, ht_away_goals = ?
+            WHERE id = ?
+        """, (ht_home_goals, ht_away_goals, match_id))
     conn.commit()
 
     # Log calibration
@@ -670,27 +681,40 @@ def update_result(match_id: int, home_goals: int, away_goals: int):
     if match:
         market = match["our_market"] or ""
         pick = match["our_prediction"] or ""
-        # DNB picks on a draw are pushes — skip calibration log
-        if market == "DNB" and home_goals == away_goals:
-            our_correct = None
-        else:
-            our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
-        fb_correct = 1 if match["forebet_pred"] and _prediction_correct(match["forebet_pred"], home_goals, away_goals) else 0
-
-        odds = None
-        market = match["our_market"] or ""
-        pick = match["our_prediction"] or ""
-        if market == "1X2":
-            odds = {"Home win": match["odds_home"], "Draw": match["odds_draw"], "Away win": match["odds_away"]}.get(pick)
-        elif market == "O/U":
-            if "Over" in pick:
-                odds = match["odds_over25"]
+        # First-Half picks score against the HT result; skip when no HT data
+        if market == "1H":
+            if ht_home_goals is not None and ht_away_goals is not None:
+                if ht_home_goals > ht_away_goals:
+                    ht_outcome = "Home win"
+                elif ht_home_goals < ht_away_goals:
+                    ht_outcome = "Away win"
+                else:
+                    ht_outcome = "Draw"
+                our_correct = 1 if pick == ht_outcome else 0
             else:
-                odds = match["odds_under25"]
-        elif market == "BTTS":
-            odds = match["odds_btts_yes"] if pick == "Yes" else match["odds_btts_no"]
-        elif market == "DNB":
-            odds = match["odds_home"] if "Home" in pick else match["odds_away"]
+                our_correct = None
+            fb_correct = 0
+            odds = None
+        else:
+            # DNB picks on a draw are pushes — skip calibration log
+            if market == "DNB" and home_goals == away_goals:
+                our_correct = None
+            else:
+                our_correct = 1 if _prediction_correct(match["our_prediction"], home_goals, away_goals) else 0
+            fb_correct = 1 if match["forebet_pred"] and _prediction_correct(match["forebet_pred"], home_goals, away_goals) else 0
+
+            odds = None
+            if market == "1X2":
+                odds = {"Home win": match["odds_home"], "Draw": match["odds_draw"], "Away win": match["odds_away"]}.get(pick)
+            elif market == "O/U":
+                if "Over" in pick:
+                    odds = match["odds_over25"]
+                else:
+                    odds = match["odds_under25"]
+            elif market == "BTTS":
+                odds = match["odds_btts_yes"] if pick == "Yes" else match["odds_btts_no"]
+            elif market == "DNB":
+                odds = match["odds_home"] if "Home" in pick else match["odds_away"]
 
         if our_correct is not None:
             conn.execute("""
@@ -1047,6 +1071,12 @@ def store_market_results(match_id: int, all_picks: list, actual_home_goals: int,
                 correct = 1 if actual_outcome in ("Away win", "Draw") else 0
             elif pick == "12":
                 correct = 1 if actual_outcome in ("Home win", "Away win") else 0
+        elif market == "1H":
+            hh = (match_data or {}).get("ht_home_goals")
+            ha = (match_data or {}).get("ht_away_goals")
+            if hh is not None and ha is not None:
+                ht_outcome = "Home win" if hh > ha else ("Away win" if hh < ha else "Draw")
+                correct = 1 if pick == ht_outcome else 0
 
         if correct is None:
             continue

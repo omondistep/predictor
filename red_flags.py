@@ -146,10 +146,23 @@ def detect_red_flags(
                 "severity": "critical",
                 "msg": f"Impossible odds ({oh}/{od}/{oa}) — scrape artifact",
             })
-        elif abs(oh - od) < 1e-9 or abs(od - oa) < 1e-9:
+        elif oh == od == oa:
             flags.append({
                 "severity": "critical",
-                "msg": f"Duplicate odds prices ({oh}/{od}/{oa}) — likely bad parse",
+                "msg": (f"Identical odds for all three outcomes ({oh}/{od}/{oa}) "
+                        f"— verify scrape"),
+            })
+        elif abs(oh - od) < 1e-9 or abs(od - oa) < 1e-9:
+            # The structured .prmod parse yields genuine market prices, where
+            # an equal home/draw (or draw/away) pair is a normal tight market
+            # (e.g. 3.10/3.10/2.05) — not the old text-order misfire that used
+            # to duplicate the predicted-outcome price. Surface it, but do not
+            # call it a parse artifact.
+            dup = "home/draw" if abs(oh - od) < 1e-9 else "draw/away"
+            flags.append({
+                "severity": "high",
+                "msg": (f"Identical odds on {dup} ({oh}/{od}/{oa}) — tight "
+                        f"market or stale prices, verify"),
             })
         else:
             overround = 1.0 / oh + 1.0 / od + 1.0 / oa
