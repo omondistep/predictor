@@ -88,7 +88,7 @@ def _platt_params_from_logits(pos_logits: np.ndarray, neg_logits: np.ndarray,
 # Calibration analysis
 # ---------------------------------------------------------------------------
 
-def analyze_calibration(min_samples: int = 10, days_back: int = 365):
+def analyze_calibration(min_samples: int = 30, days_back: int = 365):
     """Analyze all reviewed predictions and store bias corrections.
 
     For each league/market/probability-bucket, compares the mean predicted
@@ -231,11 +231,14 @@ def analyze_calibration(min_samples: int = 10, days_back: int = 365):
 # ---------------------------------------------------------------------------
 
 def apply_bias_correction(league: str, market: str, threshold: str,
-                          prob: float, min_samples: int = 10) -> float:
+                          prob: float, min_samples: int = 30,
+                          max_bias: float = 0.40) -> float:
     """Apply a learned bias correction to a probability.
 
     Looks up the calibration bias for the given league/market/threshold/bucket
-    and adjusts the probability accordingly.
+    and adjusts the probability accordingly. Only corrections backed by
+    `min_samples` reviewed examples are eligible, and the applied magnitude is
+    capped at `max_bias` so small-sample noise cannot destroy a probability.
     """
     if prob <= 0 or prob >= 1:
         return prob
@@ -254,6 +257,10 @@ def apply_bias_correction(league: str, market: str, threshold: str,
     if best_match is None:
         return prob
 
+    # Cap the correction magnitude: a |bias| > max_bias on a modest sample is
+    # more likely noise than signal, so don't let it swallow the base model.
+    best_bias = max(-max_bias, min(max_bias, best_bias))
+
     # Apply bias correction: if bias = actual - predicted,
     # corrected_prob = prob + bias
     corrected = prob + best_bias
@@ -262,18 +269,19 @@ def apply_bias_correction(league: str, market: str, threshold: str,
 
 
 def apply_all_bias_corrections(league: str, probs_1x2: dict, probs_ou: dict,
-                                min_samples: int = 10) -> tuple:
+                                min_samples: int = 30,
+                                max_bias: float = 0.40) -> tuple:
     """Apply bias corrections to all 1X2 and O/U probabilities."""
     corrected_1x2 = {}
     for outcome, prob in probs_1x2.items():
         corrected_1x2[outcome] = apply_bias_correction(
-            league, "1X2", outcome, prob, min_samples
+            league, "1X2", outcome, prob, min_samples, max_bias
         )
 
     corrected_ou = {}
     for label, prob in probs_ou.items():
         corrected_ou[label] = apply_bias_correction(
-            league, "O/U", label, prob, min_samples
+            league, "O/U", label, prob, min_samples, max_bias
         )
 
     # Renormalize 1X2

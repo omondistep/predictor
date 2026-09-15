@@ -1543,7 +1543,7 @@ def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_awa
         probs_1x2 = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
         probs_ou = {"Over": p_over, "Under": p_under}
         corrected_1x2, corrected_ou = apply_all_bias_corrections(
-            league_key, probs_1x2, probs_ou, min_samples=10
+            league_key, probs_1x2, probs_ou, min_samples=30
         )
         return (
             corrected_1x2["Home win"],
@@ -6578,7 +6578,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # No usable result for a single-link search — don't touch latest.html.
         report_path, yellow_path, consistent_path, high80_path, banker_path = None, None, None, None, None
     else:
-        report_path, yellow_path, consistent_path, high80_path = _write_html(results, match_urls, compare_forebet, high_only)
+        report_path, yellow_path, consistent_path, high80_path, banker_path = _write_html(results, match_urls, compare_forebet, high_only)
 
     # Filter by confidence
     if high_only:

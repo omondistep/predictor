@@ -1,5 +1,28 @@
 # Predictor Instructions
 
+## Bettor Agent (opencode)
+
+A sharp, self-improving betting agent ships in this repo (`.opencode/agent/bettor.md`).
+It learns from the model, audits weaknesses, improves the pipeline, and produces
+its own staking card. Select it in opencode, or use its commands:
+
+| Command | What it does |
+|---------|--------------|
+| `/bettor audit` | Full weakness report (confidence calibration, anti-leagues, model-vs-model, bias corrections) |
+| `/bettor book <slate>` | Bettor's own card: de-vigged edge, EV%, Quarter-Kelly stakes, league reliability |
+| `/bettor improve <weakness>` | Implement a data-backed fix + verify against history |
+
+Supporting toolbox (stdlib, read-only on `history.db`):
+```bash
+.venv/bin/python scripts/bettor.py audit            # weakness report
+.venv/bin/python scripts/bettor.py audit --json     # machine-readable
+.venv/bin/python scripts/bettor.py card <preds.json | links.txt>   # betting card
+.venv/bin/python scripts/bettor.py learn            # bias analysis + ML retrain
+```
+House rules the agent follows: no bet without +EV (odds de-vigged), ignore
+samples < 25–30, Quarter-Kelly capped at 5%, scrap picks with red flags, never
+commit unless asked.
+
 ## Core Commands
 
 | Command | Description |
