@@ -24,7 +24,10 @@ import time
 from datetime import datetime, timedelta
 from pathlib import Path
 
-BASE = Path(__file__).parent
+# Repo root lives one level above scripts/ — add it to sys.path so the
+# root-level modules (database, forebet_scraper, calibration_learner) import.
+BASE = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(BASE))
 
 from database import (
     get_db, init_db, get_unreviewed_matches, update_result,

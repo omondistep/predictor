@@ -17,6 +17,7 @@ Supporting toolbox (stdlib, read-only on `history.db`):
 .venv/bin/python scripts/bettor.py audit            # weakness report
 .venv/bin/python scripts/bettor.py audit --json     # machine-readable
 .venv/bin/python scripts/bettor.py card <preds.json | links.txt>   # betting card
+.venv/bin/python scripts/bettor.py slip <slip.txt>                 # multi-bet leg verdict (BET/PASS/KILL/NO-DATA) + card
 .venv/bin/python scripts/bettor.py learn            # bias analysis + ML retrain
 ```
 House rules the agent follows: no bet without +EV (odds de-vigged), ignore

@@ -88,18 +88,25 @@ ln -sf "$DIR/pr" "$BINDIR/predict"
 ln -sf "$DIR/pr" "$BINDIR/predictor"
 echo "==> Alias created: $BINDIR/pr -> $DIR/pr"
 
-# ── Ensure ~/.local/bin is on PATH ───────────────────────────────────────────
-if [[ ":$PATH:" != *":$BINDIR:"* ]]; then
+# ── Ensure ~/.local/bin is FIRST on PATH (so `pr` beats /usr/bin/pr) ────────
+# ...and source the predictor aliases so every command works from any shell.
+if ! grep -qF "aliases.sh" "$HOME/.zshrc" "$HOME/.bashrc" 2>/dev/null; then
     RC_FILE=""
     [ -f "$HOME/.zshrc" ] && RC_FILE="$HOME/.zshrc"
     [ -z "$RC_FILE" ] && [ -f "$HOME/.bashrc" ] && RC_FILE="$HOME/.bashrc"
     if [ -n "$RC_FILE" ]; then
-        if ! grep -qF "PATH.*$BINDIR" "$RC_FILE" 2>/dev/null; then
-            printf '\n# Predictor\ncase ":$PATH:" in *:%s:*) ;; *) export PATH="$PATH:%s" ;; esac\n' "$BINDIR" "$BINDIR" >> "$RC_FILE"
-            echo "==> Added $BINDIR to PATH ($RC_FILE)"
-        fi
+        cat >> "$RC_FILE" <<EOF
+
+# Predictor: put ~/.local/bin FIRST so \`pr\` beats /usr/bin/pr (coreutils)
+PATH="\$(printf ':%s:' "\$PATH" | sed "s#:$BINDIR:#:#g")"
+PATH="\${PATH#:}"; PATH="\${PATH%:}"
+export PATH="$BINDIR:\$PATH"
+[ -f "$DIR/scripts/aliases.sh" ] && source "$DIR/scripts/aliases.sh"
+EOF
+        echo "==> Added $BINDIR to PATH (prepended) + sources aliases in $RC_FILE"
     else
-        echo "==> Add to your shell rc: export PATH=\"\$PATH:$BINDIR\""
+        echo "==> Add to your shell rc: export PATH=\"$BINDIR:\$PATH\" && source $DIR/scripts/aliases.sh"
+
     fi
 fi
 

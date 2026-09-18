@@ -4,6 +4,7 @@ import re
 import json
 import time
 import sys
+from pathlib import Path
 import requests
 from bs4 import BeautifulSoup
 
@@ -15,8 +16,10 @@ HEADERS = {
     )
 }
 
-URLS_FILE = "played.txt"
-RESULTS_FILE = "scraped_results.json"
+# Repo root lives one level above scripts/ — files live at repo root
+REPO_ROOT = Path(__file__).resolve().parent.parent
+URLS_FILE = REPO_ROOT / "played.txt"
+RESULTS_FILE = REPO_ROOT / "scraped_results.json"
 BATCH_SIZE = 50
 DELAY = 0.3  # seconds between requests
 BATCH_DELAY = 1.0  # extra delay between batches

@@ -182,7 +182,7 @@ class ForebetScraper:
             parts = re.split(r"\s*[Vv][Ss]\s*|(?:\s+-\s+)", text, maxsplit=1)
             if len(parts) == 2:
                 self.data["home_team"] = parts[0].strip()
-                self.data["away_team"] = parts[1].strip()
+                self.data["away_team"] = self._strip_date_suffix(parts[1])
 
         # Try breadcrumb for league
         bread = self.soup.find("div", {"class": "breadcrumb"})
@@ -268,6 +268,30 @@ class ForebetScraper:
             if m:
                 day, month, year = m.group(1), m.group(2), m.group(3)
                 self.data["match_date"] = f"{year}-{int(month):02d}-{int(day):02d}"
+
+    @staticmethod
+    def _strip_date_suffix(name: str) -> str:
+        """Strip a glued kickoff timestamp from a team name.
+
+        The page h1 sometimes renders as "Team A VS Team B16/09/2026 01:00 GMT",
+        which contaminates away_team with the match date/time.  Strip date,
+        clock and TZ tokens when they trail the name.
+        """
+        if not name:
+            return name
+        cleaned = re.sub(
+            r"\s*\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{4}\s*$", "", name.strip()
+        )
+        cleaned = re.sub(
+            r"\s+\d{1,2}:\d{2}\s*[A-Z]{0,4}\s*$", "", cleaned
+        )
+        cleaned = re.sub(
+            r"\s*GMT\s*$", "", cleaned, flags=re.IGNORECASE
+        )
+        # Glued date with no leading whitespace (e.g. "Brooklyn FC16/09/2026")
+        if re.search(r"\d{1,2}/\d{1,2}/\d{4}$", cleaned):
+            cleaned = re.sub(r"\d{1,2}/\d{1,2}/\d{4}$", "", cleaned)
+        return cleaned.strip()
 
     def _parse_score(self):
         """Extract actual match score for finished games.

@@ -27,7 +27,9 @@ HEADERS = {
     )
 }
 
-PREDICT_PY = Path(__file__).parent / "predict.py"
+# Repo root lives one level above scripts/
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PREDICT_PY = REPO_ROOT / "predict.py"
 
 # ---------------------------------------------------------------------------
 # League detection (mirrors predict.py detect_league + cnfupdate.py)

@@ -53,6 +53,13 @@ class MatchContext:
     p_home: float = 0.0
     p_draw: float = 0.0
     p_away: float = 0.0
+    p_over25: float = 0.0
+    p_under25: float = 0.0
+    p_btts_yes: float = 0.0
+    p_btts_no: float = 0.0
+    p_1x: float = 0.0
+    p_x2: float = 0.0
+    p_12: float = 0.0
     exp_h: float = 0.0
     exp_a: float = 0.0
     vol: float = 0.1
@@ -76,6 +83,10 @@ class MatchContext:
     odds_home: Optional[float] = None
     odds_draw: Optional[float] = None
     odds_away: Optional[float] = None
+    odds_over25: Optional[float] = None
+    odds_under25: Optional[float] = None
+    odds_btts_yes: Optional[float] = None
+    odds_btts_no: Optional[float] = None
     # Forebet win percentages (almost always present even when decimal odds are
     # missing) — used to derive an effective price when real odds are absent.
     fb_home_pct: Optional[float] = None
@@ -179,20 +190,51 @@ def _derive_odds_from_fb(pct_home, pct_draw, pct_away, pick):
 def edge_for(ctx: MatchContext, market: str, pick: str) -> Optional[float]:
     """Positive when model prob exceeds bookmaker-implied prob.
 
-    Uses real decimal odds when available; otherwise derives an effective price
-    from Forebet win percentages so the value term still fires on matches that
-    lack market odds.
+    Prices every supported market — 1X2, O/U 2.5, BTTS and DC — so the
+    synthesize() ranking can favour the single best-EV pick instead of only
+    rewarding the model probs.  Uses real decimal odds when available;
+    otherwise derives an effective price for 1X2 from Forebet win percentages
+    so the value term still fires on matches that lack market odds.
     """
-    if market != "1X2":
-        return None
-    odds = {"Home win": ctx.odds_home, "Draw": ctx.odds_draw, "Away win": ctx.odds_away}.get(pick)
-    if odds is None or odds <= 1.0:
-        odds = _derive_odds_from_fb(ctx.fb_home_pct, ctx.fb_draw_pct, ctx.fb_away_pct, pick)
-    prob = {"Home win": ctx.p_home, "Draw": ctx.p_draw, "Away win": ctx.p_away}.get(pick)
+    odds = None
+    prob = None
+    if market == "1X2":
+        odds = {"Home win": ctx.odds_home, "Draw": ctx.odds_draw, "Away win": ctx.odds_away}.get(pick)
+        if odds is None or odds <= 1.0:
+            odds = _derive_odds_from_fb(ctx.fb_home_pct, ctx.fb_draw_pct, ctx.fb_away_pct, pick)
+        prob = {"Home win": ctx.p_home, "Draw": ctx.p_draw, "Away win": ctx.p_away}.get(pick)
+    elif market == "O/U":
+        if pick == "Over 2.5":
+            odds, prob = ctx.odds_over25, ctx.p_over25
+        elif pick == "Under 2.5":
+            odds, prob = ctx.odds_under25, ctx.p_under25
+    elif market == "BTTS":
+        if pick == "Yes":
+            odds, prob = ctx.odds_btts_yes, ctx.p_btts_yes
+        elif pick == "No":
+            odds, prob = ctx.odds_btts_no, ctx.p_btts_no
+    elif market == "DC":
+        if pick == "1X":
+            odds, prob = _dc_odds([ctx.odds_home, ctx.odds_draw]), ctx.p_1x
+        elif pick == "X2":
+            odds, prob = _dc_odds([ctx.odds_draw, ctx.odds_away]), ctx.p_x2
+        elif pick == "12":
+            odds, prob = _dc_odds([ctx.odds_home, ctx.odds_away]), ctx.p_12
+        if odds is None or odds <= 1.0:
+            return None
     if odds is None or prob is None or odds <= 1.0:
         return None
     implied = 1.0 / odds
+
     return prob - implied
+
+
+def _dc_odds(parts) -> Optional[float]:
+    """Combined fair DC odds 1/(1/a1 + 1/a2) from two decimal prices, or None."""
+    parts = [p for p in parts if p and p > 1.0]
+    if len(parts) != 2:
+        return None
+    return round(1.0 / (1.0 / parts[0] + 1.0 / parts[1]), 3)
 
 
 # ---------------------------------------------------------------------------
@@ -415,8 +457,22 @@ def context_from_pred(pred: dict, data: dict, vol: float = 0.1,
                       away_win_boosted: bool = False) -> MatchContext:
     ph, pd, pa = pred.get("_poisson_probs", (0.0, 0.0, 0.0))
     eh, ea = pred.get("_exp_goals", (0.0, 0.0))
+    ml_odds = (pred.get("_ml_odds") or {})
+    _ml_ou = ml_odds.get("ml_ou", {}).get("probs", {})
+    _ml_btts = ml_odds.get("ml_btts", {}).get("probs", {}) if pred.get("_ml_odds") else {}
+    _ml_dc = ml_odds.get("ml_dc", {}).get("probs", {}) if pred.get("_ml_odds") else {}
+    p_over25 = pred.get("_p_over25", _ml_ou.get("over", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_under25 = pred.get("_p_under25", _ml_ou.get("under", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_btts_yes = pred.get("_p_btts_yes", _ml_btts.get("yes", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_btts_no = pred.get("_p_btts_no", _ml_btts.get("no", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_1x = pred.get("_p_1x", _ml_dc.get("1X", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_x2 = pred.get("_p_x2", _ml_dc.get("X2", 0.0) if pred.get("_ml_odds") else 0.0)
+    p_12 = pred.get("_p_12", _ml_dc.get("12", 0.0) if pred.get("_ml_odds") else 0.0)
     return MatchContext(
         p_home=ph, p_draw=pd, p_away=pa,
+        p_over25=p_over25, p_under25=p_under25,
+        p_btts_yes=p_btts_yes, p_btts_no=p_btts_no,
+        p_1x=p_1x, p_x2=p_x2, p_12=p_12,
         exp_h=eh, exp_a=ea,
         vol=vol, form_signal=form_signal, trans_signal=trans_signal,
         draw_tendency=draw_tendency, draw_factors=draw_factors,
@@ -428,6 +484,8 @@ def context_from_pred(pred: dict, data: dict, vol: float = 0.1,
         warnings=pred.get("_warnings", []),
         odds_home=data.get("odds_home"), odds_draw=data.get("odds_draw"),
         odds_away=data.get("odds_away"),
+        odds_over25=data.get("odds_over25"), odds_under25=data.get("odds_under25"),
+        odds_btts_yes=data.get("odds_btts_yes"), odds_btts_no=data.get("odds_btts_no"),
         fb_home_pct=data.get("forebet_home_pct"),
         fb_draw_pct=data.get("forebet_draw_pct"),
         fb_away_pct=data.get("forebet_away_pct"),

@@ -1027,9 +1027,10 @@ def _auto_calibrate_thresholds():
                 adjusted += 1
 
         if adjusted:
-            print(f"[calibrate] Thresholds tightened from {total_pool} calibration records ({adjusted} changes)")
+            print(f"[calibrate] Thresholds tightened from {total_pool} calibration records ({adjusted} changes)",
+                  file=sys.stderr, flush=True)
     except Exception as e:
-        print(f"[calibrate] Could not auto-calibrate: {e}")
+        print(f"[calibrate] Could not auto-calibrate: {e}", file=sys.stderr, flush=True)
 
 
 def _ppg(form_str: str) -> float:
@@ -1605,6 +1606,141 @@ def _recency_weight(date_str: str, decay_days: float = 30) -> float:
         return max(0.2, min(1.0, 1.0 - days_ago / decay_days))
     except (ValueError, TypeError):
         return 0.5
+
+
+def _venue_h2h_prior(data: dict, exp_h: float, exp_a: float, ml_signal_weights=None):
+    """Venue-specific pairwise ("bogey team") H2H prior blended into exp goals.
+
+    The last-H2H persistence handles a single recent meeting; this generalises
+    it to the full pair record broken out by venue.  A team that owns the
+    fixture at THIS venue (≥3 meetings at home, win share >0.66) gets a small
+    expected-goal shift — enough to flip coin-flips toward the historical
+    owner, never enough to override a strong model read.
+
+    Returns (exp_h, exp_a, reason|None).
+    """
+    h2h = data.get("h2h_details") or []
+    if not h2h and data.get("h2h_matches"):
+        return exp_h, exp_a, None
+    home_team = (data.get("home_team") or "").strip()
+    if not home_team:
+        return exp_h, exp_a, None
+
+    at_home = [d for d in h2h if d.get("venue") == "home"]
+    if len(at_home) < 3:
+        return exp_h, exp_a, None
+
+    n = len(at_home)
+    wins = sum(1 for d in at_home if d.get("result") == "W")
+    draws = sum(1 for d in at_home if d.get("result") == "D")
+    losses = n - wins - draws
+    win_share = (wins + 0.5 * draws) / n if n else 0.0
+
+    # A ~10% overall shift for decisive ownership, capped at 0.15 goals/side,
+    # scaled down by how small the sample is.
+    edge = abs(win_share - 0.5)
+    if edge < 0.16:  # 0.66+ win share threshold ≈ bogey territory
+        return exp_h, exp_a, None
+    strength = min(1.0, n / 6.0)
+    _w = ml_signal_weights.get("h2h", 1.0) if ml_signal_weights else 1.0
+    shift = min(0.15, (edge - 0.16) * 0.55 * strength * _w)
+    if shift < 0.03:
+        return exp_h, exp_a, None
+
+    if win_share > 0.5:
+        exp_h = min(exp_h + shift, 3.4)
+        exp_a = max(exp_a - shift * 0.3, 0.05)
+        owner, opp = home_team, (data.get("away_team") or "?".strip())
+        reason = (f"[H2H-VENUE] {owner} own this fixture at home "
+                  f"({wins}W-{draws}D-{losses}L in last {n} home meetings, "
+                  f"share {win_share:.0%}) — +{shift:.2f} exp goals")
+    else:
+        exp_a = min(exp_a + shift, 3.4)
+        exp_h = max(exp_h - shift * 0.3, 0.05)
+        owner, opp = (data.get("away_team") or "?".strip()), home_team
+        reason = (f"[H2H-VENUE] {owner} own this fixture at {home_team}'s ground "
+                  f"({losses}L-{draws}D-{wins}W in last {n} home meetings, "
+                  f"share {win_share:.0%}) — +{shift:.2f} away exp goals")
+    return exp_h, exp_a, reason
+
+
+def _injury_goal_adjustment(data: dict, exp_h: float, exp_a: float) -> tuple:
+    """Role-weighted injury adjustment: shrink scoring power, inflate conceding.
+
+    Striker/key/keeper absences hit expected goals harder than squad rotation:
+    F 1.5x, K/defender 1.2x, key players 2x, midfielder 1x, per absence.  Small
+    per-position fractional deltas keep the cap tight (0.30 goals/side).
+    """
+    def _impact(prefix):
+        total = data.get(f"{prefix}_injured_total", 0) or 0
+        if not total:
+            return 0.0
+        fwd = data.get(f"{prefix}_forwards_out", 0) or 0
+        mid = data.get(f"{prefix}_midfielders_out", 0) or 0
+        dfn = data.get(f"{prefix}_defenders_out", 0) or 0
+        gkp = data.get(f"{prefix}_keepers_out", 0) or 0
+        key = data.get(f"{prefix}_key_players_out", 0) or 0
+        return (
+            fwd * 0.045
+            + mid * 0.030
+            + dfn * 0.036
+            + gkp * 0.040
+            + key * 0.015
+        )
+
+    home_miss = _impact("home")   # hurts home scoring
+    away_miss = _impact("away")   # hurts away scoring
+    # Defensive absences also raise what the OPPONENT scores (approximated by
+    # half the missing side's own impact, biased by defenders/keepers).
+    def _defensive_hit(prefix):
+        dfn = data.get(f"{prefix}_defenders_out", 0) or 0
+        gkp = data.get(f"{prefix}_keepers_out", 0) or 0
+        return (dfn + gkp) * 0.030
+
+    home_d = _defensive_hit("home")   # home concedes more
+    away_d = _defensive_hit("away")   # away concedes more
+
+    adj_h = min(0.30, max(0.0, home_miss / 3.0 + away_d / 2.0))
+    adj_a = min(0.30, max(0.0, away_miss / 3.0 + home_d / 2.0))
+    if adj_h + adj_a < 0.03:
+        return exp_h, exp_a, None
+    exp_h = max(0.15, exp_h - adj_h + away_d / 2.0 * 0.4)
+    exp_a = max(0.15, exp_a - adj_a + home_d / 2.0 * 0.4)
+    reason = (f"[INJURY] {data.get('home_team','?')} missing "
+              f"{data.get('home_injured_total',0)} ({data.get('home_forwards_out',0)}F/"
+              f"{data.get('home_midfielders_out',0)}M/{data.get('home_defenders_out',0)}D/"
+              f"{data.get('home_keepers_out',0)}K) vs {data.get('away_team','?')} missing "
+              f"{data.get('away_injured_total',0)} ({data.get('away_forwards_out',0)}F/"
+              f"{data.get('away_midfielders_out',0)}M/{data.get('away_defenders_out',0)}D/"
+              f"{data.get('away_keepers_out',0)}K)")
+    return exp_h, exp_a, reason
+
+
+def _modal_scoreline_draw_boost(exp_h: float, exp_a: float, p_draw: float) -> float:
+    """Boost the draw when the modal scoreline IS a draw (0-0 / 1-1).
+
+    Low-scoring, strength-neutral games cluster on drawn scorelines (1-1 is
+    the single most likely result at ~14% there).  When P_mass on {0-0, 1-1}
+    is high and neither side owns the game, nudge the draw share up so the
+    primary pick isn't a coin-flipped side that bleeds value.
+    """
+    if exp_h <= 0.05 or exp_a <= 0.05:
+        return p_draw
+    from math import exp as _exp, factorial
+    phi_h = _exp(-exp_h)
+    phi_a = _exp(-exp_a)
+    p00 = phi_h * phi_a
+    p11 = (exp_h * phi_h) * (exp_a * phi_a)
+    p_draw_mass = p00 + p11
+    total = exp_h + exp_a
+    neutral = abs(exp_h - exp_a) <= 0.30
+    low_scoring = total < 2.7   # 0-0/1-1 cluster when total goals are low
+    if not (neutral and low_scoring and p_draw_mass >= 0.16):
+        return p_draw
+    boost = min(0.05, (p_draw_mass - 0.16) * 0.30)
+    new_d = min(0.50, p_draw + boost)
+    # Never downgrade — only ever lift the draw share a little
+    return max(p_draw, new_d)
 
 
 def _get_team_form_details(data: dict, side: str) -> list:
@@ -2256,6 +2392,7 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
 
     Returns a dict structured identically to analyze_from_data() output.
     """
+    reasoning = []
     ml_model = _load_ml_model()
     if not ml_model:
         return {}
@@ -2320,6 +2457,34 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     exp_a *= (1.0 - 0.5 * (1.0 - away_score_rate)) * (1.0 - 0.5 * home_cs_rate)
     exp_h = max(exp_h, 0.1)
     exp_a = max(exp_a, 0.1)
+
+    # ── Venue-seeded H2H pairwise prior (bogey-team ownership) ──
+    _adj_fired = False
+    _adj_reasons = []
+    exp_h, exp_a, _vhh = _venue_h2h_prior(data, exp_h, exp_a)
+    if _vhh:
+        _adj_reasons.append(_vhh)
+        _adj_fired = True
+
+    # ── Role-weighted injury adjustment ──
+    exp_h, exp_a, _inj = _injury_goal_adjustment(data, exp_h, exp_a)
+    if _inj:
+        _adj_reasons.append(_inj)
+        _adj_fired = True
+
+    # Re-derive 1X2 from the adjusted goals and blend gently with the ML probs;
+    # without this the H2H/injury signals could never move the primary pick.
+    if _adj_fired:
+        _ph2 = prob_home_win(exp_h, exp_a)
+        _pd2 = prob_draw(exp_h, exp_a)
+        _pa2 = max(0.0, 1.0 - _ph2 - _pd2)
+        _blend = 0.30
+        ph = ph * (1 - _blend) + _ph2 * _blend
+        pd = pd * (1 - _blend) + _pd2 * _blend
+        pa = pa * (1 - _blend) + _pa2 * _blend
+        _t = ph + pd + pa
+        ph, pd, pa = ph / _t, pd / _t, pa / _t
+
     exp_total = exp_h + exp_a
 
     # ── BTTS from scoring data ──
@@ -2366,6 +2531,7 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
 
     # ── Form reasoning ──
     form_reasoning = []
+    form_reasoning.extend(_adj_reasons)
     if hf:
         form_reasoning.append(
             f"H last 6: {h_stats['w']}W-{h_stats['d']}D-{h_stats['l']}L "
@@ -2462,6 +2628,17 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     if len(_draw_factors) >= 3 and top_pick != "Draw":
         _draw_boost = min(len(_draw_factors) * 0.02, 0.06)
         p_draw_boosted = min(pd + _draw_boost, 0.55)
+
+    # Modal-scoreline draw boost: when the most likely result IS a drawn
+    # scoreline (0-0/1-1 cluster, strength-neutral), the side pick is a
+    # coin-flip — lift the draw so the primary isn't a value-bleeder.
+    _modal_boosted = _modal_scoreline_draw_boost(exp_h, exp_a, p_draw_boosted)
+    if _modal_boosted > p_draw_boosted + 0.001:
+        p_draw_boosted = _modal_boosted
+        reasoning.append(
+            f"⚠ Modal scoreline is a draw ({prob_draw(exp_h, exp_a):.0%} 1X2 draw) — "
+            f"draw boosted to {p_draw_boosted:.0%}"
+        )
 
     # ── Build candidates ──
     candidates = []
@@ -2639,9 +2816,7 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
             odds=prob_to_odds(p_btts_no))
 
     # ── Synthesis ──
-    reasoning = []
-
-    # ── League reliability factor ──
+    # League reliability factor ──
     _ld = _get_league_difficulty(data.get("league", ""))
     if _ld.get("level") == "hard":
         reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
@@ -2678,6 +2853,10 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
             draw_tendency=_draw_tendency, draw_factors=len(_draw_factors),
             top_pick=top_pick, margin=margin,
         )
+        _synth_ctx.p_over25, _synth_ctx.p_under25 = p_over, 1.0 - p_over
+        _synth_ctx.p_btts_yes, _synth_ctx.p_btts_no = p_btts_yes, 1.0 - p_btts_yes
+        p_1x, p_x2, p_12 = ph + pd, pd + pa, ph + pa
+        _synth_ctx.p_1x, _synth_ctx.p_x2, _synth_ctx.p_12 = p_1x, p_x2, p_12
         candidates = synthesize(_synth_ctx, candidates, ml_only=True)
         _synth_rationale = build_synthesis_rationale(_synth_ctx, candidates, candidates[0])
         reasoning.append(_synth_rationale)
@@ -3346,6 +3525,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                     f"{'Over' if _lho['total_goals'] > 2.5 else 'Under'} 2.5 tendency"
                 )
 
+    # ── Venue-seeded PAIRWISE H2H prior (complements the single last-meeting) ──
+    # Bogey-team ownership: a side that decisively owns THIS fixture at THIS
+    # venue owns a slice of tomorrow's expected goals too.
+    _vreason = None
+    exp_h, exp_a, _vreason = _venue_h2h_prior(data, exp_h, exp_a, ml_signal_weights)
+    if _vreason:
+        reasoning.append(_vreason)
+        signal_blend = min(0.65, signal_blend + min(0.05, 0.08))
+        method_parts.append("h2h-venue")
+
+    # ── Role-weighted injury adjustment ──
+    _ireason = None
+    exp_h, exp_a, _ireason = _injury_goal_adjustment(data, exp_h, exp_a)
+    if _ireason:
+        reasoning.append(_ireason)
+        signal_blend = min(0.65, signal_blend + min(0.05, 0.08))
+        method_parts.append("injury")
+
     # ── Single final probability recompute from adjusted expected goals ──
     # Every signal above only modified exp_h/exp_a; now derive probabilities once
     # and blend with the ML/DC base, weighted by how strongly the signals fired.
@@ -3429,6 +3626,25 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         p_home /= total_1x2
         p_draw /= total_1x2
         p_away /= total_1x2
+
+    # ── Modal-scoreline draw boost ──
+    # When the modal outcome IS a drawn scoreline (0-0/1-1 cluster, neutral
+    # matchup), a side pick is a coin flip — lift the draw share a touch so the
+    # primary isn't a value-bleeding 1X2 coin toss.
+    _mdo = data.get("_exp_goals")
+    _meh, _mea = _mdo if _mdo else (exp_h, exp_a)
+    _modal_draw = _modal_scoreline_draw_boost(_meh, _mea, p_draw)
+    if _modal_draw > p_draw + 0.001:
+        p_draw = _modal_draw
+        _tp2 = p_home + p_draw + p_away
+        if _tp2 > 0:
+            p_home /= _tp2
+            p_draw /= _tp2
+            p_away /= _tp2
+        reasoning.append(
+            f"⚠ Modal scoreline is a draw (0-0/1-1 cluster, neutral matchup) — "
+            f"draw share lifted to {p_draw:.0%}"
+        )
 
     # ── Odds-based value infrastructure ──
     odds_h = data.get("odds_home")
@@ -4304,6 +4520,10 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         # inject the computed 1X2 probs + exp goals directly (pred dict is empty)
         _synth_ctx.p_home, _synth_ctx.p_draw, _synth_ctx.p_away = p_home, p_draw, p_away
         _synth_ctx.exp_h, _synth_ctx.exp_a = exp_h, exp_a
+        _synth_ctx.p_over25, _synth_ctx.p_under25 = p_over, p_under
+        _synth_ctx.p_btts_yes, _synth_ctx.p_btts_no = p_btss, p_btn
+        p_1x, p_x2, p_12 = p_home + p_draw, p_draw + p_away, p_home + p_away
+        _synth_ctx.p_1x, _synth_ctx.p_x2, _synth_ctx.p_12 = p_1x, p_x2, p_12
         candidates = synthesize(_synth_ctx, candidates)
         _synth_rationale = build_synthesis_rationale(_synth_ctx, candidates, candidates[0])
         from synthesis import component_agreement
@@ -4337,6 +4557,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             c["score"] = c["rank"] - cov_bonus - (c.get("model_prob") or 0) * 2
         candidates.sort(key=lambda c: c["score"])
         _synth_rationale = f"(synthesis unavailable: {_syn_err})"
+
+    if "p_1x" not in dir():
+        p_1x, p_x2, p_12 = p_home + p_draw, p_draw + p_away, p_home + p_away
 
     non_show = [c for c in candidates if not c.get('_always_show')]
     primary = non_show[0] if non_show else candidates[0] if candidates else {"market": "1X2", "pick": "Draw", "confidence": "Low"}
@@ -4661,6 +4884,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         "_implied_prob": implied_prob,
         "_odds": odds_val,
         "_poisson_probs": (p_home, p_draw, p_away),
+        "_p_over25": p_over, "_p_under25": p_under,
+        "_p_btts_yes": p_btss, "_p_btts_no": p_btn,
+        "_p_1x": p_1x, "_p_x2": p_x2, "_p_12": p_12,
         "_ml": _ml_from_ensemble,
         "_synthesis_rationale": _synth_rationale if "_synth_rationale" in dir() else None,
         "_synthesis_ranked": [
@@ -5812,6 +6038,26 @@ function applyFilters() {{
                      _save_to=banker_path, _title_suffix=" (Bankers — Highest Success Probability)")
         log(f"Bankers report: {banker_path.resolve()} ({len(banker_results)} matches)")
 
+    # ── Bettor's card report (the agent's staking card) ──
+    # Same math as `bettor.py card <json>`: de-vigged edge, EV%, Quarter-Kelly
+    # stakes scaled by league reliability — rendered as a companion report so
+    # a run ends with the actionable card, not just the match list.
+    bettor_path = None
+    _bcard = None
+    try:
+        import importlib.util as _ilu
+        _bspec = _ilu.spec_from_file_location(
+            "bettor_card", Path(__file__).parent / "scripts" / "bettor.py")
+        _bmod = _ilu.module_from_spec(_bspec)
+        _bspec.loader.exec_module(_bmod)
+        _bcard = _bmod.build_card(filtered)
+        bettor_path = pred_dir / "bettor.html"
+        bettor_path.write_text(_bmod.render_card_html(_bcard))
+        log(f"Bettor's card report: {bettor_path.resolve()} "
+            f"({len(_bcard['value_picks'])} +EV picks)")
+    except Exception as _be:
+        log(f"Bettor card report skipped: {_be}")
+
     # ── Auto-open in browser ──
     webbrowser.open(str(report_path.resolve()))
     if yellow_path:
@@ -5822,6 +6068,8 @@ function applyFilters() {{
         webbrowser.open(str(high80_path.resolve()))
     if banker_path:
         webbrowser.open(str(banker_path.resolve()))
+    if bettor_path:
+        webbrowser.open(str(bettor_path.resolve()))
 
     # ── Best-picks / consensus / high-conviction reports summary ──
     if yellow_path:
@@ -5834,6 +6082,14 @@ function applyFilters() {{
         print(f"→ predictions/high80.html  ({len([r for r in results if _high80_picks(r)])} matches >80% | {n_same} shared-outcome, {n_sep} separate-outcome)")
     if banker_path:
         print(f"→ predictions/bankers.html  ({len(banker_results)} highest-probability-of-success matches)")
+    if bettor_path and _bcard:
+        _evn = len(_bcard.get("value_picks") or [])
+        _est = sum(p.get("stake_pct", 0) for p in (_bcard.get("value_picks") or []))
+        _bline = f"→ predictions/bettor.html  ({_evn} +EV picks"
+        if _evn:
+            _bline += f" · total stake {_est:.1f}%"
+        _bline += ")"
+        print(_bline)
 
     return report_path, yellow_path, consistent_path, high80_path, banker_path
 
@@ -6288,6 +6544,24 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 log("  [Skipped — no data]")
             continue
 
+        # Inject scraped injury data into the analysis dict (role-weighted
+        # in analyze_from_data/analyze_ml_only via _injury_goal_adjustment).
+        home_team = data.get("home_team", "")
+        away_team = data.get("away_team", "")
+        if injuries:
+            _hs = get_team_injury_summary(injuries, home_team) or {}
+            _as = get_team_injury_summary(injuries, away_team) or {}
+            _inj_map = {
+                "home": {"total_injured", "forwards_out", "midfielders_out",
+                         "defenders_out", "keepers_out", "key_players_out", "suspended"},
+                "away": {"total_injured", "forwards_out", "midfielders_out",
+                         "defenders_out", "keepers_out", "key_players_out", "suspended"},
+            }
+            for _side, _fields in _inj_map.items():
+                _s = _hs if _side == "home" else _as
+                for _f in _fields:
+                    data[f"{_side}_{_f}"] = _s.get(_f, 0)
+
         # Analyze
         pred = analyze_from_data(data, use_ml=use_ml)
 
@@ -6672,7 +6946,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
 
             print(f"RESULT: \033[1m{hg} - {ag}\033[0m ({outcome}){ht_str}  {verdict}")
 
-        # Line 3: Pick info
+        # Line 3: Single best pick (collapsed — no backup/ML sub-lines)
         pick_line = f"Pick: \033[1m{pick}\033[0m ({market}) • {conf}"
         if r.get("score_lean"):
             pick_line += f" • Score: {r['score_lean']}"
@@ -6691,41 +6965,6 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         if kelly_pct > 0:
             pick_line += f" • Kelly: {kelly_pct:.1f}% ({_kelly_interpretation(kelly_pct)})"
         print(pick_line)
-
-        # Line 3b: Backup pick
-        backup = r.get("_backup")
-        if backup:
-            print(f"  → Backup: {backup['market']}: {backup['pick']} ({backup['confidence']}) — {backup['coverage']} outcomes")
-
-        # Line 3c: ML Analysis
-        ml_analysis = r.get("_ml_analysis")
-        if ml_analysis:
-            ml_conf = ml_analysis.get("confidence", "Low")
-            print(f"  → ML Model: {ml_analysis['pick']} ({ml_analysis['market']}) • {ml_conf} • {ml_analysis.get('_method', '')}")
-            ml_odds = ml_analysis.get("_ml_odds", {})
-            ml_1x2 = ml_odds.get("ml_1x2", {})
-            ml_ou = ml_odds.get("ml_ou", {})
-            ml_btts = ml_odds.get("ml_btts", {})
-            print(f"    Odds: 1X2 H:{ml_1x2.get('odds',{}).get('home',0):.2f} D:{ml_1x2.get('odds',{}).get('draw',0):.2f} A:{ml_1x2.get('odds',{}).get('away',0):.2f} | O/U O:{ml_ou.get('odds',{}).get('over',0):.2f} U:{ml_ou.get('odds',{}).get('under',0):.2f} | BTTS Y:{ml_btts.get('odds',{}).get('yes',0):.2f} N:{ml_btts.get('odds',{}).get('no',0):.2f}")
-            # ML picks summary (probability-ranked like the report tables)
-            ml_picks = sorted(ml_analysis.get("all_picks", []),
-                              key=lambda x: x.get("model_prob") or 0,
-                              reverse=True)[:3]
-            for mp in ml_picks:
-                dv = mp.get("decision_value", 0)
-                mp_s = f"{mp['model_prob']:.0%}" if mp.get("model_prob") else ""
-                print(f"    {mp['market']:5s}: {mp['pick']:12s} {mp_s:>5s} {mp['confidence']:12s} [score {dv:.3f}]")
-            # ML synthesis rationale
-            ml_rationale = ml_analysis.get("reasoning", [])
-            # Find and print the synthform line
-            for line in ml_rationale:
-                if line.startswith("⟁SYNTHFORM⟁"):
-                    print(f"    ✦ {line.replace('⟁SYNTHFORM⟁', '', 1).strip()}")
-                    break
-            # Print last form analysis lines
-            for line in ml_rationale[-3:]:
-                if line and not line.startswith("──") and not line.startswith("⟁SYNTHFORM⟁"):
-                    print(f"    {line}")
 
         # Line 4: HTML path
         if report_path:

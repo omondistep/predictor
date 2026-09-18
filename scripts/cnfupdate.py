@@ -15,9 +15,11 @@ import requests
 from bs4 import BeautifulSoup
 
 # ── Config ─────────────────────────────────────
-PREDICT_PY = Path(__file__).parent / "predict.py"
-PLAYED_TXT = Path(__file__).parent / "played.txt"
-RESULTS_JSON = Path(__file__).parent / "scraped_results.json"
+# Repo root lives one level above scripts/
+REPO_ROOT = Path(__file__).resolve().parent.parent
+PREDICT_PY = REPO_ROOT / "predict.py"
+PLAYED_TXT = REPO_ROOT / "played.txt"
+RESULTS_JSON = REPO_ROOT / "scraped_results.json"
 HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) "
@@ -478,7 +480,7 @@ def show_report(aggregated: dict, min_matches: int):
 def ensure_alias():
     bindir = Path.home() / ".local" / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
-    src = PREDICT_PY.parent / "cnfupdate.py"
+    src = Path(__file__).resolve()
     for name in ("cnfupdate", "cnf"):
         bin_path = bindir / name
         if bin_path.exists() and bin_path.samefile(src):
