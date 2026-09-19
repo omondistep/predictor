@@ -1,0 +1,485 @@
+Processing 449 Forebet match links...
+
+Scraping injury data...
+  Found injury data for 106 teams
+[1/449]   Scraping: vanraure-hachinohe-tegevajaro-miyazaki-2493928... Vanraure Hachinohe vs Tegevajaro Miyazaki1
+[2/449]   Scraping: changchun-xidu-guangdong-mingtu-2549189... Changchun Xidu vs Guangdong Mingtu18/0
+[3/449]   Scraping: rizhao-yuqi-yichun-grand-tiger-2549190... Rizhao Yuqi vs Yichun Grand Tiger18
+[4/449]   Scraping: ural-u19-dinamo-makhachkala-u19-2434172... Ural U19 vs Dinamo Makhachkala U
+[5/449]   Scraping: arema-fc-persik-kediri-2530478... Arema FC vs Persik Kediri18/09/2
+[6/449]   Scraping: persipura-jayapura-tornado-pekanbaru-2549347... Persipura Jayapura vs Tornado Pekanbaru18/
+[7/449]   Scraping: suranaree-black-cat-ubon-kruanapat-2551310... Suranaree Black Cat vs Ubon Kruanapat18/09/
+[8/449]   Scraping: ironi-nesher-maccabi-umm-al-fahm-2532363... Ironi Nesher vs Maccabi Umm Al Fahm1
+[9/449]   Scraping: hapoel-marmorek-ramat-hasharon-2532675... Hapoel Marmorek vs Ramat HaSharon18/09/
+[10/449]   Scraping: wuhan-three-towns-b-nantong-haimen-2549191... Wuhan Three Towns B vs Nantong Haimen18/09/
+[11/449]   Scraping: pwd-sports-club-abahani-dhaka-2552497... PWD Sports Club vs Abahani Dhaka18/09/2
+[12/449]   Scraping: brothers-union-city-club-2552498... Brothers Union vs City Club18/09/2026 
+[13/449]   Scraping: fakirerpool-dhaka-wanderers-2552499... Fakirerpool vs Dhaka Wanderers18/09
+[14/449]   Scraping: bangladesh-police-rahmatganj-mfs-2552500... Bangladesh Police vs Rahmatganj MFS18/09/
+[15/449]   Scraping: fortis-chattogram-2552501... Fortis vs Chattogram18/09/2026
+[16/449]   Scraping: chernomorets-od-fc-obolon-brovar-2482274... Chernomorets Od vs FC Obolon-BrovarPred
+[17/449]   Scraping: yanbian-fude-guangdong-gz-power-2439908... Yanbian Fude vs Guangdong GZ-Power18
+[18/449]   Scraping: roasso-kumamoto-matsumoto-yamaga-2496928... Roasso Kumamoto vs Matsumoto Yamaga18/0
+[19/449]   Scraping: fc-osaka-fukushima-united-2496929... FC Osaka vs Fukushima United18/0
+[20/449]   Scraping: fc-astana-youth-fk-ekibastuz-2447566... FC Astana Youth vs FK Ekibastuz18/09/20
+[21/449]   Scraping: khan-tengri-kairat-almaty-akademiya-2447568... Khan Tengri vs Kairat Almaty Akadem
+[22/449]   Scraping: karbon-oleksandria-ii-2484677... Karbon vs Oleksandria II18/09/
+[23/449]   Scraping: zagłębie-lubin-ii-carina-gubin-2488868... Zagłębie Lubin II vs Carina Gubin18/09/20
+[24/449]   Scraping: maccabi-ironi-ashdod-ironi-beit-shemesh-2532671... Maccabi Ironi Ashdod vs Ironi Beit Shemesh18
+[25/449]   Scraping: maccabi-yavne-hapoel-herzliya-2532667... Maccabi Yavne vs Hapoel Herzliya18/09
+[26/449]   Scraping: fk-okzhetpes-zhenis-2435943... FK Okzhetpes vs Zhenis18/09/2026 13:
+[27/449]   Scraping: dalian-kuncheng-shanghai-jiading-2439909... Dalian Kuncheng vs Shanghai Jiading18/0
+[28/449]   Scraping: zvezda-spb-fk-murom-2454609... Zvezda SPb vs FK Murom18/09/2026 1
+[29/449]   Scraping: binh-dinh-fc-bà-ria-vũng-tàu-2550660... Binh Dinh FC vs Bà Ria Vũng Tàu18/09
+[30/449]   Scraping: ironi-kiryat-malakhi-hapoel-azor-2532670... Ironi Kiryat Malakhi vs Hapoel Azor18/09/202
+[31/449]   Scraping: hapoel-bnei-musmus-beitar-nahariya-2532365... Hapoel Bnei Musmus vs Beitar Nahariya18/09
+[32/449]   Scraping: albirex-niigata-s-hougang-united-2547934... Albirex Niigata (S) vs Hougang United18/09/
+[33/449]   Scraping: nantong-zhiyun-guangxi-hengchen-2439910... Nantong Zhiyun vs Guangxi Hengchen18/0
+[34/449]   Scraping: jiangxi-liansheng-shandong-taishan-ii-2549192... Jiangxi Liansheng vs Shandong Taishan II1
+[35/449]   Scraping: zhejiang-fc-wuhan-three-towns-2433516... Zhejiang FC vs Wuhan Three Towns18/
+[36/449]   Scraping: madura-united-fc-psim-yogyakarta-2530479... Madura United FC vs PSIM Yogyakarta18/09
+[37/449]   Scraping: altai-semey-irtysh-pavlodar-2435939... Altai Semey vs Irtysh Pavlodar18/09
+[38/449]   Scraping: fc-zhetysu-kaspij-aktau-2435945... FC Zhetysu vs Kaspij AktauPredicti
+[39/449]   Scraping: ayutthaya-united-uthai-thani-fc-2530235... Ayutthaya United vs Uthai Thani FC18/09/
+[40/449]   Scraping: birmingham-u21-arsenal-u23s-2516381... Birmingham U21 vs Arsenal U23s18/09/20
+[41/449]   Scraping: psg-pati-sulut-united-2549348... PSG Pati vs Sulut United18/09/20
+[42/449]   Scraping: xankndi-fk-moik-baku-2529778... Xankəndi FK vs MOIK Baku18/09/2026 
+[43/449]   Scraping: smorgon-w-belarus-w-u19-2552419... Smorgon W vs Belarus W U1918/09/2
+[44/449]   Scraping: timişul-şag-progresul-pecica-2531792... Timişul Şag vs Progresul Pecica18/0
+[45/449]   Scraping: maccabi-nujeidat-ahmed-hapoel-migdal-haemek-253236... Maccabi Nujeidat Ahm vs Hapoel Migdal HaEmek
+[46/449]   Scraping: akademiya-konoplev-u20-rubin-kazan-u19-2434169... Akademiya Konoplev U vs Rubin Kazan U1918/09
+[47/449]   Scraping: cska-moscow-u19-fakel-u19-2434173... CSKA Moscow U19 vs Fakel U1918/09/2026 
+[48/449]   Scraping: polissya-zhy-kryvbas-2482276... Polissya Zhy vs KryvbasPrediction18/
+[49/449]   Scraping: hapoel-ihud-bnei-jatt-fc-tira-2532367... Hapoel Ihud Bnei Jat vs FC TiraPrediction18/
+[50/449]   Scraping: hapoel-tel-aviv-hapoel-petah-tikva-2517397... Hapoel Tel Aviv vs Hapoel Petah Tikva18
+[51/449]   Scraping: bandirmaspor-ümraniyespor-2492955... Bandirmaspor vs Ümraniyespor18/09/20
+[52/449]   Scraping: gomel-ii-dinamo-minsk-ii-2449272... Gomel II vs Dinamo Minsk IIPredi
+[53/449]   Scraping: amagaju-merreikh-al-sudan-2532055... Amagaju vs Merreikh Al SudanPre
+[54/449]   Scraping: highbury-gomora-2519699... Highbury vs GomoraPrediction18/0
+[55/449]   Scraping: casric-stars-venda-fa-2519700... Casric Stars vs Venda FA18/09/2026 1
+[56/449]   Scraping: albinoleffe-u19-cesena-u19-2520943... AlbinoLeffe U19 vs Cesena U19Prediction
+[57/449]   Scraping: rodina-moscow-u19-nizhny-novgorod-u19-2434176... Rodina Moscow U19 vs Nizhny Novgorod U19P
+[58/449]   Scraping: gabala-fc-neftchi-baku-2505056... Gabala FC vs Neftchi BakuPredicti
+[59/449]   Scraping: belshina-bobruisk-fk-minsk-2442589... Belshina Bobruisk vs FK MinskPrediction18
+[60/449]   Scraping: dairut-sc-al-intagh-al-harbi-2552071... Dairut SC vs Al Intagh Al HarbiPr
+[61/449]   Scraping: sekka-al-hadid-itesalat-2552076... Sekka Al Hadid vs ItesalatPrediction18
+[62/449]   Scraping: baladiyyat-al-mahalla-kahraba-ismailia-2552077... Baladiyyat Al Mahall vs Kahraba IsmailiaPred
+[63/449]   Scraping: la-viena-masar-2552078... La Viena vs MasarPrediction18/09
+[64/449]   Scraping: proxy-maleyeit-kafr-el-zayiat-2552079... Proxy vs Maleyeit Kafr El Zay
+[65/449]   Scraping: pharco-delta-united-2553336... Pharco vs Delta UnitedPredicti
+[66/449]   Scraping: brodarac-prva-iskra-2519513... Brodarac vs Prva IskraPrediction
+[67/449]   Scraping: stepojevac-vaga-radnički-obrenovac-2519518... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[68/449]   Scraping: fk-chelyabinsk-fk-ufa-2470838... FK Chelyabinsk vs FK UfaPrediction18/0
+[69/449]   Scraping: volga-ulyanovsk-spartak-kostroma-2470843... Volga Ulyano vs kVSSpartak KostromaP
+[70/449]   Scraping: pfc-sochi-ska-khabarovsk-2470844... PFC Sochi vs SKA-KhabarovskPredic
+[71/449]   Scraping: sileks-kratovo-tikves-kavadarci-2474770... Sileks Kratovo vs Tikves KavadarciPred
+[72/449]   Scraping: shkendija-79-bashkimi-kumanovo-2474772... Shkendija 79 vs Bashkimi KumanovoPre
+[73/449]   Scraping: gandzasar-fc-urartu-2478581... Gandzasar vs FC UrartuPrediction1
+[74/449]   Scraping: fk-kyzylzhar-kaisar-kyzylorda-2435940... FK Kyzylzhar vs Kaisar KyzylordaPred
+[75/449]   Scraping: mladost-ždralovi-segesta-sisak-2517588... Mladost Ždralovi vs Segesta SisakPredict
+[76/449]   Scraping: sokół-kleczew-avia-świdnik-2477978... Sokół Kleczew vs Avia ŚwidnikPredicti
+[77/449]   Scraping: fc-turan-yelimay-ii-2447564... FC Turan vs Yelimay IIPrediction
+[78/449]   Scraping: bars-oshmu-aldier-2552577... Bars vs OshMU-AldierPredicti
+[79/449]   Scraping: bishkek-city-fc-alay-osh-2552578... Bishkek City vs FC Alay OshPredictio
+[80/449]   Scraping: botev-ii-plovdiv-fk-sozopol-2493397... Botev II Plovdiv vs FK SozopolPrediction
+[81/449]   Scraping: spartak-hluk-holesov-2506331... Spartak Hluk vs HolesovPrediction18/
+[82/449]   Scraping: lks-lomza-ząbkovia-ząbki-2488301... LKS Lomza vs Ząbkovia ZąbkiPredic
+[83/449]   Scraping: gornik-polkowice-zaglebie-sosnowiec-2488870... Gornik Polkowice vs Zaglebie SosnowiecPr
+[84/449]   Scraping: aerostar-bradul-putna-2530788... Aerostar vs Bradul PutnaPredicti
+[85/449]   Scraping: paşcani-csm-fc-vaslui-2530790... Paşcani vs CSM FC VasluiPredict
+[86/449]   Scraping: acs-mediaş-2022-muscelul-campulung-2531131... ACS Mediaş 2022 vs Muscelul CampulungPr
+[87/449]   Scraping: sepsi-ii-kids-tâmpa-braşov-2531132... Sepsi II vs Kids Tâmpa BraşovPre
+[88/449]   Scraping: flacara-moreni-cs-păulești-2531263... Flacara Moreni vs CS PăuleștiPredictio
+[89/449]   Scraping: blejoi-vispeşti-csm-ramnicu-sarat-2531264... Blejoi Vispeşti vs CSM Ramnicu SaratPre
+[90/449]   Scraping: viitorul-corbeanca-petrolul-berca-2531266... Viitorul Corbeanca vs Petrolul BercaPredic
+[91/449]   Scraping: dunarea-turris-turnu-magurele-voluntari-ii-2531527... Dunarea Turris Turnu vs Voluntari IIPredicti
+[92/449]   Scraping: academica-clinceni-axi-adunații-copăceni-2531528... Academica Clinceni vs Axi Adunații-Copăcen
+[93/449]   Scraping: fcm-alexandria-dunărea-2020-giurgiu-2531529... FCM Alexandria vs Dunărea 2020 Giurgiu
+[94/449]   Scraping: oxigen-bucureşti-fcsb-ii-2531531... Oxigen Bucureşti vs FCSB IIPrediction18/
+[95/449]   Scraping: unirea-bascov-academica-balș-2531662... Unirea Bascov vs Academica BalșPredic
+[96/449]   Scraping: universitatea-craiova-ii-petrolul-hârtieşti-253166... Universitatea Craiov vs Petrolul HârtieştiPr
+[97/449]   Scraping: universitatea-alba-iulia-cetate-deva-2531791... Universitatea Alba I vs Cetate DevaPredictio
+[98/449]   Scraping: ghiroda-nera-bogodinţi-2531793... Ghiroda vs Nera BogodinţiPredic
+[99/449]   Scraping: cil-blaj-viitorul-arad-2531794... CIL Blaj vs Viitorul AradPredict
+[100/449]   Scraping: metalurgistul-cugir-unirea-alba-iulia-2531796... Metalurgistul Cugir vs Unirea Alba IuliaPre
+[101/449]   Scraping: viitorul-cluj-acsf-comuna-recea-2531923... Viitorul Cluj vs ACSF Comuna ReceaPre
+[102/449]   Scraping: zenit-u19-spartak-moskva-u19-2434170... Zenit U19 vs Spartak Moskva U19Pr
+[103/449]   Scraping: krasnodar-u19-lokomotiv-moskva-u19-2434171... Krasnodar U19 vs Lokomotiv Moskva U19
+[104/449]   Scraping: rostov-u19-almaz-antey-u19-2434174... Rostov U19 vs Almaz-Antey U19Predi
+[105/449]   Scraping: chertanovo-u20-dinamo-moskva-u19-2434175... Chertanovo U20 vs Dinamo Moskva U19Pre
+[106/449]   Scraping: nk-sesvete-cibalia-vinkovci-2517590... NK Sesvete vs Cibalia VinkovciPred
+[107/449]   Scraping: jk-tallinna-kalev-flora-tallinn-ii-2433928... JK Tallinna Kalev vs Flora Tallinn IIPred
+[108/449]   Scraping: rekord-bielsko-biala-swit-skolwin-2477980... Rekord Bielsko-Biala vs Swit SkolwinPredicti
+[109/449]   Scraping: nfa-kaunas-transinvest-vilnius-ii-2471134... NFA Kaunas vs TransINVEST Vilnius 
+[110/449]   Scraping: tomislav-cerna-slavija-pleternica-2516144... Tomislav Cerna vs Slavija PleternicaPr
+[111/449]   Scraping: lechia-tomaszow-maz-swit-ndm-2488302... Lechia Tomaszow Maz. vs Swit NDMPrediction18
+[112/449]   Scraping: palm-city-365-forte-virtus-2513097... Palm City 365 vs Forte VirtusPredicti
+[113/449]   Scraping: al-fujairah-club-dubba-al-husun-2513098... Al Fujairah Club vs Dubba Al HusunPredic
+[114/449]   Scraping: bataeh-sc-al-hamriyah-2513099... Bataeh SC vs Al HamriyahPredictio
+[115/449]   Scraping: al-oruba-uae-emirates-club-2513100... Al Oruba (UAE) vs Emirates ClubPredict
+[116/449]   Scraping: dubai-city-club-al-arabi-uae-2513101... Dubai City Club vs Al Arabi (UAE)Predic
+[117/449]   Scraping: gulf-united-al-jazira-al-hamra-2513102... Gulf United vs Al Jazira Al HamraPr
+[118/449]   Scraping: dubba-al-fujairah-ittifaq-2513103... Dubba Al Fujairah vs IttifaqPrediction18/
+[119/449]   Scraping: valasske-mezirici-sk-stonava-2498196... Valasske Mezirici vs SK StonavaPrediction
+[120/449]   Scraping: uta-arad-sepsi-osk-2468290... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[121/449]   Scraping: fc-lahti-ff-jaro-2547832... FC Lahti vs FF JaroPrediction18/
+[122/449]   Scraping: seinajoen-jk-ifk-mariehamn-2547833... Seinajoen JK vs IFK MariehamnPredict
+[123/449]   Scraping: neftekhimik-nizhnekamsk-fk-ural-2470841... Neftekhimik Nizhneka vs FK UralPrediction18/
+[124/449]   Scraping: js-el-biar-js-saoura-2525394... JS El Biar vs JS SaouraPrediction1
+[125/449]   Scraping: usm-khenchla-es-ben-aknoun-2525395... USM Khenchla vs ES Ben AknounPredict
+[126/449]   Scraping: fk-aktobe-ulytau-2435942... FK Aktobe vs UlytauPrediction18/0
+[127/449]   Scraping: arabi-irbid-jazeera-amman-2548701... Arabi Irbid vs Jazeera AmmanPredict
+[128/449]   Scraping: js-jijel-cr-béni-thour-2548745... JS Jijel vs CR Béni ThourPredict
+[129/449]   Scraping: mo-béjaïa-mo-constantine-2548746... MO Béjaïa vs MO ConstantinePredic
+[130/449]   Scraping: jsm-skikda-irb-nezla-2548747... JSM Skikda vs IRB NezlaPrediction1
+[131/449]   Scraping: ca-batna-js-azazga-2548748... CA Batna vs JS AzazgaPrediction1
+[132/449]   Scraping: nrb-telaghema-msp-batna-2548749... NRB Telaghema vs MSP BatnaPrediction1
+[133/449]   Scraping: us-chaouia-beni-oulbane-2548750... US Chaouia vs Beni OulbanePredicti
+[134/449]   Scraping: usm-annaba-nc-magra-2548751... USM Annaba vs NC MagraPrediction18
+[135/449]   Scraping: as-khroub-paradou-ac-2548752... AS Khroub vs Paradou ACPrediction
+[136/449]   Scraping: fk-komarov-sk-strakonice-2505844... FK Komarov vs SK StrakonicePredict
+[137/449]   Scraping: thalgau-tsv-neumarkt-2506457... Thalgau vs TSV NeumarktPredicti
+[138/449]   Scraping: shinnik-yaroslavl-kamaz-naberezhnye-chelny-2470840... Shinnik Yaroslavl vs KAMAZ Naberezhnye Ch
+[139/449]   Scraping: fc-haka-klubi-04-2447256... FC Haka vs Klubi 04Prediction18
+[140/449]   Scraping: jäps-eif-ekenas-2447257... JäPS vs EIF EkenasPrediction
+[141/449]   Scraping: grankulla-ifk-musa-pori-2534338... Grankulla IFK vs MuSa PoriPrediction1
+[142/449]   Scraping: kpv-kokkola-kups-akatemia-2548811... KPV Kokkola vs KuPS AkatemiaPredict
+[143/449]   Scraping: qarabag-shafa-baku-2505054... Qarabag vs Shafa BakuPrediction
+[144/449]   Scraping: mosul-fc-naft-sc-baghdad-2552148... Mosul FC vs Naft SC BaghdadPredi
+[145/449]   Scraping: karbalaa-fc-arbil-fc-2552149... Karbalaa FC vs Arbil FCPrediction18
+[146/449]   Scraping: al-tai-al-bukiryah-2513282... Al Ta'i vs Al BukiryahPredictio
+[147/449]   Scraping: widzew-lodz-wieczysta-kraków-2473503... Widzew Lodz vs Wieczysta KrakówPred
+[148/449]   Scraping: harju-jalgpallikool-fc-kuressaare-2433077... Harju Jalgpallikool vs FC KuressaarePredict
+[149/449]   Scraping: ac-oulu-inter-turku-2547834... AC Oulu vs Inter TurkuPredictio
+[150/449]   Scraping: if-gnistan-hjk-helsinki-2547835... IF Gnistan vs HJK HelsinkiPredicti
+[151/449]   Scraping: warta-poznan-puszcza-2473805... Warta Poznan vs PuszczaPrediction18/
+[152/449]   Scraping: jihlava-slavia-praha-b-2469705... Jihlava vs Slavia Praha BPredic
+[153/449]   Scraping: sk-prostějov-dukla-praha-2469706... SK Prostějov vs Dukla PrahaPredictio
+[154/449]   Scraping: mfk-okd-karvina-hanácká-slavia-kroměříž-2469708... MFK OKD Karvina vs Hanácká Slavia Kromě
+[155/449]   Scraping: opava-arsenal-ceska-lipa-2469712... Opava vs Arsenal Ceska LipaPr
+[156/449]   Scraping: noah-van-yerevan-2478582... Noah vs Van YerevanPredictio
+[157/449]   Scraping: mkk-dnepr-arsenal-dzyarzhynsk-2442593... MKK-Dnepr vs Arsenal DzyarzhynskP
+[158/449]   Scraping: zabbar-st-patrick-birkirkara-fc-2505277... Zabbar St. Patrick vs Birkirkara FCPredict
+[159/449]   Scraping: zawisza-bydgoszcz-gornik-leczna-2477976... Zawisza Bydgoszcz vs Gornik LecznaPredict
+[160/449]   Scraping: liptovsky-mikulas-zlate-moravce-2474557... Lipto vs ky MikulasVSZlate Mo
+[161/449]   Scraping: spartakos-kitiou-meap-nisou-2548024... Spartakos Kitiou vs MEAP NisouPrediction
+[162/449]   Scraping: iraklis-yerolakkos-ayia-napa-2548028... Iraklis Yerolakkos vs Ayia NapaPrediction1
+[163/449]   Scraping: sk-hranice-slovacko-b-2484934... SK Hranice vs Slovacko BPrediction
+[164/449]   Scraping: fk-jonava-fk-tauras-2471135... FK Jonava vs FK TaurasPrediction1
+[165/449]   Scraping: hegelmann-litauen-2-dfk-dainava-2471136... Hegelmann Litauen 2 vs DFK DainavaPredictio
+[166/449]   Scraping: maan-sc-al-hashemeya-2547873... Ma'an SC vs Al HashemeyaPredicti
+[167/449]   Scraping: ittihad-al-ramtha-yarmouk-amman-2547874... Ittihad Al Ramtha vs Yarmouk AmmanPredict
+[168/449]   Scraping: ittihad-jerash-sahl-horan-2547875... Ittihad Jerash vs Sahl HoranPrediction
+[169/449]   Scraping: red-star-penzing-lac-inter-2515901... Red Star-Penzing vs LAC-InterPrediction1
+[170/449]   Scraping: team-wiener-linien-fv-austria-xiii-2515903... Team Wiener Linien vs FV Austria XIIIPredi
+[171/449]   Scraping: spg-kornspitz-pregarten-gw-micheldorf-2514886... SPG Kornspitz Pregar vs GW MicheldorfPredict
+[172/449]   Scraping: atus-ferlach-fc-lendorf-2477202... ATUS Ferlach vs FC LendorfPrediction
+[173/449]   Scraping: hlucin-pusta-polom-2498192... Hlucin vs Pusta PolomPredictio
+[174/449]   Scraping: jeddah-club-al-saqer-2513283... Jeddah Club vs Al-SaqerPrediction18
+[175/449]   Scraping: st-andrews-santa-lucia-2548233... St. Andrews vs Santa LuciaPredictio
+[176/449]   Scraping: greuther-fürth-magdeburg-2490485... Greuther Fürth vs MagdeburgPrediction1
+[177/449]   Scraping: wolfsburg-darmstadt-2490486... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[178/449]   Scraping: kapfenberg-sku-amstetten-2476953... Kapfenberg vs SKU AmstettenPredict
+[179/449]   Scraping: wsc-hertha-first-vienna-2476954... WSC Hertha vs First ViennaPredicti
+[180/449]   Scraping: floridsdorfer-ac-fc-liefering-2476956... Floridsdorfer AC vs FC LieferingPredicti
+[181/449]   Scraping: vllaznia-shkodër-teuta-durres-2518627... Vllaznia Shkodër vs Teuta DurresPredicti
+[182/449]   Scraping: if-fuglafjordur-hb-ii-2434839... IF Fuglafjordur vs HB IIPrediction18/09
+[183/449]   Scraping: reinickendorfer-fuchse-union-klosterfelde-2503789... Reinickendorfer Fuch vs Union KlosterfeldePr
+[184/449]   Scraping: fc-frankfurt-meuselwitz-2498660... FC Frankfurt vs MeuselwitzPrediction
+[185/449]   Scraping: hoffenheim-w-wolfsburg-w-2512915... Hoffenheim W vs Wolfsburg WPredictio
+[186/449]   Scraping: mainz-05-w-eintracht-frankfurt-w-2512916... Mainz 05 W vs Eintracht Frankfurt 
+[187/449]   Scraping: spittaldrau-st-veit-glan-2477203... Spittal/Drau vs St. Veit / GlanPredi
+[188/449]   Scraping: fc-dornbirn-lauterach-2486132... FC Dornbirn vs LauterachPrediction1
+[189/449]   Scraping: fh-w-stjarnan-w-2550792... FH W vs Stjarnan WPrediction
+[190/449]   Scraping: grafenstein-st-michael-lavanttal-2477204... Grafenstein vs St. Michael Lavantta
+[191/449]   Scraping: kasımpasa-sk-konyaspor-2494912... Kasımpasa SK vs KonyasporPrediction1
+[192/449]   Scraping: sarpsborg-08-kfum-oslo-2438524... Sarpsborg 08 vs KFUM OsloPrediction1
+[193/449]   Scraping: lyngby-bk-silkeborg-2469549... Lyngby BK vs SilkeborgPrediction1
+[194/449]   Scraping: slavia-sofia-cska-1948-2469291... Slavia Sofia vs CSKA 1948Prediction1
+[195/449]   Scraping: omonia-29is-maiou-aek-larnaka-2527025... Omonia 29is Maiou vs AEK LarnakaPredictio
+[196/449]   Scraping: pafos-ael-limassol-2527026... Pafos vs AEL LimassolPredicti
+[197/449]   Scraping: falkenbergs-ff-östersunds-fk-2447784... Falkenbergs FF vs Östersunds FKPredict
+[198/449]   Scraping: kolding-if-hillerod-2471302... Kolding IF vs HillerodPrediction18
+[199/449]   Scraping: fk-buducnost-ofk-petrovac-2484809... FK Buducnost vs OFK PetrovacPredicti
+[200/449]   Scraping: muğlaspor-76-igdır-belediye-spor-2492956... Muğlaspor vs 76 Igdır Belediye Sp
+[201/449]   Scraping: verl-würzburger-kickers-2491119... Verl vs Würzburger KickersPr
+[202/449]   Scraping: skive-ik-b93-københavn-2477426... Skive IK vs B93 KøbenhavnPredict
+[203/449]   Scraping: nykøbing-fc-hellerup-ik-2477427... Nykøbing FC vs Hellerup IKPredictio
+[204/449]   Scraping: fc-roskilde-frederiksberg-alliancen-2000-2477428... FC Roskilde vs Frederiksberg Allian
+[205/449]   Scraping: fremad-amager-næstved-bk-2477429... Fremad Amager vs Næstved BKPrediction
+[206/449]   Scraping: us-granville-us-saint-malo-2516920... US Granville vs US Saint-MaloPredict
+[207/449]   Scraping: saint-colomban-locminé-us-avranches-2516922... Saint-Colomban Locmi vs US AvranchesPredicti
+[208/449]   Scraping: gjilani-fc-prishtina-2552473... Gjilani vs FC PrishtinaPredicti
+[209/449]   Scraping: eintracht-trier-kickers-offenbach-2491502... Eintracht Trier vs Kickers OffenbachPre
+[210/449]   Scraping: fsv-frankfurt-stuttgarter-kickers-2491503... FSV Frankfurt vs Stuttgarter KickersP
+[211/449]   Scraping: fsv-zwickau-hallescher-fc-2472343... FSV Zwickau vs Hallescher FCPredict
+[212/449]   Scraping: tsv-aubstadt-bayern-munchen-ii-2470417... TSV Aubstadt vs Bayern Munchen IIPre
+[213/449]   Scraping: tsv-buchbach-schweinfurt-2470419... TSV Buchbach vs SchweinfurtPredictio
+[214/449]   Scraping: vorwarts-wacker-04-süderelbe-2472018... Vorwarts-Wacker 04 vs SüderelbePrediction1
+[215/449]   Scraping: kornburg-viktoria-aschaffenburg-2471453... Kornburg vs Viktoria Aschaffenbu
+[216/449]   Scraping: spvgg-weiden-djk-gebenbach-2471454... SpVgg Weiden vs DJK GebenbachPredict
+[217/449]   Scraping: cham-neudrossenfeld-2471455... Cham vs NeudrossenfeldPredic
+[218/449]   Scraping: tsv-großbardorf-1-fc-eintracht-bamberg-2471460... TSV Großbardorf vs 1. FC Eintracht Bamb
+[219/449]   Scraping: sv-heimstetten-gundelfingen-2471740... SV Heimstetten vs GundelfingenPredicti
+[220/449]   Scraping: tsv-1860-ii-erlbach-2471741... TSV 1860 II vs ErlbachPrediction18/
+[221/449]   Scraping: villingen-singen-2498926... Villingen vs SingenPrediction18/0
+[222/449]   Scraping: fc-nöttingen-young-boys-reutlingen-2498930... FC Nöttingen vs Young Boys Reutlinge
+[223/449]   Scraping: strasbourg-w-paris-w-2530099... Strasbourg W vs Paris WPrediction18/
+[224/449]   Scraping: le-havre-w-lyon-w-2530100... Le Havre W vs Lyon WPrediction18/0
+[225/449]   Scraping: sv-gloggnitz-horn-2485890... SV Gloggnitz vs HornPrediction18/09/
+[226/449]   Scraping: sv-schwechat-first-vienna-ii-2515904... SV Schwechat vs First Vienna IIPredi
+[227/449]   Scraping: ask-ebreichsdorf-sc-retz-2514399... ASK Ebreichsdorf vs SC RetzPrediction18/
+[228/449]   Scraping: ardagger-wieselburg-2514403... Ardagger vs WieselburgPrediction
+[229/449]   Scraping: gmunden-st-valentin-2514887... Gmunden vs St. ValentinPredicti
+[230/449]   Scraping: union-edelweiss-union-gschwandt-2514888... Union Edelweiss vs Union GschwandtPredi
+[231/449]   Scraping: gnas-wildon-2515121... Gnas vs WildonPrediction18/0
+[232/449]   Scraping: sv-pachern-kindberg-mürzhofen-2515122... SV Pachern vs Kindberg MürzhofenPr
+[233/449]   Scraping: grossklein-st-anna-am-aigen-2515125... Grossklein vs St Anna am AigenPred
+[234/449]   Scraping: schwarzach-sv-strasswalchen-2506454... Schwarzach vs SV StrasswalchenPred
+[235/449]   Scraping: dellach-im-gailtal-nußdorf-2477207... Dellach im Gailtal vs NußdorfPrediction18/
+[236/449]   Scraping: zagorec-krapina-mladost-petrinja-2526125... Zagorec Krapina vs Mladost PetrinjaPred
+[237/449]   Scraping: prečko-naftas-ivanic-2526126... Prečko vs Naftas IvanicPredict
+[238/449]   Scraping: hluboká-nad-vltavou-milevsko-2505846... Hluboká nad Vltavou vs MilevskoPrediction18
+[239/449]   Scraping: karlovy-vary-banik-sokolov-2505970... Karlovy Vary vs Banik SokolovPredict
+[240/449]   Scraping: polonia-nysa-raków-częstochowa-ii-2488865... Polonia Nysa vs Raków Częstochowa II
+[241/449]   Scraping: servette-chênois-w-zurich-w-2489843... Servette Chênois W vs Zurich WPrediction18
+[242/449]   Scraping: csm-târgu-jiu-fc-drobeta-ts-2531660... CSM Târgu Jiu vs FC Drobeta-TSPredict
+[243/449]   Scraping: malmö-ff-w-djurgarden-w-2446200... Malmö FF W vs Djurgarden WPredicti
+[244/449]   Scraping: linkoping-w-husqvarna-w-2446381... Linkoping W vs Husqvarna WPredictio
+[245/449]   Scraping: husqvarna-ff-ifk-skövde-fk-2445613... Husqvarna FF vs IFK Skövde FKPredict
+[246/449]   Scraping: lilla-torg-linero-2445977... Lilla Torg vs LineroPrediction18/0
+[247/449]   Scraping: staffanstorp-united-österlen-ff-2445978... Staffanstorp United vs Österlen FFPredictio
+[248/449]   Scraping: torslanda-ik-lindome-gif-2445125... Torslanda IK vs Lindome GIFPredictio
+[249/449]   Scraping: if-böljan-landvetter-is-2445126... IF Böljan vs Landvetter ISPredict
+[250/449]   Scraping: wallern-marienkirchen-union-gurten-2467853... Wallern / Marienkirc vs Union GurtenPredicti
+[251/449]   Scraping: sv-seekirchen-sv-wals-grünau-2467855... SV Seekirchen vs SV Wals-GrünauPredic
+[252/449]   Scraping: dsc-sc-kalsdorf-2468856... DSC vs SC KalsdorfPredictio
+[253/449]   Scraping: sc-weiz-fc-gleisdorf-09-2468857... SC Weiz vs FC Gleisdorf 09Predi
+[254/449]   Scraping: usv-allerheiligen-sv-lafnitz-2468858... USV Allerheiligen vs SV LafnitzPrediction
+[255/449]   Scraping: völkermarkter-st-sk-treibach-2468860... Völkermarkter ST vs SK TreibachPredictio
+[256/449]   Scraping: favoritner-ac-kremser-sc-2485891... Favoritner AC vs Kremser SCPrediction
+[257/449]   Scraping: sv-wörgl-stubai-2486371... SV Wörgl vs StubaiPrediction18/0
+[258/449]   Scraping: rapid-wien-wsg-tirol-2476812... Rapid Wien vs WSG TirolPrediction1
+[259/449]   Scraping: puskas-akademia-budapest-honved-2475578... Puskas Akademia vs Budapest HonvedPredi
+[260/449]   Scraping: fc-wil-fc-stade-nyonnais-2483274... FC Wil vs FC Stade NyonnaisPre
+[261/449]   Scraping: neuchâtel-xamax-rapperswil-2483275... Neuchâtel Xamax vs RapperswilPrediction
+[262/449]   Scraping: sc-kriens-étoile-carouge-2483276... SC Kriens vs Étoile CarougePredic
+[263/449]   Scraping: wihdat-amman-ramtha-club-2548702... Wihdat Amman vs Ramtha ClubPredictio
+[264/449]   Scraping: b36-torshavn-nsí-runavík-2434339... B36 Torshavn vs NSÍ RunavíkPredictio
+[265/449]   Scraping: klaksvik-skala-if-2434340... Klaksvik vs Skala IFPrediction18
+[266/449]   Scraping: angouleme-cfc-aviron-bayonnais-2516925... Angouleme CFC vs Aviron BayonnaisPred
+[267/449]   Scraping: us-créteil-lusitanos-us-chantilly-2516682... US Créteil-Lusitanos vs US ChantillyPredicti
+[268/449]   Scraping: cd-binissalem-platges-de-calvià-2540557... CD Binissalem vs Platges de CalviàPre
+[269/449]   Scraping: yagüe-cf-river-ebro-2541781... Yagüe CF vs River EbroPrediction
+[270/449]   Scraping: cd-agoncillo-cd-calahorra-2541786... CD Agoncillo vs CD CalahorraPredicti
+[271/449]   Scraping: sv-rödinghausen-gütersloh-2479422... SV Rödinghausen vs GüterslohPrediction1
+[272/449]   Scraping: sportfreunde-siegen-sg-wattenscheid-2479425... Sportfreunde Siegen vs SG WattenscheidPredi
+[273/449]   Scraping: mecklenburg-schwerin-anker-wismar-2503796... Mecklenburg Schwerin vs Anker WismarPredicti
+[274/449]   Scraping: victoria-hamburg-pinneberg-2472019... Victoria Hamburg vs PinnebergPrediction1
+[275/449]   Scraping: tura-harksheide-buchholz-2472020... TuRa Harksheide vs BuchholzPrediction18
+[276/449]   Scraping: leher-turnerschaft-geestemünde-2510590... Leher Turnerschaft vs GeestemündePredictio
+[277/449]   Scraping: fc-oberneuland-vatan-sport-2510591... FC Oberneuland vs Vatan SportPredictio
+[278/449]   Scraping: 1960-hanau-rot-weiß-walldorf-2480282... 1960 Hanau vs Rot-Weiß WalldorfPre
+[279/449]   Scraping: ahrweiler-bc-tus-rw-koblenz-2480584... Ahrweiler BC vs TuS RW KoblenzPredic
+[280/449]   Scraping: schwaig-rosenheim-2471742... Schwaig vs RosenheimPrediction1
+[281/449]   Scraping: schonnebeck-teutonia-st-tonis-2510830... Schonnebeck vs Teutonia St. TonisPr
+[282/449]   Scraping: fcm-traiskirchen-fc-mannsdorf-2485889... FCM Traiskirchen vs FC MannsdorfPredicti
+[283/449]   Scraping: mattersburg-2020-sv-donau-2485892... Mattersburg 2020 vs SV DonauPrediction18
+[284/449]   Scraping: wiener-sk-sv-leobendorf-2485893... Wiener SK vs SV LeobendorfPredict
+[285/449]   Scraping: oberwart-parndorf-2485894... Oberwart vs ParndorfPrediction18
+[286/449]   Scraping: kohfidisch-st-margarethen-2514638... Kohfidisch vs St. MargarethenPredi
+[287/449]   Scraping: sc-pinkafeld-sc-bad-sauerbrunn-2514639... SC Pinkafeld vs SC Bad SauerbrunnPre
+[288/449]   Scraping: deutschkreutz-edelserpentin-2514640... Deutschkreutz vs EdelserpentinPredict
+[289/449]   Scraping: langenrohr-amstetten-am-2514404... Langenrohr vs Amstetten (Am)Predic
+[290/449]   Scraping: korneuburg-admira-ii-2514405... Korneuburg vs Admira IIPrediction1
+[291/449]   Scraping: garsten-union-vöcklamarkt-2514889... Garsten vs Union VöcklamarktPre
+[292/449]   Scraping: kundl-sc-volders-2486375... Kundl SC vs VoldersPrediction18/
+[293/449]   Scraping: puch-siezenheim-2506455... Puch vs SiezenheimPrediction
+[294/449]   Scraping: matrei-seeboden-2477206... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[295/449]   Scraping: waasland-beveren-u21-francs-borains-u21-2524108... Waasland-Beveren U21 vs Francs Borains U21Pr
+[296/449]   Scraping: herrestads-aif-ifk-kumla-2445614... Herrestads AIF vs IFK KumlaPrediction1
+[297/449]   Scraping: kuchl-ufc-hallein-2467857... Kuchl vs UFC HalleinPredictio
+[298/449]   Scraping: groningen-pec-zwolle-2492055... Groningen vs PEC ZwollePrediction
+[299/449]   Scraping: top-oss-fc-dordrecht-2492371... TOP Oss vs FC DordrechtPredicti
+[300/449]   Scraping: waalwijk-mvv-maastricht-2492372... Waalwijk vs MVV MaastrichtPredic
+[301/449]   Scraping: jong-utrecht-vvv-venlo-2492373... Jong Utrecht vs VVV VenloPrediction1
+[302/449]   Scraping: jong-az-alkmaar-volendam-2492374... Jong AZ Alkmaar vs VolendamPrediction18
+[303/449]   Scraping: jong-ajax-roda-kerkrade-2492375... Jong Ajax vs Roda KerkradePredict
+[304/449]   Scraping: fc-eindhoven-emmen-2492376... FC Eindhoven vs EmmenPrediction18/09
+[305/449]   Scraping: fc-den-bosch-helmond-sport-2492377... FC Den Bosch vs Helmond SportPredict
+[306/449]   Scraping: almere-city-heracles-2492378... Almere City vs HeraclesPrediction18
+[307/449]   Scraping: rodez-as-nancy-2497558... Rodez vs AS NancyPrediction18
+[308/449]   Scraping: reims-montpellier-2497559... Reims vs MontpellierPredictio
+[309/449]   Scraping: pau-dunkerque-2497560... Pau vs DunkerquePrediction1
+[310/449]   Scraping: stade-laval-fc-sochaux-2497561... Stade Laval vs FC SochauxPrediction
+[311/449]   Scraping: grenoble-clermont-2497562... Grenoble vs ClermontPrediction18
+[312/449]   Scraping: annecy-dijon-fco-2497563... Annecy vs Dijon FCOPrediction1
+[313/449]   Scraping: rapid-bucuresti-arges-pitesti-2468287... Rapid Bucuresti vs Arges PitestiPredict
+[314/449]   Scraping: rudeš-zagreb-slaven-belupo-2480852... Rudeš Zagreb vs Slaven BelupoPredict
+[315/449]   Scraping: fk-zeljeznicar-celik-zenica-2542419... FK Zeljeznicar vs Celik ZenicaPredicti
+[316/449]   Scraping: francs-borains-rsc-anderlecht-ii-2505348... Francs Borains vs RSC Anderlecht IIPre
+[317/449]   Scraping: club-brugge-ii-gent-u21-2505349... Club Brugge II vs Gent U21Prediction18
+[318/449]   Scraping: mc-alger-mb-rouisset-2525400... MC Alger vs MB RouissetPredictio
+[319/449]   Scraping: comunicaciones-ba-defensores-unidos-2535194... Comunicaciones BA vs Defensores UnidosPre
+[320/449]   Scraping: wolves-u23s-southampton-u23s-2516382... Wolves U23s vs Southampton U23sPred
+[321/449]   Scraping: west-brom-u23s-nottingham-forest-u21-2516383... West Brom U23s vs Nottingham Forest U2
+[322/449]   Scraping: sunderland-u23s-norwich-u23s-2516384... Sunderland U23s vs Norwich U23sPredicti
+[323/449]   Scraping: man-united-u23s-brentford-u21-2516385... Man United U23s vs Brentford U21Predict
+[324/449]   Scraping: leicester-city-u23s-west-ham-utd-u23s-2516386... Leicester City U23s vs West Ham Utd U23sPre
+[325/449]   Scraping: burnley-fc-u23s-derby-u23s-2516388... Burnley FC U23s vs Derby U23sPrediction
+[326/449]   Scraping: aston-villa-u23s-middlesbrough-u23s-2516389... Aston Villa U23s vs Middlesbrough U23sPr
+[327/449]   Scraping: man-city-w-liverpool-w-2529919... Man City W vs Liverpool WPredictio
+[328/449]   Scraping: talaba-baghdad-al-jolan-sc-2552150... Talaba Baghdad vs Al Jolan SCPredictio
+[329/449]   Scraping: minaa-basra-duhok-sc-2552151... Mina'a Basra vs Duhok SCPrediction18
+[330/449]   Scraping: cd-huarte-cd-aoiz-2535500... CD Huarte vs CD AoizPrediction18/
+[331/449]   Scraping: sd-oyonesa-casalarreina-cf-2541785... SD Oyonesa vs Casalarreina CFPredi
+[332/449]   Scraping: ponte-preta-u20-portuguesa-u20-2553352... Ponte Preta U20 vs Portuguesa U20Predic
+[333/449]   Scraping: união-suzano-u20-guarani-u20-2553353... União Suzano U20 vs Guarani U20Predictio
+[334/449]   Scraping: flamengo-sp-u20-ferroviária-u20-2553354... Flamengo SP U20 vs Ferroviária U20Predi
+[335/449]   Scraping: xv-de-piracicaba-u20-sfera-u20-2553355... XV de Piracicaba U20 vs Sfera U20Prediction1
+[336/449]   Scraping: eintracht-norderstedt-ii-etsv-hamburg-2472021... Eintracht Nordersted vs ETSV HamburgPredicti
+[337/449]   Scraping: alaves-w-barcelona-w-2529382... Alaves W vs Barcelona WPredictio
+[338/449]   Scraping: sc-neusiedl-oberpullendorf-2514641... SC Neusiedl vs OberpullendorfPredic
+[339/449]   Scraping: rfc-seraing-u21-beerschot-wilrijk-u21-2524109... RFC Seraing U21 vs Beerschot-Wilrijk U2
+[340/449]   Scraping: rwdm-u21-westerlo-u21-2524110... RWDM U21 vs Westerlo U21Predicti
+[341/449]   Scraping: odra-bytom-odrzański-barycz-sułów-2488869... Odra Bytom Odrzański vs Barycz SułówPredicti
+[342/449]   Scraping: luzern-w-yverdon-w-2489845... Luzern W vs Yverdon WPrediction1
+[343/449]   Scraping: íbv-w-thróttur-reykjavík-w-2550793... ÍBV W vs Thróttur Reykjavík W
+[344/449]   Scraping: fram-w-víkingur-reykjavík-w-2550794... Fram W vs Víkingur Reykjavík W
+[345/449]   Scraping: fc-winterthur-fc-aarau-2483277... FC Winterthur vs FC AarauPrediction18
+[346/449]   Scraping: münster-völs-2486369... Münster vs VölsPrediction18/09/
+[347/449]   Scraping: bayern-munich-union-berlin-2523319... Bayern Munich vs Union BerlinPredicti
+[348/449]   Scraping: juve-stabia-cesena-2521323... Juve Stabia vs CesenaPrediction18/0
+[349/449]   Scraping: albacete-balompie-córdoba-2509354... Albacete Balompie vs CórdobaPrediction18/
+[350/449]   Scraping: wisla-krakow-slask-wroclaw-2473505... Wisla Krakow vs Slask WroclawPredict
+[351/449]   Scraping: queens-park-fc-ayr-united-2481024... Queen's Park FC vs Ayr UnitedPrediction
+[352/449]   Scraping: blau-weiss-linz-admira-2476959... Blau Weiss Linz vs AdmiraPrediction18/0
+[353/449]   Scraping: hamrun-spartans-marsaxlokk-2505278... Hamrun Spartans vs MarsaxlokkPrediction
+[354/449]   Scraping: afan-lido-goytre-afc-2552101... Afan Lido vs Goytre AFCPrediction
+[355/449]   Scraping: swansea-univ-trethomas-bluebirds-2552102... Swansea Univ. vs Trethomas BluebirdsP
+[356/449]   Scraping: seven-sisters-fc-radnor-valley-2552103... Seven Sisters FC vs Radnor ValleyPredict
+[357/449]   Scraping: san-marcial-comillas-cf-2541783... San Marcial vs Comillas CFPredictio
+[358/449]   Scraping: calasancio-cd-anguiano-2541787... Calasancio vs CD AnguianoPredictio
+[359/449]   Scraping: kortrijk-u21-lierse-kempenzonen-u21-2524111... Kortrijk U21 vs Lierse Kempenzonen U
+[360/449]   Scraping: raal-la-louvière-u21-sporting-hasselt-u21-2524112... RAAL La Louvière U21 vs Sporting Hasselt U21
+[361/449]   Scraping: white-star-woluwé-w-famkes-merkem-w-2529135... White Star Woluwé W vs Famkes Merkem WPredi
+[362/449]   Scraping: westerlo-w-oh-leuven-ii-w-2529136... Westerlo W vs OH Leuven II WPredic
+[363/449]   Scraping: monza-sassuolo-2496528... Monza vs SassuoloPrediction18
+[364/449]   Scraping: monaco-lens-2495965... Monaco vs LensPrediction18/09/
+[365/449]   Scraping: gent-standard-liège-2490188... Gent vs Standard LiègePredic
+[366/449]   Scraping: dundalk-fc-shelbourne-fc-2420941... Dundalk FC vs Shelbourne FCPredict
+[367/449]   Scraping: derry-city-galway-united-2420943... Derry City vs Galway UnitedPredict
+[368/449]   Scraping: worcester-stratford-town-2550712... Worcester vs Stratford TownPredic
+[369/449]   Scraping: yate-town-chippenham-2550713... Yate Town vs ChippenhamPrediction
+[370/449]   Scraping: yeovil-town-solihull-moors-2499400... Yeovil Town vs Solihull MoorsPredic
+[371/449]   Scraping: briton-ferry-trefelin-bgc-2478370... Briton Ferry vs Trefelin BGCPredicti
+[372/449]   Scraping: ammanford-pen-y-bont-fc-2478371... Ammanford vs Pen-y-Bont FCPredict
+[373/449]   Scraping: airbus-uk-flint-town-utd-2478372... Airbus UK vs Flint Town UtdPredic
+[374/449]   Scraping: haverfordwest-holywell-town-2478374... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[375/449]   Scraping: gap-connahs-quay-cardiff-met-2478375... GAP Connah's Quay vs Cardiff MetPredictio
+[376/449]   Scraping: colwyn-bay-barry-town-2478376... Colwyn Bay vs Barry TownPrediction
+[377/449]   Scraping: caernarfon-town-cambrian-clydach-2478377... Caernarfon Town vs Cambrian & ClydachPr
+/home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/sklearn/utils/parallel.py:161: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f0550a7a0>
+  for k, v in zip(warning_filter_keys, filter_args)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[378/449]   Scraping: polonia-bytom-ruch-chorzow-2473807... Polonia Bytom vs Ruch ChorzowPredicti
+[379/449]   Scraping: finn-harps-longford-town-2424122... Finn Harps vs Longford TownPredict
+[380/449]   Scraping: wexford-youths-cobh-ramblers-2424123... Wexford Youths vs Cobh RamblersPredict
+[381/449]   Scraping: bray-wanderers-treaty-united-2424124... Bray Wanderers vs Treaty UnitedPredict
+[382/449]   Scraping: cork-city-ucd-dublin-2424125... Cork City vs UCD DublinPrediction
+[383/449]   Scraping: athlone-town-kerry-2424126... Athlone Town vs KerryPrediction18/09
+[384/449]   Scraping: newry-city-annagh-united-2498438... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[385/449]   Scraping: dundela-fc-strabane-athletic-2498444... Dundela FC vs Strabane AthleticPre
+[386/449]   Scraping: swieqi-united-pieta-hotspurs-2548234... Swieqi United vs Pieta HotspursPredic
+[387/449]   Scraping: caerphilly-athletic-treowen-stars-2552104... Caerphilly Athletic vs Treowen StarsPredict
+[388/449]   Scraping: derry-city-w-lisburn-w-2550812... BLOCKED by Cloudflare (rate-limited) — data not retrievable right now
+  [Skipped — Cloudflare rate-limited; wait and re-run]
+[389/449]   Scraping: brentford-chelsea-2495586... Brentford vs ChelseaPrediction18/
+[390/449]   Scraping: bristol-city-watford-2507097... Bristol City vs WatfordPrediction18/
+[391/449]   Scraping: espanyol-elche-2495231... Espanyol vs ElchePrediction18/09
+[392/449]   Scraping: bohemians-fc-drogheda-utd-2420942... Bohemians FC vs Drogheda UtdPredicti
+[393/449]   Scraping: shamrock-rovers-waterford-united-2420944... Shamrock Rovers vs Waterford UnitedPred
+[394/449]   Scraping: sportivo-trinidense-club-guaraní-2473233... Sportivo Trinidense vs Club GuaraníPredicti
+[395/449]   Scraping: b71-sandoy-eb-streymur-ii-2434840... B71 Sandoy vs EB / Streymur IIPred
+[396/449]   Scraping: ud-logrones-pontevedra-2527586... UD Logrones vs PontevedraPrediction
+[397/449]   Scraping: college-1975-brunos-magpies-2516245... College 1975 vs Bruno's MagpiesPredi
+[398/449]   Scraping: psg-w-nantes-w-2530101... PSG W vs Nantes WPrediction18
+[399/449]   Scraping: cliftonville-w-lisburn-rangers-w-2550813... Cliftonville W vs Lisburn Rangers WPre
+[400/449]   Scraping: crusaders-strikers-w-larne-w-2550814... Crusaders Strikers W vs Larne WPrediction18/
+[401/449]   Scraping: ss-murata-ss-cosmos-2524228... SS Murata vs SS CosmosPrediction1
+[402/449]   Scraping: ac-libertas-sc-faetano-2524229... AC Libertas vs SC FaetanoPrediction
+[403/449]   Scraping: sp-tre-fiori-ss-virtus-2524230... SP Tre Fiori vs SS VirtusPrediction1
+[404/449]   Scraping: deportivo-santaní-sol-de-américa-par-2535163... Deportivo Santaní vs Sol de América (PAR)
+[405/449]   Scraping: real-sc-académica-coimbra-2550624... Real SC vs Académica CoimbraPre
+[406/449]   Scraping: aso-chlef-mc-oran-2525398... ASO Chlef vs MC OranPrediction18/
+[407/449]   Scraping: alianza-atlético-cd-comerciantes-2468549... Alianza Atlético vs CD ComerciantesPredi
+[408/449]   Scraping: cd-marino-real-unión-de-tenerife-2540862... CD Marino vs Real Unión de Teneri
+[409/449]   Scraping: central-córdoba-sde-defensa-y-justicia-2417499... Central Córdoba SdE vs Defensa y JusticiaPr
+[410/449]   Scraping: platense-hon-lobos-upnfm-2537376... Platense (HON) vs Lobos UPNFMPredictio
+[411/449]   Scraping: ad-carmelita-cs-uruguay-de-coronado-2489562... AD Carmelita vs CS Uruguay de Corona
+[412/449]   Scraping: nacional-asunción-2-de-mayo-2473237... Nacional Asunción vs 2 de MayoPrediction1
+[413/449]   Scraping: defensores-de-cambaceres-jj-urquiza-2535328... Defensores de Cambac vs JJ UrquizaPrediction
+[414/449]   Scraping: 3-de-noviembre-guaireña-fc-2535164... 3 de Noviembre vs Guaireña FCPredictio
+[415/449]   Scraping: vila-nova-fc-américa-mineiro-2442943... Vila Nova FC vs América MineiroPredi
+[416/449]   Scraping: héroes-de-zaci-fc-ii-huracanes-izcalli-2527475... Héroes de Zaci FC II vs Huracanes IzcalliPre
+[417/449]   Scraping: independiente-petrolero-cd-san-antonio-bol-2548788... Independiente Petrol vs CD San Antonio (BOL)
+[418/449]   Scraping: celaya-ii-irapuato-ii-2527474... Celaya II vs Irapuato IIPredictio
+[419/449]   Scraping: patriotas-boyacá-unión-magdalena-2473380... Patriotas Boyacá vs Unión MagdalenaPredi
+[420/449]   Scraping: new-york-city-fc-new-york-red-bulls-2426886... New York City FC vs New York Red BullsPr
+[421/449]   Scraping: ceará-sc-novorizontino-sp-2442944... Ceará SC vs Novorizontino SPPred
+[422/449]   Scraping: são-bernardo-sp-atlético-go-2442945... São Bernardo SP vs Atlético GOPredictio
+[423/449]   Scraping: inca-aruba-fuerte-san-francisco-2483384... INCA-Aruba vs Fuerte San Francisco
+[424/449]   Scraping: independiente-yumbo-tigres-fc-col-2473381... Independiente Yumbo vs Tigres FC (COL)Predi
+[425/449]   Scraping: psk-dinskaya-kyzyltash-2466245... PSK Dinskaya vs KyzyltashPrediction1
+[426/449]   Scraping: héroes-de-zaci-mineros-de-fresnillo-2527214... Héroes de Zaci vs Mineros de Fresnillo
+[427/449]   Scraping: fc-santiago-atlético-saltillo-2527215... FC Santiago vs Atlético SaltilloPre
+[428/449]   Scraping: fc-asgabat-fc-ahal-2525667... FC Asgabat vs FC AhalPrediction19/
+/home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:1632: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2d3f0>
+  v for v in vars(estimator) if v.endswith("_") and not v.startswith("__")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:1632: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2cc70>
+  v for v in vars(estimator) if v.endswith("_") and not v.startswith("__")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:1632: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2cb80>
+  v for v in vars(estimator) if v.endswith("_") and not v.startswith("__")
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[429/449]   Scraping: fc-balkan-fc-altyn-asyr-2525668... /usr/lib/python3.14/html/parser.py:473: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f143da6b0>
+  m = attrfind_tolerant.match(rawdata, k)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+FC Balkan vs FC Altyn AsyrPredict
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f143da6b0>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f143db6a0>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f143d9120>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[430/449]   Scraping: fc-shagadam-merw-mary-2525669... /home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/bs4/element.py:1558: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2ee30>
+  u = str.__new__(cls, value)
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+FC Shagadam vs MERW MaryPrediction1
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2ec50>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2ee30>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/usr/lib/python3.14/functools.py:54: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f06b2ea70>
+  pass
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+[431/449]   Scraping: dinaz-vyshhorod-nyva-vinnytsya-2484673... /home/sondiek/Documents/GitHub/predictor/.venv/lib/python3.14/site-packages/bs4/builder/__init__.py:409: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7f2f143d8400>
+  universal: Set[str] = self.cdata_list_attributes.get("*", set())
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+Dinaz Vyshhorod vs Nyva VinnytsyaPredic
+[432/449]   Scraping: juventud-antoniana-club-cipolletti-2534258... Juventud Antoniana vs Club CipollettiPredi
+[433/449]   Scraping: łks-łódź-ii-jagiellonia-ii-2488299... ŁKS Łódź II vs Jagiellonia IIPredic
+/usr/lib/python3.14/multiprocessing/resource_tracker.py:475: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-3610-j2l8pahu'}
+  warnings.warn(

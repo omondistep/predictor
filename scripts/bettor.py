@@ -1200,7 +1200,9 @@ def _evidence_haircut(ev, entry):
 
 
 def _apply_research_to_prob(prob, rel_cut):
-    if prob is None or rel_cut <= 0:
+    if prob is None:
+        return None, 0.0
+    if rel_cut <= 0:
         return prob, rel_cut
     return max(prob * (1.0 - rel_cut), 0.05), rel_cut
 

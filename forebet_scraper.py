@@ -291,6 +291,18 @@ class ForebetScraper:
         # Glued date with no leading whitespace (e.g. "Brooklyn FC16/09/2026")
         if re.search(r"\d{1,2}/\d{1,2}/\d{4}$", cleaned):
             cleaned = re.sub(r"\d{1,2}/\d{1,2}/\d{4}$", "", cleaned)
+        # Trailing "Prediction"/"Preview"/"Predictions" — h1 renders these as a
+        # separate span after the away team and get_text() glues them on
+        # (e.g. "FC NordsjællandPrediction" or "FC Nordsjælland Prediction").
+        cleaned = re.sub(
+            r"\s*(?:Prediction|Predictions|Preview)\s*$", "", cleaned,
+            flags=re.IGNORECASE,
+        )
+        if re.search(r"(?:Prediction|Predictions|Preview)$", cleaned, flags=re.IGNORECASE):
+            cleaned = re.sub(
+                r"(?:Prediction|Predictions|Preview)$", "", cleaned,
+                flags=re.IGNORECASE,
+            )
         return cleaned.strip()
 
     def _parse_score(self):
