@@ -147,7 +147,25 @@ LEAGUE_PROFILES = {
     "syria-premier": {"avg_goals": 2.67, "u25_rate": 0.56, "btts_no_rate": 0.56, "draw_rate": 0.0, "home_win_rate": 0.56, "home_adv": 1.1, "volatility": 0.12},  # Syria - Premier League
     "thailand-thai-3": {"avg_goals": 2.68, "u25_rate": 0.5, "btts_no_rate": 0.49, "draw_rate": 0.27, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.12},  # Thailand - Thai League 3
     "turkiye-tff-3-lig": {"avg_goals": 2.78, "u25_rate": 0.48, "btts_no_rate": 0.51, "draw_rate": 0.23, "home_win_rate": 0.46, "home_adv": 1.15, "volatility": 0.12},  # Türkiye - TFF 3. Lig
+    "turkiye-super-lig": {"avg_goals": 2.43, "u25_rate": 0.57, "btts_no_rate": 0.63, "draw_rate": 0.17, "home_win_rate": 0.50, "home_adv": 1.10, "volatility": 0.20},  # Türkiye - Süper Lig
+    "germany-2-bundesliga": {"avg_goals": 3.62, "u25_rate": 0.38, "btts_no_rate": 0.42, "draw_rate": 0.19, "home_win_rate": 0.38, "home_adv": 1.15, "volatility": 0.20},  # Germany - 2. Bundesliga
+    "ireland-premier": {"avg_goals": 2.89, "u25_rate": 0.52, "btts_no_rate": 0.41, "draw_rate": 0.37, "home_win_rate": 0.26, "home_adv": 1.05, "volatility": 0.15},  # Ireland Premier League
+    "poland-ekstraklasa": {"avg_goals": 2.83, "u25_rate": 0.43, "btts_no_rate": 0.37, "draw_rate": 0.30, "home_win_rate": 0.41, "home_adv": 1.10, "volatility": 0.15},  # Poland - Ekstraklasa
+    "cyprus-first": {"avg_goals": 4.12, "u25_rate": 0.12, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.38, "home_adv": 1.10, "volatility": 0.25},  # Cyprus First Division
+    "belgium-challenger-pro": {"avg_goals": 2.62, "u25_rate": 0.46, "btts_no_rate": 0.50, "draw_rate": 0.17, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.15},  # Belgium Challenger Pro League
+    "spain-laliga": {"avg_goals": 2.88, "u25_rate": 0.42, "btts_no_rate": 0.45, "draw_rate": 0.33, "home_win_rate": 0.42, "home_adv": 1.15, "volatility": 0.05},  # Spain - La Liga
     "venezuela-primera": {"avg_goals": 2.43, "u25_rate": 0.56, "btts_no_rate": 0.46, "draw_rate": 0.3, "home_win_rate": 0.41, "home_adv": 1.1, "volatility": 0.12},  # Venezuela - Primera Division
+    # England — cup competitions score high (3.2-3.4) and vary wildly (giants
+    # vs minnows, rotated lineups), so forcing them onto the 2.8 default makes
+    # the model lean Under and bleed on Over 3.5 / Under 1.5.
+    "england-fa-cup": {"avg_goals": 3.35, "u25_rate": 0.35, "btts_no_rate": 0.44, "draw_rate": 0.18, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.30},
+    "england-fa-trophy": {"avg_goals": 3.26, "u25_rate": 0.35, "btts_no_rate": 0.40, "draw_rate": 0.21, "home_win_rate": 0.44, "home_adv": 1.10, "volatility": 0.30},
+    "england-efl-cup": {"avg_goals": 2.89, "u25_rate": 0.47, "btts_no_rate": 0.47, "draw_rate": 0.18, "home_win_rate": 0.39, "home_adv": 1.10, "volatility": 0.25},
+    "england-premier": {"avg_goals": 3.05, "u25_rate": 0.42, "btts_no_rate": 0.47, "draw_rate": 0.20, "home_win_rate": 0.48, "home_adv": 1.15, "volatility": 0.05},
+    "england-championship": {"avg_goals": 3.00, "u25_rate": 0.44, "btts_no_rate": 0.35, "draw_rate": 0.27, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.10},
+    "england-league-one": {"avg_goals": 3.00, "u25_rate": 0.44, "btts_no_rate": 0.40, "draw_rate": 0.27, "home_win_rate": 0.40, "home_adv": 1.10, "volatility": 0.15},
+    "england-league-two": {"avg_goals": 2.65, "u25_rate": 0.52, "btts_no_rate": 0.48, "draw_rate": 0.28, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.15},
+    "england-national": {"avg_goals": 2.85, "u25_rate": 0.46, "btts_no_rate": 0.42, "draw_rate": 0.22, "home_win_rate": 0.42, "home_adv": 1.10, "volatility": 0.20},
     "default":              {"avg_goals": 2.8, "u25_rate": 0.45, "btts_no_rate": 0.50, "draw_rate": 0.25, "home_win_rate": 0.45, "home_adv": 1.10, "volatility": 0.20},
 }
 
@@ -202,6 +220,8 @@ def detect_league(text: str) -> str:
 
     # Brazil
     if "brazil" in t or "brasil" in t:
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
         if "u20" in t or "sub-20" in t or "sub 20" in t:
             return "brazil-u20"
         if "serie d" in t or "série d" in t:
@@ -376,14 +396,15 @@ def detect_league(text: str) -> str:
         if "3" in t[:4]: return "turkiye-tff-3-lig"
         if "4" in t[:4]: return "turkiye-tff-3-lig"
         if "c" in t[-1:].lower(): return "default"
-        return "turkiye-tff-3-lig"
+        return "turkiye-super-lig"
     if "turkiye" in t or "türkiye" in t or "turkey" in t:
-        if "super lig" in t: return "default"
+        if "super lig" in t or "süper lig" in t:
+            return "turkiye-super-lig"
         if "1. lig" in t or "tff 1" in t: return "default"
         if "2. lig" in t or "tff 2" in t: return "default"
         if "3. lig" in t or "tff 3" in t: return "turkiye-tff-3-lig"
         if "kupasi" in t: return "default"
-        return "turkiye-tff-3-lig"
+        return "turkiye-super-lig"
     # Thailand
     if t.startswith("th"):
         if "1" in t[:4]: return "default"
@@ -407,8 +428,85 @@ def detect_league(text: str) -> str:
         return "algeria-ligue-2"
     # Spain
     if "spain" in t or "espana" in t or "espa" in t:
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
         if "segunda" in t:
             return "spain-segunda"
+        if "la liga" in t or "primera division" in t or "primer division" in t:
+            return "spain-laliga"
+        if "rfef" in t or "tercera" in t:
+            return "spain-segunda"
+    # Germany
+    if ("german" in t or "deutschland" in t or "bundesliga" in t
+            or "oberliga" in t or "regionalliga" in t):
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
+        if "2. bundesliga" in t or "zweite" in t:
+            return "germany-2-bundesliga"
+        if "regionalliga" in t or "oberliga" in t or "jugend" in t or "junior" in t:
+            return "default"
+        return "default"
+    # Ireland / Rep. of Ireland
+    if ("ireland" in t or "(irl)" in t):
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
+        if " preview" in t:  # future-proof
+            return "ireland-premier"
+        if "first division" in t:
+            return "default"
+        return "ireland-premier"
+    # Poland
+    if "poland" in t or "polska" in t or "ekstraklasa" in t:
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
+        if "2. liga" in t or "2 liga" in t:
+            return "default"
+        if "iii liga" in t or "3 liga" in t:
+            return "default"
+        if "central youth" in t or "junior" in t:
+            return "default"
+        if "ekstraklasa" in t or "1. liga" in t or "1 liga" in t:
+            return "poland-ekstraklasa"
+        return "poland-ekstraklasa"
+    # Cyprus
+    if "cyprus" in t or "kipro" in t:
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
+        if "second division" in t: return "default"
+        return "cyprus-first"
+    # Belgium
+    if "belgium" in t or "belgique" in t or "belgie" in t or "vlaanderen" in t:
+        if " women" in t or "(w)" in t or " w " in t or t.endswith(" w"):
+            return "women-football"
+        if "u21" in t or "u23" in t or "youth" in t or "junior" in t or "aa" in t:
+            return "reserve-leagues"
+        if "challenger" in t or "pro league" in t or "division 1" in t:
+            return "belgium-challenger-pro"
+        return "default"
+    # England
+    if "england" in t or "epl" in t or "english" in t:
+        if (" w" in t or "women" in t or "wfc" in t or "(w)" in t or "/w " in t
+                or "w s" in t):
+            return "women-football"
+        if "u21" in t or "u23" in t or "reserve" in t or "ii" in t:
+            return "default"
+        if "fa cup" in t:
+            return "england-fa-cup"
+        if "fa trophy" in t:
+            return "england-fa-trophy"
+        if "efl cup" in t or "league cup" in t:
+            return "england-efl-cup"
+        if "premier league" in t or "premiership" in t:
+            return "england-premier"
+        if "championship" in t:
+            return "england-championship"
+        if "league one" in t:
+            return "england-league-one"
+        if "league two" in t:
+            return "england-league-two"
+        if "national league" in t:
+            return "england-national"
+        return "england-premier"
     # Women's football — lower scoring on average
     if (" w" in t or " women" in t or " wfc " in t or " wfc" in t
         or t.endswith(" w") or t.endswith(" women")

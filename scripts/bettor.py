@@ -40,6 +40,17 @@ Commands:
       research checklist for the agent's web layer (venue, injuries,
       phantom fixtures stay human).  --html writes predictions/verdict.html.
 
+  bettor.py research <slip.txt> [--preds <pr-dump.json>] [--no-model]
+                              [--json] [--apply <dir>] [--template]
+      The opencode-powered research loop.  Without --apply it prints a
+      research AGENDA (one item per leg needing human web checks) plus the
+      evidence schema each leg expects.  opencode then runs the web search
+      itself and writes one data/research/<slug>.json per fixture.  With
+      --apply <dir> it loads those evidence files back, merges them into the
+      pricing loop (key-absence prob haircuts, venue fixtures, red-flag
+      clearing) and prints the same verdict table + action ticket as `slip`.
+      Research can only downgrade or confirm a model pick, never invent edge.
+
 Exit code is 0 on success. Read-only on the DB (never writes history.db).
 """
 
@@ -105,6 +116,63 @@ MARKET_ODDS = {
 NO_ODDS_MARKETS = {"DNB", "DC", "1H"}
 
 MIN_LEAGUE_SAMPLES = 25
+
+# ── Research layer (opencode does the web search) ──────────────────────────
+# Evidence files live in data/research/<slug>.json.  The agent (opencode)
+# writes them after a real web search; `research --apply` merges them back.
+RESEARCH_DIR = REPO / "data" / "research"
+
+# prob haircut per confirmed absence, by playing role.  Annualised as a
+# fraction of the side's win prob / the scoring side of an O/U or BTTS bet.
+# Hatched to be conservative: the pipeline itself moves ~3-5 goal-percent,
+# this is a fraction of the *probability* that the pick already carries.
+ROLE_WEIGHTS = {
+    "forward": 0.05,       # top scorer out — the market barely priced it in
+    "midfielder": 0.03,
+    "defender": 0.035,
+    "keeper": 0.06,
+    "key": 0.04,           # club communicates "key man absent"
+    "unknown": 0.03,
+}
+# A star absence beyond this many points total is suspicious — cap it.
+ABSENCE_CAP = 0.10
+
+# Venue haircut when the fixture is neutral (not played at the side's home).
+NEUTRAL_VENUE_CUT = 0.04
+
+# Must be present in an evidence file before it is trusted at all.
+EVIDENCE_REQUIRED = {
+    "fixture": ["real", "competition"],
+    "findings": ["summary"],
+}
+_ALWAYS_ALLOWED_EVIDENCE = {
+    "sources", "date_checked", "looked_at_odds", "confidence_in_research",
+    "flags",
+}
+
+# Shape for an evidence file at data/research/<slug>.json.  `research` emits
+# this skeleton + a worklist; opencode fills it in after a real web search.
+_EVIDENCE_TEMPLATE = {
+    "slug": "",
+    "fixture": {
+        "real": True,
+        "competition": "",
+        "date": "",
+        "venue": "home",            # home | neutral | away
+    },
+    "findings": {
+        "summary": "",              # required — what the web check established
+        "absences": [               # optional — confirmed absences
+            {"team": "home", "role": "forward", "player": ""},
+        ],
+        "red_flags": [],            # optional — extra problems found
+    },
+    "sources": [],                  # urls actually consulted
+    "date_checked": "",
+    "looked_at_odds": True,
+    "confidence_in_research": "medium",   # high | medium | low
+    "flags": [],
+}
 
 
 def _conn():
@@ -988,6 +1056,7 @@ def _analyze_leg(leg, fx, acc):
 
     rel, grade = _rel_factor(acc, e["league"], leg["market"])
     e["reliability"] = grade
+    e["_rel"] = rel
     e["stake_pct"] = round(_stake(bp, prob, 0.25, 0.05) * rel * 100, 2)
 
     both = f"{leg['home']} {leg['away']}"
@@ -1024,6 +1093,317 @@ def _analyze_leg(leg, fx, acc):
         e["verdict"] = "PASS"
         e["why"] = ", ".join(bits)
     return e
+
+
+# ─────────────────────────────────────────────
+# research layer (opencode is the research agent)
+# ─────────────────────────────────────────────
+
+def _evidence_valid(ev):
+    """An evidence file is trusted only when it carries the mandatory fields
+    (real fixture + a findings summary) and no unknown top-level keys."""
+    fx = ev.get("fixture") or {}
+    fnd = ev.get("findings") or {}
+    if not isinstance(fx.get("real"), bool):
+        return False
+    if fx.get("real") is True and not fx.get("competition"):
+        return False
+    if not fnd.get("summary"):
+        return False
+    allowed = set(EVIDENCE_REQUIRED) | {"fixture", "findings"} | _ALWAYS_ALLOWED_EVIDENCE
+    for k in ev:
+        if k != "slug" and k not in allowed:
+            return False
+    return True
+
+
+def _slug_of(entry):
+    m = entry.get("match") or ""
+    m = re.sub(r"[^a-z0-9]+", "-", m.lower())
+    s = f"{m}-{str(entry.get('date') or '').replace('/','-')}"
+    return s.strip("-")
+
+
+def _evidence_path(slug):
+    return RESEARCH_DIR / f"{slug}.json"
+
+
+def _read_evidence(slug, strict=True):
+    p = _evidence_path(slug)
+    if not p.exists():
+        return None
+    try:
+        ev = json.loads(p.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return {"_error": "unreadable JSON"}
+    if strict and not _evidence_valid(ev):
+        return {"_error": f"missing required evidence fields ({EVIDENCE_REQUIRED})"}
+    return ev
+
+
+def _evidence_haircut(ev, entry):
+    """Fraction of the pick's prob that the evidence removes (0 = none).
+
+    Never boosts: only side-directional absences (1X2 Home/Away), scorer
+    absences on Over/Yes, and a neutral venue for Home picks can cut."""
+    if not ev or ev.get("_error"):
+        return 0.0, [], "no usable evidence"
+    fx = ev.get("fixture") or {}
+    fnd = ev.get("findings") or {}
+    notes = []
+    absent = fnd.get("absences") or []
+    mkt = entry.get("market")
+    pick = (entry.get("pick") or "").upper()
+
+    sum_w = 0.0
+    if mkt == "1X2":
+        team = "home" if "HOME" in pick else ("away" if "AWAY" in pick else None)
+        if not team:
+            return 0.0, notes, "draw pick — absences favour the draw (never boost)"
+        for ab in (a for a in absent if (a.get("team") or "") == team):
+            w = ROLE_WEIGHTS.get(ab.get("role") or "unknown", ROLE_WEIGHTS["unknown"])
+            sum_w += w
+            notes.append(f"{team} {'—'.join(x for x in (ab.get('player'), ab.get('role')) if x)} out")
+    elif mkt == "O/U":
+        ov = pick.split(None, 1)[0].upper()
+        if ov not in ("OVER", "YES"):
+            return 0.0, notes, f"{ov} pick — absences usually help, never boost"
+        for ab in absent:
+            role = ab.get("role") or "unknown"
+            if role in ("forward", "midfielder", "unknown"):
+                sum_w += ROLE_WEIGHTS.get(role, ROLE_WEIGHTS["unknown"]) * 0.5
+                notes.append(f"{ab.get('team')} {ab.get('player') or role} out (scorer)")
+    elif mkt == "BTTS":
+        if pick != "YES":
+            return 0.0, notes, "BTTS No — absences usually help, never boost"
+        for ab in absent:
+            role = ab.get("role") or "unknown"
+            if role in ("forward", "midfielder", "unknown"):
+                sum_w += ROLE_WEIGHTS.get(role, ROLE_WEIGHTS["unknown"]) * 0.5
+                notes.append(f"{ab.get('team')} {ab.get('player') or role} out (scorer)")
+    else:
+        return 0.0, notes, f"{mkt} outside research haircut scope"
+
+    cap_notes = []
+    if sum_w > ABSENCE_CAP:
+        cap_notes.append(f"absence haircut capped at {ABSENCE_CAP:.2f}")
+        sum_w = ABSENCE_CAP
+
+    rel_cut = 0.0
+    if mkt == "1X2" and "HOME" in pick:
+        venue = (fx.get("venue") or "home").lower()
+        if venue == "neutral":
+            rel_cut += NEUTRAL_VENUE_CUT
+            notes.append("neutral venue — home edge off")
+    rel_cut += sum_w
+    return rel_cut, notes, " | ".join(cap_notes)
+
+
+def _apply_research_to_prob(prob, rel_cut):
+    if prob is None or rel_cut <= 0:
+        return prob, rel_cut
+    return max(prob * (1.0 - rel_cut), 0.05), rel_cut
+
+
+def _merge_research(entry, ev):
+    """Re-price a leg after research evidence.  Research never flips a NO-DATA
+    or KILL leg to BET — it can only confirm, downgrade, or kill."""
+    if entry.get("verdict") in ("KILL", "NO-DATA"):
+        e = dict(entry)
+        if ev and not ev.get("_error") and ev.get("fixture", {}).get("real") is False:
+            e["verdict"] = "KILL"
+            e["why"] = "phantom fixture confirmed — not a real match"
+            e["flags"] = e["flags"] + ["research: phantom fixture"]
+        elif ev and ev.get("_error"):
+            e["flags"] = e["flags"] + [f"research error: {ev['_error']}"]
+        return e
+
+    e = dict(entry)
+    if ev is None:
+        return e
+    if ev.get("_error"):
+        e["flags"] = e["flags"] + [f"research error: {ev['_error']}"]
+        return e
+    fx = ev.get("fixture") or {}
+    if fx.get("real") is False:
+        e["verdict"] = "KILL"
+        e["why"] = "phantom fixture confirmed — not a real match"
+        e["flags"] = e["flags"] + ["research: phantom fixture"]
+        return e
+
+    rel_cut, notes, _cap = _evidence_haircut(ev, entry)
+    new_prob, applied = _apply_research_to_prob(entry.get("model_prob"), rel_cut)
+    if not applied:
+        e["flags"] = e["flags"] + ["research: " + n for n in notes] if notes else e["flags"]
+        if entry.get("verdict") == "BET":
+            e["why"] += " · research confirmed"
+        return e
+
+    e["model_prob"] = round(new_prob, 4)
+    e["flags"] = e["flags"] + ["research: " + n for n in notes]
+    if e.get("fair_prob"):
+        e["fair_prob"] = round(min(new_prob, e["fair_prob"]), 4)
+    if e.get("odds"):
+        ev_pct = round((new_prob * e["odds"] - 1) * 100, 2)
+        e["ev_pct"] = ev_pct
+        e["edge_pct"] = round((new_prob - e["fair_prob"]) * 100, 2)
+        e["stake_pct"] = round(_stake(e["odds"], new_prob, 0.25, 0.05)
+                               * e.get("_rel", 1.0) * 100, 2)
+        reason = f"research haircut — prob {entry['model_prob']*100:.0f}% → {new_prob*100:.0f}%: {', '.join(notes)}"
+        if ev_pct / 100 <= -0.05:
+            e["verdict"] = "KILL"
+            e["why"] = f"bad price after research — EV {ev_pct:+.0f}%"
+        elif ev_pct / 100 >= 0.03 and entry.get("confidence") not in (None, "Low") \
+                and entry.get("reliability") != "COLD":
+            if any(f in RED_FLAGS or f.startswith("pipeline red flag:") for f in e["flags"]):
+                e["verdict"] = "PASS"
+                e["why"] = f"+EV but red flags persist after research ({reason})"
+            else:
+                e["verdict"] = "BET"
+                e["why"] = f"{reason} — still {ev_pct:+.1f}% EV"
+        else:
+            e["verdict"] = "PASS"
+            e["why"] = f"{reason} — dropped below +3% bar (EV {ev_pct:+.1f}%)"
+    return e
+
+
+def worklist_for(entries):
+    """Research agenda for opencode: per leg, what to verify on the web and
+    the evidence file slug to write to.  KILL legs are skipped."""
+    out = []
+    for e in entries:
+        if e.get("verdict") == "KILL":
+            continue
+        slug = _slug_of(e)
+        tasks = []
+        if e.get("verdict") == "NO-DATA":
+            tasks = [
+                "verify this fixture is REAL (competition + date + teams)",
+                "find bookmaker odds for the slip pick (or nearest line)",
+                "note the venue (home / neutral / away)",
+            ]
+        elif e.get("verdict") == "PASS":
+            reds = [f for f in e.get("flags", [])
+                    if f in RED_FLAGS or f.startswith("pipeline red flag:")]
+            tasks.append("check whether flagged red flags are real (reserve team, unverified league, longshot)")
+            mkt, pick = e.get("market"), (e.get("pick") or "").upper()
+            if "HOME" in pick or "AWAY" in pick:
+                side = "home" if "HOME" in pick else "away"
+                tasks.append(f"confirm {side} team absences (role + player) and whether venue is neutral")
+            elif mkt in ("O/U", "BTTS") and (pick.startswith("OVER") or pick == "YES"):
+                tasks.append("confirm scorer absences (forwards/mids) on BOTH teams")
+        else:  # BET
+            mkt, pick = e.get("market"), (e.get("pick") or "").upper()
+            if "HOME" in pick or "AWAY" in pick:
+                side = "home" if "HOME" in pick else "away"
+                tasks.append(f"confirm {side} team absences (role + player) and that venue is truly their home")
+            elif mkt in ("O/U", "BTTS") and (pick.startswith("OVER") or pick == "YES"):
+                tasks.append("confirm scorer absences (forwards/mids) on BOTH teams")
+            tasks.append("sanity-check the odds still match the slip")
+        out.append({
+            "slug": slug,
+            "leg": e["leg"], "match": e["match"],
+            "pick": f"{e.get('market')}:{e.get('pick')}" if e.get("market") else "",
+            "verdict": e.get("verdict"), "why": e.get("why", ""),
+            "tasks": tasks,
+        })
+    return out
+
+
+def cmd_research(args):
+    """research <slip> [--preds] [--no-model] [--json]
+
+    Default: resolve the slip, print a research agenda, and write the an
+    evidence skeleton file for every leg that needs a web check.  opencode
+    runs the web searches, fills each data/research/<slug>.json, then runs
+    `research --apply <slip>` to merge the evidence back into the verdict."""
+    p = Path(args.file)
+    if not p.exists():
+        sys.exit(f"slip file not found: {p}")
+    legs = _parse_slip(p.read_text(encoding="utf-8", errors="replace"))
+    if not legs:
+        sys.exit("no legs parsed from slip file")
+    acc = _league_market_accuracy()
+
+    preds_dump = None
+    if args.preds:
+        pp = Path(args.preds)
+        if pp.exists():
+            preds_dump = _load_json_robust(pp.read_text())
+    resolved = _resolve_fixtures(legs, preds=preds_dump)
+
+    if not args.no_model and preds_dump is None:
+        need = [fx for leg, fx, _s in resolved
+                if fx and fx.get("forebet_url") and fx.get("actual_home_goals") is None
+                and not fx.get("_preds") and not _fixture_candidates(fx)]
+        if need:
+            links_file = REPO / "data" / "slip_links.txt"
+            links_file.write_text("\n".join(sorted({fx["forebet_url"] for fx in need})) + "\n")
+            try:
+                dump = _run_pr_json(str(links_file))
+                resolved = _resolve_fixtures(legs, preds=dump)
+            except SystemExit:
+                print("[research] pr scrape failed — falling back to DB data only",
+                      file=sys.stderr)
+
+    entries = [_analyze_leg(leg, fx, acc) for leg, fx, _s in resolved]
+    for (leg, fx, score), e in zip(resolved, entries):
+        e["match_score"] = score
+
+    counts = {"BET": 0, "PASS": 0, "NO-DATA": 0, "KILL": 0}
+    for e in entries:
+        counts[e["verdict"]] += 1
+
+    if not args.apply:
+        worklist = worklist_for(entries)
+        RESEARCH_DIR.mkdir(parents=True, exist_ok=True)
+        for w in worklist:
+            skel = dict(_EVIDENCE_TEMPLATE)
+            skel["slug"] = w["slug"]
+            fx = skel["fixture"]
+            mm = re.match(r"(.+?)(?:\s+vs\.?\s+|\s+-\s+)(.*)", w["match"])
+            if mm:
+                fx["_teams"] = [mm.group(1).strip(), mm.group(2).strip()]
+            path = _evidence_path(w["slug"])
+            if not path.exists():
+                path.write_text(json.dumps(skel, indent=2, ensure_ascii=False))
+        if args.json:
+            print(json.dumps({"legs": entries, "summary": {"total": len(entries), **counts},
+                              "worklist": worklist}, indent=2, ensure_ascii=False))
+            return
+        print("RESEARCH AGENDA — fill data/research/<slug>.json, then run "
+              "`research --apply <slip>`")
+        print("=" * 100)
+        for w in worklist:
+            print(f"\n[{w['leg']}] {w['match']:<36} {w['pick']:<16} "
+                  f"{w['verdict']:<10} {w['why'][:52]}")
+            for t in w["tasks"]:
+                print(f"  ☐ {t}")
+            print(f"  → {_evidence_path(w['slug'])}")
+        print("\nLegs skipped (KILL — no research needed): "
+              f"{counts['KILL']}  |  already finished: n/a")
+        return
+
+    # ── --apply: merge saved evidence back into the verdict ──
+    merged = [_merge_research(e, _read_evidence(_slug_of(e))) for e in entries]
+    m_counts = {"BET": 0, "PASS": 0, "NO-DATA": 0, "KILL": 0}
+    for e in merged:
+        m_counts[e["verdict"]] += 1
+    m_bets = sorted([e for e in merged if e["verdict"] == "BET"],
+                    key=lambda e: -e["ev_pct"])
+    m_total = sum(e["stake_pct"] for e in m_bets)
+
+    if args.json:
+        print(json.dumps({"legs": merged, "summary": {"total": len(merged), **m_counts},
+                          "action": m_bets, "total_stake_pct": round(m_total, 2)},
+                         indent=2, ensure_ascii=False))
+        return
+
+    _print_slip_verdict(merged, m_bets, m_counts,
+                        title="SLIP AFTER RESEARCH",
+                        header_extra=f"{counts['BET']}→{m_counts['BET']} BET   "
+                                     f"{counts['KILL']}→{m_counts['KILL']} KILL   "
+                                     f"after evidence merge")
 
 
 def cmd_slip(args):
@@ -1079,9 +1459,21 @@ def cmd_slip(args):
         }, indent=2, ensure_ascii=False))
         return
 
+    _print_slip_verdict(entries, bets, counts, title="SLIP VERDICT")
+
+    if args.html:
+        out_file = REPO / "predictions" / "verdict.html"
+        out_file.write_text(render_slip_html(entries, bets, counts))
+        print(f"\n[slip] wrote {out_file}")
+
+
+def _print_slip_verdict(entries, bets, counts, title="SLIP VERDICT",
+                        header_extra=None):
+    total_stake = sum(e["stake_pct"] for e in bets)
     print("=" * 100)
-    print(f"SLIP VERDICT  — {len(entries)} legs  |  "
-          f"{counts['BET']} BET   {counts['PASS']} PASS   "
+    suffix = f"  |  {header_extra}" if header_extra else ""
+    print(f"{title}  — {len(entries)} legs{suffix}")
+    print(f"{counts['BET']} BET   {counts['PASS']} PASS   "
           f"{counts['NO-DATA']} NO-DATA   {counts['KILL']} KILL")
     print("=" * 100)
     print(f"{'#':<3}{'MATCH':<32}{'PICK':<17}{'ODDS':>6}{'MODEL':>7}{'FAIR':>7}"
@@ -1120,11 +1512,6 @@ def cmd_slip(args):
             reds = [f for f in e["flags"] if f in RED_FLAGS or f.startswith("pipeline red flag:")]
             why = e["why"] if not reds else ", ".join(reds)
             print(f"  [{e['leg']}] {e['match'][:36]:<36} {why[:60]}")
-
-    if args.html:
-        out_file = REPO / "predictions" / "verdict.html"
-        out_file.write_text(render_slip_html(entries, bets, counts))
-        print(f"\n[slip] wrote {out_file}")
 
 
 def render_slip_html(entries, bets, counts, title="Slip Verdict"):
@@ -1392,12 +1779,25 @@ def main():
                    help="also write predictions/verdict.html")
     s.set_defaults(fn=cmd_slip)
 
+    r = sub.add_parser("research",
+                       help="emit a web-research agenda for a slip, then --apply the saved evidence back into the verdict")
+    r.add_argument("file")
+    r.add_argument("--apply", action="store_true",
+                   help="merge data/research/<slug>.json evidence back into the verdict")
+    r.add_argument("--preds", help="use a pr --json dump instead of scraping (path to json)")
+    r.add_argument("--no-model", action="store_true",
+                   help="never shell out to pr — DB/pending data only")
+    r.add_argument("--json", action="store_true")
+    r.set_defaults(fn=cmd_research)
+
     l = sub.add_parser("learn", help="run local calibration learning (bias + retrain)")
     l.set_defaults(fn=cmd_learn)
 
     args = ap.parse_args()
     if args.cmd == "card" and not args.file:
         ap.error("card needs a predictions.json or a links file")
+    if args.cmd == "research" and not args.file:
+        ap.error("research needs a slip file")
     args.fn(args)
 
 

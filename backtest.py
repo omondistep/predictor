@@ -4,7 +4,14 @@ import sys, os
 sys.path.insert(0, os.path.dirname(__file__))
 
 from database import init_db, get_db
+import predict
 from predict import analyze_from_data, detect_league, get_profile
+
+# The per-match auto threshold tightening hits a 43k-row DB query on every
+# call — pointless in a backtest.  Run it once at startup, then disable it.
+from predict import _auto_calibrate_thresholds as _run_calib_once
+_run_calib_once()
+predict._auto_calibrate_thresholds = lambda: None
 
 def db_row_to_data(row: dict) -> dict:
     """Map DB row to the data dict format expected by analyze_from_data."""
@@ -82,18 +89,21 @@ def check_correct(pred: dict, data: dict) -> bool | None:
 
 
 def main():
+    d = sys.argv[1] if len(sys.argv) > 1 else "19/07/2026"
+    limit = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     init_db()
     conn = get_db()
 
-    rows = conn.execute("""
-        SELECT * FROM matches
-        WHERE actual_result IS NOT NULL AND match_date = '19/07/2026'
-        ORDER BY id
-    """).fetchall()
+    sql = """SELECT * FROM matches
+             WHERE actual_result IS NOT NULL AND match_date = ?
+             ORDER BY id"""
+    if limit:
+        sql += f" LIMIT {int(limit)}"
+    rows = conn.execute(sql, (d,)).fetchall()
 
     col_names = [c["name"] for c in conn.execute("PRAGMA table_info(matches)").fetchall()]
 
-    print(f"Re-predicting {len(rows)} matches from 19/07/2026...\n")
+    print(f"Re-predicting {len(rows)} matches from {d}...\n")
 
     old_correct = 0
     new_correct = 0

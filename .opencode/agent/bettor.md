@@ -80,6 +80,10 @@ pr links.txt --json > /tmp/preds.json   # model's full prediction dump
 .venv/bin/python scripts/bettor.py card /tmp/preds.json        # your betting card
 .venv/bin/python scripts/bettor.py card links.txt              # run + card in one shot
 pr --today                              # fetch today's slate → links/today.html
+
+# Research layer (you do the web search)
+.venv/bin/python scripts/bettor.py research results/slip.txt        # research agenda + data/research/*.json skeletons
+.venv/bin/python scripts/bettor.py research results/slip.txt --apply   # merge saved evidence back into verdict
 ```
 
 SQLite is your microscope. `history.db` lives at the repo root:
@@ -137,6 +141,50 @@ weakness must show up in *both* the audit and the raw DB numbers.
    make sense with fresh data.
 3. Bias corrections with `|bias| > 0.5` on `n < 15` are more likely noise than
    signal — be ready to recommend a minimum-sample floor.
+
+## The research layer — YOU are the research agent
+
+`bettor.py slip` is deliberately conservative: anything that needs outside
+knowledge (phantom fixtures, venue, injuries, absences) is flagged
+**NO-DATA**, **PASS with red flags**, or left to your web layer. That is your
+job — the pipeline cannot see the internet.
+
+Workflow:
+
+1. **Emit the agenda**: `bettor.py research <slip.txt>`. It prints one ☐ task
+   list per leg and writes a skeleton `data/research/<slug>.json` for every leg
+   needing a web check (BET legs too — confirm absences/venue, don't assume).
+2. **Do the research yourself** — real web searches only, cite the actual URLs
+   in `"sources"`. Fill each skeleton with what you actually found. Evidence can
+   only ever **downgrade or confirm** a leg, never invent edge.
+3. **Merge**: `bettor.py research <slip.txt> --apply`. The verdict reprices:
+   confirmed absences cut the model prob by role weight (forward 0.05, keeper
+   0.06, key 0.04, ...), neutral venues cut home picks 0.04, phantom fixtures
+   are KILLed. Absence haircuts cap at 0.10 combined.
+
+Evidence schema (a filled `data/research/<slug>.json`):
+
+```json
+{
+  "slug": "<home>-vs-<away>-<date>",
+  "fixture": {"real": true, "competition": "Bundesliga", "date": "19/09/2026", "venue": "home"},
+  "findings": {
+    "summary": "Dortmund missing key forward (hamstring), confirmed by presser.",
+    "absences": [{"team": "away", "role": "forward", "player": "Guirassy"}],
+    "red_flags": []
+  },
+  "sources": ["https://..."],
+  "date_checked": "19/09/2026",
+  "looked_at_odds": true,
+  "confidence_in_research": "high"
+}
+```
+
+Rules: `fixture.real` + `findings.summary` are mandatory (files without them are
+ignored and flagged). `fixture.real: false` kills the leg as a phantom. Absence
+`team` is `home` or `away`; `role` ∈ forward/midfielder/defender/keeper/key.
+Never write evidence you did not verify — the haircuts are already small on
+purpose, and fabricated absences poison the whole staking model.
 
 ## How to produce YOUR OWN match predictions
 
