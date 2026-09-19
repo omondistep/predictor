@@ -705,6 +705,11 @@ _THR_KEYS = {"1.5": "15", "2.5": "25", "3.5": "35"}
 # "FC B", "Barinas II", "U21", "Reserves" — thin/second-team markets.
 _RESERVE_RE = re.compile(r"\b(?:II|III|B|2|U20|U21|Reserves?)\b", re.IGNORECASE)
 
+# Senior clubs whose official name contains a token that otherwise looks like
+# a reserve/II suffix (Roman numeral in the club name proper, not a B-team).
+# If a match's team names contain any of these, the reserve flag is skipped.
+_SENIOR_CLUB_ALLOW = ("willem ii",)
+
 # Only these flags block a +EV leg from becoming a BET.  Other flags
 # ("de-vigged line", "prob via complement line") are methodology notes —
 # they document how the numbers were made, they do not kill the bet.
@@ -1060,7 +1065,8 @@ def _analyze_leg(leg, fx, acc):
     e["stake_pct"] = round(_stake(bp, prob, 0.25, 0.05) * rel * 100, 2)
 
     both = f"{leg['home']} {leg['away']}"
-    if _RESERVE_RE.search(both):
+    if _RESERVE_RE.search(both) and not any(
+            a in both.casefold() for a in _SENIOR_CLUB_ALLOW):
         e["flags"].append("reserve/second team")
     if not e["league"] or _league_family(e["league"]) not in (acc.get(leg["market"]) or {}):
         e["flags"].append("league unverified (n<20)")

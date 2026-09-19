@@ -26,6 +26,12 @@ House rules the agent follows: no bet without +EV (odds de-vigged), ignore
 samples < 25–30, Quarter-Kelly capped at 5%, scrap picks with red flags, never
 commit unless asked.
 
+The reserve/second-team scanner (`_RESERVE_RE` in `scripts/bettor.py`) treats
+tokens like "II/III/B/2/U20/U21" in team names as B-teams. Senior clubs with a
+Roman numeral in their official name (e.g. Willem II) are allow-listed in
+`_SENIOR_CLUB_ALLOW` so they are not wrongly flagged; genuine reserve sides
+(Juventus II, KRC Genk II, Zenit-2) still get blocked.
+
 ## Core Commands
 
 | Command | Description |
