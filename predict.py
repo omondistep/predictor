@@ -41,24 +41,31 @@ _BIAS_CORRECTIONS_LOADED = False
 
 
 def schedule_retrain(delay_hours: float = 18.0):
-    """Schedule ML model retrain via cron.
-
-    Args:
-        delay_hours: Hours to wait before retraining (default 18h)
-    """
+    """Schedule ML model retrain via cron; fall back to a nohup one-shot
+    sleeper when cron is unavailable (no crontab binary / no daemon), so an
+    18h-ahead retrain still fires on machines without cron."""
+    import shutil
     import subprocess
     from datetime import timedelta
 
     retrain_time = datetime.now() + timedelta(hours=delay_hours)
-    hour = retrain_time.hour
-    minute = retrain_time.minute
     parent = Path(__file__).parent
-
-    cron_line = (
-        f"{minute} {hour} * * * cd {parent} && "
+    retrain_cmd = (
+        f"cd {parent} && "
         f".venv/bin/python3 -c "
         f"\"from calibration_learner import auto_retrain; auto_retrain(force=True)\" "
         f">> /tmp/retrain.log 2>&1"
+    )
+
+    # No crontab binary at all → nothing to write to, go straight to the
+    # backgrounded one-shot fallback instead of a doomed `crontab -` call.
+    if shutil.which("crontab") is None:
+        log("crontab not installed — scheduling one-shot retrain via nohup instead")
+        _schedule_nohup(delay_hours, retrain_cmd)
+        return
+
+    cron_line = (
+        f"{retrain_time.minute} {retrain_time.hour} * * * {retrain_cmd}"
     )
 
     try:
@@ -76,10 +83,52 @@ def schedule_retrain(delay_hours: float = 18.0):
         if proc.returncode == 0:
             log(f"ML retrain cron scheduled for {retrain_time.strftime('%H:%M %Y-%m-%d')}")
         else:
-            log(f"Failed to set cron: {proc.stderr}")
+            log(f"Failed to set cron: {proc.stderr or proc.returncode}")
+            log("Falling back to the nohup one-shot scheduler...")
+            _schedule_nohup(delay_hours, retrain_cmd)
     except Exception as e:
         log(f"Failed to schedule retrain: {e}")
         log("Running retrain immediately instead...")
+        auto_retrain(force=True)
+
+
+def _schedule_nohup(delay_hours: float, retrain_cmd: str):
+    """One-shot retrain via a backgrounded sleeper — works when cron/at are
+    unavailable.  Detaches from the calling process (nohup + new session) so it
+    survives `pr` finishing.  Any previously scheduled nohup sleeper is
+    cancelled first so repeated runs never stack sleepers."""
+    import subprocess
+
+    pid_file = Path("/tmp/retrain.pid")
+    try:
+        old = pid_file.read_text().strip()
+        if old.isdigit():
+            try:
+                os.killpg(os.getpgid(int(old)), 15)
+            except (OSError, ValueError, ProcessLookupError):
+                pass
+    except OSError:
+        pass
+
+    log_path = "/tmp/retrain.log"
+    sleeper = f"sleep {int(float(delay_hours) * 3600)}; {retrain_cmd}"
+    try:
+        proc = subprocess.Popen(
+            ["nohup", "bash", "-c", sleeper],
+            stdin=subprocess.DEVNULL,
+            stdout=open(log_path, "ab"),
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+        try:
+            pid_file.write_text(str(proc.pid))
+        except OSError:
+            pass
+        eta = datetime.now().strftime("%Y-%m-%d %H:%M")
+        log(f"Auto-retrain scheduled via nohup (pid {proc.pid}) — fires at ~"
+            f"{eta} +{delay_hours:.0f}h. Log: {log_path}  pid file: {pid_file}")
+    except Exception as e:
+        log(f"nohup scheduler failed ({e}) — running retrain immediately instead...")
         auto_retrain(force=True)
 
 # ─────────────────────────────────────────────
@@ -4740,8 +4789,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         red_flags = []
     _crit_flags = [f for f in red_flags if f["severity"] == "critical"]
     _high_flags = [f for f in red_flags if f["severity"] == "high"]
+    _info_flags = [f for f in red_flags if f["severity"] == "info"]
     for f in _crit_flags + _high_flags:
         reasoning.append(f"🚩 RED FLAG: {f['msg']}")
+    for f in _info_flags:
+        reasoning.append(f"ℹ️ {f['msg']}")
     if _crit_flags:
         _CONF_LADDER = ["Near Certain", "High", "Medium-High", "Medium", "Low"]
         _cur_rank = CONF_RANK.get(primary.get("confidence", "Low"), 4)
@@ -5030,8 +5082,13 @@ def _fb_1x2_comparison(r):
 
 
 def _write_html(results, all_urls, compare_forebet, high_only,
-                _save_to=None, _title_suffix=""):
-    """Generate an HTML report of predictions and update index."""
+                _save_to=None, _title_suffix="", _with_secondaries=False):
+    """Generate an HTML report of predictions and update index.
+
+    When *_save_to* is provided the HTML is written to that path and the
+    function returns early unless *_with_secondaries=True* is also set, in
+    which case the secondary reports (best/consistent/high80/bankers/bettor)
+    are still generated before returning."""
     import webbrowser
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     now_file = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -5831,6 +5888,7 @@ def _write_html(results, all_urls, compare_forebet, high_only,
 {"".join(f'<div style="background:#854d0e;color:#fde68a;padding:6px 10px;border-radius:6px;font-size:0.82rem;margin-bottom:8px;font-weight:600;">🏟 DERBY: {r["_derby"]["warning"]}</div>' if r.get("_derby", {}).get("is_derby") else "")}
 {"".join(f'<div style="background:#7f1d1d;color:#fecaca;padding:6px 10px;border-radius:6px;font-size:0.84rem;margin-bottom:8px;font-weight:700;border-left:4px solid #ef4444;">🚩 RED FLAG: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "critical")}
 {"".join(f'<div style="background:#78350f;color:#fcd34d;padding:5px 10px;border-radius:6px;font-size:0.80rem;margin-bottom:8px;font-weight:600;border-left:3px solid #f59e0b;">⚠ Flag: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "high")}
+{"".join(f'<div style="color:#64748b;font-size:0.75rem;margin-bottom:8px;">ℹ️ {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "info")}
 {"".join(f'''<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);padding:6px 10px;border-radius:6px;font-size:0.78rem;margin-bottom:8px;">
 <strong>📊 Common Opponent Scoring:</strong> {r["_scoring_analysis"]["home_team"]} scored in {r["_scoring_analysis"]["home_scoring_rate"]:.0%} of shared matches, {r["_scoring_analysis"]["away_team"]} in {r["_scoring_analysis"]["away_scoring_rate"]:.0%} | BTTS rate: {r["_scoring_analysis"]["btts_rate"]:.0%} | O2.5 rate: {r["_scoring_analysis"]["over25_rate"]:.0%}
 </div>''' if r.get("_scoring_analysis", {}).get("btts_rate", 0) > 0 else "")}
@@ -6631,7 +6689,40 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
     else:
         log("  No injury data available")
 
+    BATCH_SIZE = 50  # flush HTML every N matches
     results = []
+    batch_num = 0          # how many batches flushed so far
+    _pred_dir = Path(__file__).parent / "predictions"
+    _pred_dir.mkdir(exist_ok=True)
+
+    def _flush_batch(results_so_far: list, batch_index: int, is_final: bool = False) -> None:
+        """Write a batch HTML file and update latest.html with cumulative results."""
+        if not results_so_far or single_link or json_out:
+            return
+        # Named batch file: predictions/batch_001.html, batch_002.html, …
+        batch_label = f"batch_{batch_index:03d}"
+        batch_path = _pred_dir / f"{batch_label}.html"
+        _write_html(
+            results_so_far,
+            match_urls,
+            compare_forebet,
+            high_only,
+            _save_to=batch_path,
+            _title_suffix=f" — Batch {batch_index} ({len(results_so_far)} matches, running total)",
+        )
+        log(f"  ✓ Flushed {batch_path.name}  ({len(results_so_far)} matches total so far)")
+        # Also update latest.html so it always shows the most recent full picture
+        _latest = _pred_dir / "latest.html"
+        if not is_final:
+            _write_html(
+                results_so_far,
+                match_urls,
+                compare_forebet,
+                high_only,
+                _save_to=_latest,
+                _title_suffix=f" (in progress — {len(results_so_far)}/{len(match_urls)} done)",
+            )
+
     for i, url in enumerate(match_urls, 1):
         log(f"[{i}/{len(match_urls)}]", end=" ")
         data = scrape_and_save(url)
@@ -6889,6 +6980,8 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "home_home_avg_goals_against": data.get("home_home_avg_goals_against"),
             "away_away_avg_goals_for": data.get("away_away_avg_goals_for"),
             "away_away_avg_goals_against": data.get("away_away_avg_goals_against"),
+            "home_home_matches": data.get("home_home_matches"),
+            "away_away_matches": data.get("away_away_matches"),
             "home_over15_pct": data.get("home_over15_pct"),
             "home_under15_pct": data.get("home_under15_pct"),
             "away_over15_pct": data.get("away_over15_pct"),
@@ -6925,6 +7018,11 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "league_difficulty": _get_league_difficulty(data.get("league", "")),
             "league_recent": _get_league_recent_performance(data.get("league", "")),
         })
+
+        # ── Batch flush every BATCH_SIZE matches ──
+        if len(results) % BATCH_SIZE == 0:
+            batch_num += 1
+            _flush_batch(results, batch_num, is_final=False)
 
     # ── Output ──
     if json_out:
@@ -7019,8 +7117,10 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         for _rf in r.get("_red_flags") or []:
             if _rf["severity"] == "critical":
                 print(f"  \033[1;41;97m 🚩 {_rf['msg']} \033[0m")
-            else:
+            elif _rf["severity"] == "high":
                 print(f"  \033[1;93m ⚠ {_rf['msg']} \033[0m")
+            else:
+                print(f"  \033[0;90m ℹ️ {_rf['msg']} \033[0m")
         for _fix in (r.get("stat_fixes") or []):
             print(f"  \033[0;96m 🔧 Stat corrected: {_fix} \033[0m")
 

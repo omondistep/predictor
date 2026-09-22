@@ -66,6 +66,22 @@ cnfupdate(){ "$PREDICTOR_PY" "$PREDICTOR_DIR/scripts/cnfupdate.py" "$@"; }
 # ── Results scraper ─────────────────────────────────────────────────────────
 scrape-results() { "$PREDICTOR_PY" "$PREDICTOR_DIR/scripts/scrape_results.py" "$@"; }
 
+# ── Output directory ─────────────────────────────────────────────────────────
+# output — navigate to / list the predictions output folder.
+# Tries to open the folder in a GUI file manager; always prints the listing.
+output() {
+    local pred_dir="$PREDICTOR_DIR/predictions"
+    if command -v xdg-open &>/dev/null; then
+        xdg-open "$pred_dir" 2>/dev/null &
+    elif command -v open &>/dev/null; then
+        open "$pred_dir" 2>/dev/null
+    fi
+    echo "📁  $pred_dir"
+    echo
+    ls -lhtr --color=always "$pred_dir"/*.html 2>/dev/null | tail -20 \
+        || ls -lhtr "$pred_dir"/*.html 2>/dev/null | tail -20
+}
+
 # ── Historical calibration ──────────────────────────────────────────────────
 histcal()             { "$PREDICTOR_PY" "$PREDICTOR_DIR/scripts/historical_calibrate.py" "$@"; }
 historical-calibrate(){ "$PREDICTOR_PY" "$PREDICTOR_DIR/scripts/historical_calibrate.py" "$@"; }

@@ -55,14 +55,19 @@ configured_game_data = os.environ.get("GAME_DATA_PATH")
 if configured_game_data:
     GAME_DATA = Path(configured_game_data)
 else:
+    # Look for the game dataset relative to this repo first, then fall back to
+    # the legacy absolute paths from the original dev machine (/home/stdk/).
+    # The file is optional — history.db is the primary training source.
     GAME_DATA = next(
         (path for path in (
+            BASE / "data" / "historical_matches_combined.json",
+            BASE.parent / "game" / "data" / "historical_matches_combined.json",
             Path("/home/stdk/new/game/data/historical_matches_combined.json"),
             Path("/home/stdk/game/data/historical_matches_combined.json"),
         ) if path.exists()),
-        Path("/home/stdk/game/data/historical_matches_combined.json"),
+        BASE / "data" / "historical_matches_combined.json",   # canonical missing-file path
     )
-GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", "/home/stdk/game/models"))
+GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", str(BASE / "ml_models")))
 # Override via env var
 if os.environ.get("ML_MODELS_DIR"):
     MODELS_DIR = Path(os.environ.get("ML_MODELS_DIR"))
@@ -139,8 +144,11 @@ FEATURE_NAMES = [
     "away_wins_l6", "away_draws_l6", "away_losses_l6",
     # ── NEW: Combined strength scores ──
     "home_strength_score", "away_strength_score",
-    # ── NEW: Actual xG data (from Forebet squad xG) ──
-    "home_xg", "away_xg", "home_xga", "away_xga",
+    # ── Shot quality features (Forebet-sourced, 82-94% populated) ──
+    # Replaces dead FBref squad-xG columns (home_squad_xg etc.) that were 0%
+    # populated. These are the raw inputs the proxy-xG formula uses, giving
+    # the model direct access to shot volume and accuracy separately.
+    "home_shots_pg", "away_shots_pg", "home_sot_pct_raw", "away_sot_pct_raw",
     # ── NEW: Raw possession/pass values ──
     "home_possession", "away_possession",
     "home_pass_acc", "away_pass_acc",
@@ -493,11 +501,11 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(home_strength)
     f.append(away_strength)
 
-    # ── NEW: Actual xG data ──
-    f.append(row.get("home_squad_xg") or 0)
-    f.append(row.get("away_squad_xg") or 0)
-    f.append(row.get("home_squad_xga") or 0)
-    f.append(row.get("away_squad_xga") or 0)
+    # ── Shot quality features (replaces dead FBref squad-xG, 82-94% populated) ──
+    f.append(row.get("home_total_shots_pg") or 0)
+    f.append(row.get("away_total_shots_pg") or 0)
+    f.append((row.get("home_shots_ontarget_pct") or 0) / 100.0)
+    f.append((row.get("away_shots_ontarget_pct") or 0) / 100.0)
 
     # ── NEW: Raw possession/pass values ──
     f.append(h_poss)
@@ -1839,7 +1847,7 @@ def load_training_data(with_weights: bool = False) -> Tuple:
             except Exception:
                 continue
     else:
-        print(f"Game dataset not found at {GAME_DATA}")
+        pass  # Game dataset is optional; history.db is the primary training source
 
     # 2. History.db (reviewed predictions - fewer records but rich features)
     db_count = 0

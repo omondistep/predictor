@@ -29,6 +29,14 @@ _MIN_GAMES_FOR_BOUNDS = 2
 # Overall-vs-venue divergence above this means one of the two is unreliable.
 _VENUE_DIVERGENCE = 1.00
 
+# Minimum venue-block sample before a venue average is meaningful.  Forebet
+# serves the venue lists JS-collapsed (raw fetch = the single most recent row,
+# often 0-0 or one lopsided score), so a 1-5 row "venue average" is a tiny
+# recent window — whole-number false averages (0.0, 4.0, 6.0, ...) come from
+# exactly that — not a season figure.  Compare it against the full-season
+# overall only when the block actually carried a real window.
+_MIN_VENUE_SAMPLE = 6
+
 # Early-season noise threshold: standings samples this small are unreliable.
 _SMALL_SAMPLE_GP = 3
 
@@ -55,14 +63,22 @@ def sanitize_scraped_stats(data: Dict) -> List[str]:
     sides = (
         ("home",
          "home_avg_goals_for", "home_avg_goals_against", "home_games_played",
-         "home_home_avg_goals_for", "home_home_avg_goals_against"),
+         "home_home_avg_goals_for", "home_home_avg_goals_against",
+         "home_home_matches"),
         ("away",
          "away_avg_goals_for", "away_avg_goals_against", "away_games_played",
-         "away_away_avg_goals_for", "away_away_avg_goals_against"),
+         "away_away_avg_goals_for", "away_away_avg_goals_against",
+         "away_away_matches"),
     )
 
-    for name, gf_key, ga_key, gp_key, v_gf_key, v_ga_key in sides:
+    for name, gf_key, ga_key, gp_key, v_gf_key, v_ga_key, vcount_key in sides:
         team_label = f"{name} team"
+        vcount = data.get(vcount_key)
+        # Venue lists are served JS-collapsed by Forebet (raw scrape = 1 row),
+        # and even a 3-5 row block is only a recent window, so a venue-specific
+        # "fix" built on a tiny sample is itself noise.
+        # Only trust it when the venue block carried a real sample.
+        venue_usable = vcount is not None and vcount >= _MIN_VENUE_SAMPLE
 
         # ── Goals against ──
         ga = data.get(ga_key)
@@ -70,7 +86,7 @@ def sanitize_scraped_stats(data: Dict) -> List[str]:
         if (ga is not None and (ga < _GA_MIN or ga > _GA_MAX)
                 and (gp is None or gp >= _MIN_GAMES_FOR_BOUNDS)):
             venue = data.get(v_ga_key)
-            if _plausible(venue, _GA_MIN, _GA_MAX):
+            if venue_usable and _plausible(venue, _GA_MIN, _GA_MAX):
                 fixes.append(
                     f"{team_label}: implausible avg GA {ga} replaced "
                     f"with venue-specific {venue}")
@@ -84,7 +100,7 @@ def sanitize_scraped_stats(data: Dict) -> List[str]:
         if (gf is not None and (gf < _GF_MIN or gf > _GF_MAX)
                 and (gp is None or gp >= _MIN_GAMES_FOR_BOUNDS)):
             venue = data.get(v_gf_key)
-            if _plausible(venue, _GF_MIN, _GF_MAX):
+            if venue_usable and _plausible(venue, _GF_MIN, _GF_MAX):
                 fixes.append(
                     f"{team_label}: implausible avg GF {gf} replaced "
                     f"with venue-specific {venue}")
@@ -117,6 +133,7 @@ def detect_red_flags(
     flags: List[Dict[str, str]] = []
 
     # ── 1. Stat sanity ────────────────────────────────────────────────────
+    venue_collapsed = []
     for side in ("home", "away"):
         gp = data.get(f"{side}_games_played")
         label = "Home" if side == "home" else "Away"
@@ -129,14 +146,39 @@ def detect_red_flags(
         ogf, oga = data.get(f"{side}_avg_goals_for"), data.get(f"{side}_avg_goals_against")
         vgf = data.get(f"{'home_home' if side == 'home' else 'away_away'}_avg_goals_for")
         vga = data.get(f"{'home_home' if side == 'home' else 'away_away'}_avg_goals_against")
+        vcount = data.get(f"{'home_home' if side == 'home' else 'away_away'}_matches")
         for overall, venue, kind in ((ogf, vgf, "GF"), (oga, vga, "GA")):
+            # Only compare overall vs venue-specific when the venue block
+            # carried a real recent window.  Forebet serves the venue lists
+            # JS-collapsed (raw fetch = 1 row) and even 3-5 rows are just the
+            # latest venue games, so a small "venue average" (0.0, 4.0, ...)
+            # is a window artifact, not evidence that one source is unreliable.
+            # The full-season overall is the reliable figure.
             if overall is not None and venue is not None and gp and gp >= _SMALL_SAMPLE_GP \
+                    and vcount is not None and vcount >= _MIN_VENUE_SAMPLE \
                     and abs(overall - venue) > _VENUE_DIVERGENCE:
                 flags.append({
                     "severity": "high",
-                    "msg": (f"{label} overall avg {kind} {overall} diverges from "
-                            f"venue-specific {venue} — one source unreliable"),
+                    "msg": (f"{label} overall avg {kind} {overall} vs recent venue "
+                            f"avg {venue} ({vcount} venue games vs {gp} overall) — "
+                            f"window mismatch; full-season avg is the reliable figure"),
                 })
+        # A big season sample but a collapsed venue block means the venue
+        # averages were (correctly) not recorded — surface why, so the missing
+        # input is read as a known data limitation instead of a silent gap.
+        # This is informational (a constant Forebet rendering quirk, not a
+        # genuine warning sign), so it must not shrink stakes.
+        if gp is not None and gp >= _SMALL_SAMPLE_GP and vcount is not None \
+                and vcount < _SMALL_SAMPLE_GP:
+            venue_collapsed.append(
+                f"{label} venue list collapsed ({vcount} of {gp} games rendered)")
+    if venue_collapsed:
+        flags.append({
+            "severity": "info",
+            "msg": ("Venue-specific goal stats unavailable — " + "; ".join(venue_collapsed)
+                    + " (Forebet serves venue lists JS-collapsed; "
+                      "full-season stats used instead)"),
+        })
 
     # ── 2. Odds anomalies ─────────────────────────────────────────────────
     oh, od, oa = data.get("odds_home"), data.get("odds_draw"), data.get("odds_away")

@@ -67,6 +67,7 @@ pr --calibrate            # Show accuracy stats per confidence level and league
 
 ### 4. View reports
 - `predictions/latest.html` (overwritten each run, old versions in `predictions/archive/`)
+- `predictions/batch_001.html`, `batch_002.html`, … — intermediate HTML files flushed every 50 matches during a large run; each contains all results up to that point so you can open them mid-run without waiting for the full run to finish
 - `predictions/best.html` — matches where the default pick is highlighted yellow (it's a consensus pick or the best combined pick); auto-opened in browser
 - `predictions/consistent.html` — matches where a consensus pick (both models ≥69.5%) is consistent with the best combined pick (e.g. consensus BTTS Yes + best Over 1.5)
 - `predictions/high80.html` — matches where either model assigns a probability >80% to an outcome; cards are highlighted green when **both** models clear 80% on the *same* outcome, blue when they clear 80% on *separate* outcomes
@@ -95,6 +96,7 @@ Cron (scheduled by pr)     → Runs auto_retrain() after 18h
 | Alias | What it does |
 |-------|--------------|
 | `pr` | Runs predict.py with venv Python |
+| `output` | Lists (and opens in file manager) every HTML file in `predictions/` |
 
 ## Key Files
 

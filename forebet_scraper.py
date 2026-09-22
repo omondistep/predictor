@@ -25,6 +25,17 @@ HEADERS = {
     )
 }
 
+# Minimum venue-specific sample before a home/away goal average is trusted.
+# Forebet serves its "CDH home matches" / "PUM away matches" blocks collapsed
+# (the extra rows are injected by JS and never reach curl_cffi), so a raw page
+# usually shows just ONE row — the most recent fixture.  Averages built from
+# that single row are noise (often 0-0 or a lopsided one-off, e.g. "venue GF
+# 4.0" from a single 4-0) and must not be fed into expected goals or reported
+# as "one source unreliable".  Even a row count of 3-5 is a tiny recent window
+# that routinely yields whole-number false "averages"; only a >=6-row venue
+# block is a real enough window to compare against the full-season overall.
+_MIN_VENUE_SAMPLE = 6
+
 MONTHS = {
     "Jan": 1, "Feb": 2, "Mar": 3, "Apr": 4, "May": 5, "Jun": 6,
     "Jul": 7, "Aug": 8, "Sep": 9, "Oct": 10, "Nov": 11, "Dec": 12,
@@ -77,6 +88,8 @@ class ForebetScraper:
             "home_home_avg_goals_against": None,
             "away_away_avg_goals_for": None,
             "away_away_avg_goals_against": None,
+            "home_home_matches": None,
+            "away_away_matches": None,
             "home_over15_pct": None, "home_under15_pct": None,
             "home_over25_pct": None, "home_under25_pct": None,
             "home_over35_pct": None, "home_under35_pct": None,
@@ -754,7 +767,19 @@ class ForebetScraper:
 
         Extracts goal averages for home-team-at-home and away-team-away
         from the 'CDH home matches' and 'PUM away matches' blocks.
+
+        Forebet serves these blocks collapsed to the raw fetch: the JS-only
+        "View all" list is truncated to the single most recent row.  A venue
+        sample of 1 row is either a brand-new side or a collapsed list — in
+        both cases too small to trust.  Duplicate hidd_stat blocks sharing one
+        label are also served (same collapsed row repeated), so identical rows
+        are deduplicated before counting.  The row counts are always stored
+        (home_home_matches / away_away_matches) so downstream gates in
+        red_flags can reason about the data, but averages are only recorded
+        once the sample is meaningful (_MIN_VENUE_SAMPLE).
         """
+        home_seen = set()
+        away_seen = set()
         for hidd in self.soup.find_all("div", class_="hidd_stat"):
             prev = hidd.find_previous("div", class_="mptlt")
             if not prev:
@@ -769,10 +794,16 @@ class ForebetScraper:
                     r"(.+?)\s+(\d+)\s*-\s*(\d+)\s*\(([^)]*)\)\s+(.+?)\s+([A-Z][a-z]\w*)",
                     raw,
                 ):
+                    sig = (m.group(1), m.group(2), m.group(3).strip().lower(),
+                           int(m.group(4)), int(m.group(5)))
+                    if sig in home_seen:
+                        continue
+                    home_seen.add(sig)
                     matches += 1
                     goals_for += int(m.group(4))
                     goals_against += int(m.group(5))
-                if matches > 0:
+                self.data["home_home_matches"] = matches
+                if matches >= _MIN_VENUE_SAMPLE:
                     self.data["home_home_avg_goals_for"] = round(goals_for / matches, 2)
                     self.data["home_home_avg_goals_against"] = round(goals_against / matches, 2)
 
@@ -784,10 +815,16 @@ class ForebetScraper:
                     r"(.+?)\s+(\d+)\s*-\s*(\d+)\s*\(([^)]*)\)\s+(.+?)\s+([A-Z][a-z]\w*)",
                     raw,
                 ):
+                    sig = (m.group(1), m.group(2), m.group(3).strip().lower(),
+                           int(m.group(4)), int(m.group(5)))
+                    if sig in away_seen:
+                        continue
+                    away_seen.add(sig)
                     matches += 1
                     goals_for += int(m.group(5))
                     goals_against += int(m.group(4))
-                if matches > 0:
+                self.data["away_away_matches"] = matches
+                if matches >= _MIN_VENUE_SAMPLE:
                     self.data["away_away_avg_goals_for"] = round(goals_for / matches, 2)
                     self.data["away_away_avg_goals_against"] = round(goals_against / matches, 2)
 

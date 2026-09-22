@@ -140,6 +140,11 @@ ABSENCE_CAP = 0.10
 # Venue haircut when the fixture is neutral (not played at the side's home).
 NEUTRAL_VENUE_CUT = 0.04
 
+# Stakes below this % of bankroll are dust — rounding and model error swamp
+# the edge at that size, so a real card leaves them unbet.  They stay visible
+# in all_candidates (annotated) for audit.
+DUST_STAKE_PCT = 0.5
+
 # Must be present in an evidence file before it is trusted at all.
 EVIDENCE_REQUIRED = {
     "fixture": ["real", "competition"],
@@ -617,8 +622,72 @@ def build_card(matches):
 
     value = [p for p in picks if "ev_pct" in p and p["ev_pct"] > 0]
     value.sort(key=lambda p: -p["ev_pct"])
+
+    # ── make the ticket actually bettable ──────────────────────────────
+    # (1) Drop legs the staking model prices at 0.0% — COLD-league scaling
+    #     and negligible edge both mean "don't bet", not "bet nothing on".
+    #     They stay visible in all_candidates for reference.
+    # (2) One single per match — the best +EV leg.  Listing mutually
+    #     exclusive outcomes of one fixture as separate singles (e.g. both
+    #     1X2 Draw and 1X2 Away win) is contradictory and double-counts the
+    #     same bankroll, and same-match legs are correlated bets, not
+    #     independent ones.  Shadowed legs stay visible, annotated.
+    # (3) Dust stakes (<DUST_STAKE_PCT) are below a rational minimum bet
+    #     size — at 0.1-0.4% the rounding and model error swamp the edge, so
+    #     the match is left unbet (its best +EV leg was dust).  Stays visible
+    #     in all_candidates, annotated.
+    # (4) A slate of simultaneous singles must never demand more than the
+    #     bankroll it stakes against: cap the sum at 100% by scaling
+    #     relative sizes down (keeps sizing ratios intact), then shave off
+    #     any overage the per-leg rounding re-creates so the real total is
+    #     never above 100%.
+    _ticket = {}
+    dropped_dust = 0
+    for p in value:
+        if p["stake_pct"] <= 0:
+            continue
+        prev = _ticket.get(p["match"])
+        if prev is None:
+            if p["stake_pct"] < DUST_STAKE_PCT:
+                dropped_dust += 1
+                note = (f"dust stake {p['stake_pct']:.1f}% (<{DUST_STAKE_PCT:.0f}%) — "
+                        "below rational minimum bet size, left unbet")
+                p["note"] = " | ".join(x for x in (p.get("note"), note) if x)
+                continue
+            _ticket[p["match"]] = p
+        else:
+            note = (f"shadowed by {prev['market']}:{prev['pick']} "
+                    f"(best +EV on match; single-bet card keeps one leg per match)")
+            p["note"] = " | ".join(x for x in (p.get("note"), note) if x)
+    value = sorted(_ticket.values(), key=lambda p: -p["ev_pct"])
+
+    scaled = False
+    total_stake = sum(p["stake_pct"] for p in value)
+    if total_stake > 100.0:
+        factor = 100.0 / total_stake
+        for p in value:
+            p["stake_pct"] = round(p["stake_pct"] * factor, 2)
+        scaled = True
+    over = sum(p["stake_pct"] for p in value) - 100.0
+    if over > 1e-9:
+        over = round(over, 2)
+        for p in sorted(value, key=lambda x: -x["stake_pct"]):
+            if over <= 0:
+                break
+            avail = p["stake_pct"] - DUST_STAKE_PCT
+            if avail <= 0:
+                continue
+            cut = min(avail, over)
+            p["stake_pct"] = round(p["stake_pct"] - cut, 2)
+            over = round(over - cut, 2)
+    total_stake = round(sum(p["stake_pct"] for p in value), 2)
+    shadowed = sum(1 for p in picks if "shadowed by" in (p.get("note") or ""))
+
     return {"value_picks": value, "all_candidates": picks,
-            "skipped_finished": skipped_finished}
+            "skipped_finished": skipped_finished,
+            "total_stake_pct": total_stake,
+            "scaled_down": scaled, "shadowed": shadowed,
+            "dropped_dust": dropped_dust}
 
 
 def cmd_card(args):
@@ -629,7 +698,10 @@ def cmd_card(args):
     skipped_finished = card["skipped_finished"]
 
     if args.json:
-        out = {"value_picks": value, "all_candidates": picks, "skipped_finished": skipped_finished}
+        out = {"value_picks": value, "all_candidates": picks, "skipped_finished": skipped_finished,
+               "total_stake_pct": card.get("total_stake_pct"),
+               "scaled_down": card.get("scaled_down"), "shadowed": card.get("shadowed"),
+               "dropped_dust": card.get("dropped_dust")}
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
 
@@ -651,6 +723,13 @@ def cmd_card(args):
                 f"{p['league'][:23]:<24}{p['match'][:25]:<26}{mkt[:21]:<22}"
                 f"{p['ev_pct']:>6}{p['edge_pct']:>7}{p['odds']:>6}{p['stake_pct']:>7} {notes}"
             )
+        nticket = sum(p["stake_pct"] for p in value)
+        print(f"\n  Ticket: {len(value)} single(s) — one/best +EV leg per match, "
+              f"total {nticket:.1f}% of bankroll"
+              + (" (scaled down to the 100% cap)" if card.get("scaled_down") else "")
+              + f" | {card.get('shadowed', 0)} same-match leg(s) shadowed"
+              + (f" | {card.get('dropped_dust', 0)} dust leg(s) (<{DUST_STAKE_PCT:.0f}%) left unbet"
+                 if card.get("dropped_dust") else ""))
     if args.all:
         passed = {id(p) for p in value}
         losers = [p for p in picks if id(p) not in passed and "note" not in p]
@@ -1640,6 +1719,9 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
         color = conf_colors.get(c, "#64748b")
         return f'<span class="conf-badge" style="background:{color}">{escape(c)}</span>'
 
+    # Exact total — the ticket table prints stakes at 2dp so the caption and
+    # the printed stakes sum to the same number (1dp display rounding drifts
+    # the implied total by several % on a big slate).
     total_stake = sum(p.get("stake_pct", 0.0) for p in value)
     rows = ""
     for p in value:
@@ -1668,17 +1750,28 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
             f'<tr><td><strong>{escape(p.get("match", ""))}</strong></td>'
             f'<td>{escape(p.get("market", ""))} <strong>{escape(p.get("pick", ""))}</strong></td>'
             f'<td>{p.get("odds", 0):.2f}</td>'
-            f'<td>{p.get("stake_pct", 0):.1f}%</td></tr>\n'
+            f'<td>{p.get("stake_pct", 0):.2f}%</td></tr>\n'
             for p in value)
+        scaled_note = ""
+        if card.get("scaled_down"):
+            scaled_note = ('<div style="margin-top:8px;color:#eab308;font-size:0.8rem;">'
+                           'Sum pushed past 100% of bankroll — stakes scaled down '
+                           'proportionally to the cap (sizing ratios kept).</div>')
+        dust_note = ""
+        if card.get("dropped_dust"):
+            dust_note = (f" &middot; {card['dropped_dust']} dust leg(s) "
+                         f"(&lt;{DUST_STAKE_PCT:.0f}%) left unbet")
         ticket_html = (
             f'<div style="background:#052e16;border:1px solid #22c55e;border-radius:8px;'
             f'padding:12px 14px;margin:0 0 16px;">'
             f'<h2 style="margin:0 0 8px;">🎯 Action Ticket <span style="font-weight:400;'
-            f'font-size:0.8rem;color:#94a3b8;">&middot; all +EV picks as singles &middot; '
-            f'sum &asymp; {total_stake:.1f}% of bankroll</span></h2>'
+            f'font-size:0.8rem;color:#94a3b8;">&middot; one/best +EV single per match '
+            f'(0%-stake legs dropped){dust_note} &middot; total &asymp; {total_stake:.1f}% '
+            f'of bankroll'
+            f'{", capped &le;100%" if card.get("scaled_down") else ""}</span></h2>'
             f'<table style="width:100%;font-size:0.84rem;">'
             f'<tr><th>Match</th><th>Bet</th><th>Odds</th><th>Stake</th></tr>{tickets}</table>'
-            f'</div>')
+            f'{scaled_note}</div>')
     else:
         ticket_html = (
             f'<div style="background:#1e293b;border:1px solid #ef4444;border-radius:8px;'
@@ -1748,7 +1841,7 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
 {ref_rows}
 </table>
 </details>
-<p class="sub" style="margin-top:16px;">Method: fair probs by proportional de-vig of bookmaker odds; edge = model_prob − fair_prob; EV = model_prob × odds − 1; stake = Quarter-Kelly, capped at 5% of bankroll, multiplied by league reliability in that market (STUD 1.0 / ok 1.0 / WEAK 0.5 / COLD 0.0). No bet without stated edge.</p>
+<p class="sub" style="margin-top:16px;">Method: fair probs by proportional de-vig of bookmaker odds; edge = model_prob − fair_prob; EV = model_prob × odds − 1; stake = Quarter-Kelly, capped at 5% of bankroll, multiplied by league reliability in that market (STUD 1.0 / ok 1.0 / WEAK 0.5 / COLD 0.0). No bet without stated edge. The ticket keeps the single best +EV leg per match; legs priced at 0.0% (COLD leagues / negligible edge) are excluded, and a slate sum past 100% of bankroll is scaled down to the cap so the card never over-exposes one bankroll.</p>
 </body>
 </html>
 """

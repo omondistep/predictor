@@ -3,8 +3,9 @@
 Patches _auto_calibrate_thresholds to no-op and builds a fresh data dict per
 match so results are reproducible run-to-run."""
 import sys, os, argparse, time
-sys.path.insert(0, "/home/stdk/predictor")
-os.chdir("/home/stdk/predictor")
+import os, sys
+sys.path.insert(0, str(__import__("pathlib").Path(__file__).parent.parent))
+os.chdir(str(__import__("pathlib").Path(__file__).parent.parent))
 
 from database import init_db, get_db
 

@@ -44,8 +44,8 @@ warnings.filterwarnings("ignore")
 BASE = Path(__file__).parent
 MODELS_DIR = BASE / "ml_models"
 DB_PATH = BASE / "history.db"
-GAME_DATA = Path(os.environ.get("GAME_DATA_PATH", "/home/stdk/game/data/historical_matches_combined.json"))
-GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", "/home/stdk/game/models"))
+GAME_DATA = Path(os.environ.get("GAME_DATA_PATH", str(BASE / "data" / "historical_matches_combined.json")))
+GAME_MODELS = Path(os.environ.get("GAME_MODELS_PATH", str(BASE / "ml_models")))
 # Override via env var
 if os.environ.get("ML_MODELS_DIR"):
     MODELS_DIR = Path(os.environ.get("ML_MODELS_DIR"))
@@ -1640,7 +1640,7 @@ def load_training_data(with_weights: bool = False) -> Tuple:
             except Exception:
                 continue
     else:
-        print(f"Game dataset not found at {GAME_DATA}")
+        pass  # Game dataset is optional; history.db is the primary training source
 
     # 2. History.db (reviewed predictions - fewer records but rich features)
     db_count = 0

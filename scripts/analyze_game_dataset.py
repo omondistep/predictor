@@ -4,8 +4,8 @@ import json
 import sys
 from pathlib import Path
 
-GAME_DATA = Path("/home/stdk/game/data/historical_matches_combined.json")
-PREDICT_PY = Path("/home/stdk/predictor/predict.py")
+GAME_DATA = Path(__file__).parent.parent / "data" / "historical_matches_combined.json"
+PREDICT_PY = Path(__file__).parent.parent / "predict.py"
 
 # Load game dataset
 with open(GAME_DATA) as f:
