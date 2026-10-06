@@ -64,6 +64,9 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+import odds_guard  # noqa: E402
+
 REPO = Path(__file__).resolve().parent.parent
 DB = REPO / "history.db"
 
@@ -396,6 +399,53 @@ def _devig(odds):
     return {k: v / s for k, v in imp.items()}
 
 
+def _market_prices_trustworthy(odds, market):
+    """True when the prices backing ``market`` survive :mod:`odds_guard`.
+
+    An Oct 2026 audit found 87.7% of stored prices unusable (duplicated from
+    the legacy parser, or mis-assigned so the favourite did not match
+    Forebet's own ranking).  Quoting edge or EV from those prices produces
+    numbers that look impressive and mean nothing — the raw figures ran to
+    +145% ROI, which is not a market, it is a bug.  When validation fails the
+    card reports the pick but never prices it.
+    """
+    mapping = MARKET_ODDS.get(market) or {}
+    present = {pick: odds[odkey] for pick, odkey in mapping.items() if odds.get(odkey)}
+    if not present:
+        return False, "no prices"
+    if market == "1X2":
+        fb = _fb_pcts()
+        if not any(isinstance(p, (int, float)) for p in fb):
+            # The favourite-agreement test is the ONLY check that catches a
+            # structurally plausible triplet assigned to the wrong outcomes --
+            # the failure mode behind 5,666 stored rows.  Without Forebet's
+            # own percentages it cannot run, so a scrambled triplet would sail
+            # through and get quoted as +272% EV.  This card publishes money,
+            # so an unverifiable price is treated as no price at all.
+            return False, "no forecet percentages to verify the price against"
+        v = odds_guard.validate_1x2(
+            odds.get("odds_home"), odds.get("odds_draw"), odds.get("odds_away"),
+            fb[0], fb[1], fb[2])
+        return bool(v), v.reason
+    picks = list(present)
+    first = odds[mapping[picks[0]]]
+    second = odds[mapping[picks[1]]] if len(picks) > 1 else None
+    v = odds_guard.validate_ou(first, second)
+    return bool(v), v.reason
+
+
+def _fb_pcts():
+    """Forebet percentages if the caller has set them, else Nones.
+
+    Kept as a hook so the favourite-agreement cross-check (the only test that
+    catches the mis-assignment the structural checks miss) stays optional.
+    """
+    return (_FB_PCTS.get("home"), _FB_PCTS.get("draw"), _FB_PCTS.get("away"))
+
+
+_FB_PCTS = {}
+
+
 def _league_market_accuracy():
     """Reliability per league family, sampled across ALL seasons.
 
@@ -566,6 +616,14 @@ def build_card(matches):
                                       "odds_btts_yes", "odds_btts_no")}
         odds = {k: v for k, v in odds.items() if isinstance(v, (int, float)) and v > 1.0}
 
+        # Feed Forebet's own percentages to the odds validator: the
+        # favourite-agreement test is the only check that catches prices which
+        # are structurally plausible but assigned to the wrong outcomes.
+        _FB_PCTS.clear()
+        _pcts = m.get("forebet_pct")
+        if isinstance(_pcts, (list, tuple)) and len(_pcts) == 3:
+            _FB_PCTS.update({"home": _pcts[0], "draw": _pcts[1], "away": _pcts[2]})
+
         # fair probabilities per market from the odds we DO have
         fair = {}
         for mkt, mapping in MARKET_ODDS.items():
@@ -598,6 +656,14 @@ def build_card(matches):
             bp = odds.get(odkey) if odkey else None
             if bp is None:
                 entry["note"] = f"no odds for threshold ({pick})"
+                picks.append(entry)
+                continue
+
+            # Never price a market off prices that failed integrity checks.
+            trusted, why = _market_prices_trustworthy(odds, mkt)
+            if not trusted:
+                entry["note"] = f"odds failed validation ({why}) — not priced"
+                entry["odds_untrusted"] = True
                 picks.append(entry)
                 continue
 
@@ -781,13 +847,15 @@ _PICK_RE = re.compile(
 
 _THR_KEYS = {"1.5": "15", "2.5": "25", "3.5": "35"}
 
-# "FC B", "Barinas II", "U21", "Reserves" — thin/second-team markets.
-_RESERVE_RE = re.compile(r"\b(?:II|III|B|2|U20|U21|Reserves?)\b", re.IGNORECASE)
-
-# Senior clubs whose official name contains a token that otherwise looks like
-# a reserve/II suffix (Roman numeral in the club name proper, not a B-team).
-# If a match's team names contain any of these, the reserve flag is skipped.
-_SENIOR_CLUB_ALLOW = ("willem ii",)
+# Reserve / second / youth team detection lives in reserve_filter at the repo
+# root so predictions/picks.html applies exactly the same rule.  It used to be
+# private to this file, which let the report publish picks on Betis III,
+# UD Almeria B and Pontevedra II -- precisely the fixtures where the model's
+# senior-team inputs do not describe who is actually playing.  The names below
+# stay bound here for backwards compatibility.
+from reserve_filter import (  # noqa: E402
+    _RESERVE_RE, _SENIOR_CLUB_ALLOW, reserve_reason, is_reserve_fixture,
+)
 
 # Only these flags block a +EV leg from becoming a BET.  Other flags
 # ("de-vigged line", "prob via complement line") are methodology notes —
@@ -1144,8 +1212,7 @@ def _analyze_leg(leg, fx, acc):
     e["stake_pct"] = round(_stake(bp, prob, 0.25, 0.05) * rel * 100, 2)
 
     both = f"{leg['home']} {leg['away']}"
-    if _RESERVE_RE.search(both) and not any(
-            a in both.casefold() for a in _SENIOR_CLUB_ALLOW):
+    if is_reserve_fixture(leg.get("home", ""), leg.get("away", "")):
         e["flags"].append("reserve/second team")
     if not e["league"] or _league_family(e["league"]) not in (acc.get(leg["market"]) or {}):
         e["flags"].append("league unverified (n<20)")

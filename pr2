@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# pr2 — step-by-step prediction pipeline (uses pipeline.py instead of analyze_from_data)
-# Original pr still works unchanged.
+# pr2 — the pipeline analysis backend, kept as an alias.
+#
+# This used to exec a separate predict2.py, a hand-copied 497-line fork of the
+# prediction loop. It was quietly broken: unlike predict.py it never called
+# add_pending_result(), so none of its 2,183 predictions were ever queued for
+# result scraping and not one of them was ever resolved. Its accuracy was
+# therefore unmeasurable, and the fork had already drifted (no --all-reports,
+# no report gating, broken --json keys).
+#
+# The seven-step analyzer it used is not gone: it lives in pipeline.py and is
+# reachable as `pr --analysis pipeline`. This script forwards to that, so `pr2`
+# keeps working and — unlike before — its picks are scored like everyone else's.
 set -e
 
 SOURCE="${BASH_SOURCE[0]}"
@@ -20,4 +30,4 @@ else
     exit 1
 fi
 
-exec "$PYTHON" "$DIR/predict2.py" "$@"
+exec "$PYTHON" "$DIR/predict.py" --analysis pipeline "$@"

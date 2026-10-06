@@ -338,6 +338,11 @@ _MIGRATIONS = [
     # Proxy xG (computed from Forebet shot/attack data)
     ("matches", "home_xg_proxy", "REAL"),
     ("matches", "away_xg_proxy", "REAL"),
+    # Odds integrity verdict from odds_guard (see scripts/audit_reliability.py).
+    # "ok" is the only value that permits quoting an edge/ROI; anything else
+    # means the stored prices failed validation and must be treated as missing.
+    ("matches", "odds_status", "TEXT"),
+    ("matches", "odds_overround", "REAL"),
     ("calibration_log", "method_used", "TEXT"),
     ("calibration_log", "market", "TEXT"),
     ("calibration_log", "stake", "REAL"),

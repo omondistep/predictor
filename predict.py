@@ -17,8 +17,31 @@ import os
 import sys
 import re
 import json
+import warnings
 from datetime import datetime
 from pathlib import Path
+
+# The ML ensemble runs through joblib, which emits one "should be used with
+# Parallel" warning per fit — 8,000 lines for a 6-match slate, burying the
+# [n/1000] progress and the picks.html notices. It is advice about scikit-learn's
+# threading internals, not about our results, so it is matched by message text.
+# The filter deliberately carries no module= clause: sklearn raises this with
+# stacklevel=2, which makes warnings resolve the "module" to the *caller*
+# (ml_model.py), so any sklearn-scoped filter silently matches nothing.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*should be used with.*Parallel.*",
+    category=UserWarning,
+)
+# Emitted by loky at interpreter shutdown if the pool is torn down mid-fit
+# (Ctrl-C, or a killed run). Says nothing about the predictions already saved.
+warnings.filterwarnings(
+    "ignore",
+    message=r".*leaked semaphore objects.*",
+    category=UserWarning,
+)
+# Unclosed sqlite connections on the same shutdown path.
+warnings.filterwarnings("ignore", message=r"unclosed database.*", category=ResourceWarning)
 
 # Local modules
 from database import (
@@ -1864,29 +1887,22 @@ def _injury_goal_adjustment(data: dict, exp_h: float, exp_a: float) -> tuple:
 
 
 def _modal_scoreline_draw_boost(exp_h: float, exp_a: float, p_draw: float) -> float:
-    """Boost the draw when the modal scoreline IS a draw (0-0 / 1-1).
-
-    Low-scoring, strength-neutral games cluster on drawn scorelines (1-1 is
-    the single most likely result at ~14% there).  When P_mass on {0-0, 1-1}
-    is high and neither side owns the game, nudge the draw share up so the
-    primary pick isn't a coin-flipped side that bleeds value.
-    """
+    """Boost the draw when the modal scoreline IS a draw (0-0 / 1-1)."""
     if exp_h <= 0.05 or exp_a <= 0.05:
         return p_draw
-    from math import exp as _exp, factorial
+    from math import exp as _exp
     phi_h = _exp(-exp_h)
     phi_a = _exp(-exp_a)
     p00 = phi_h * phi_a
     p11 = (exp_h * phi_h) * (exp_a * phi_a)
     p_draw_mass = p00 + p11
     total = exp_h + exp_a
-    neutral = abs(exp_h - exp_a) <= 0.30
-    low_scoring = total < 2.7   # 0-0/1-1 cluster when total goals are low
-    if not (neutral and low_scoring and p_draw_mass >= 0.16):
+    neutral = abs(exp_h - exp_a) <= 0.25  # tighter neutral
+    low_scoring = total < 2.5  # tighter
+    if not (neutral and low_scoring and p_draw_mass >= 0.20):  # higher threshold
         return p_draw
-    boost = min(0.05, (p_draw_mass - 0.16) * 0.30)
-    new_d = min(0.50, p_draw + boost)
-    # Never downgrade — only ever lift the draw share a little
+    boost = min(0.03, (p_draw_mass - 0.20) * 0.20)  # smaller boost
+    new_d = min(0.48, p_draw + boost)
     return max(p_draw, new_d)
 
 
@@ -2772,15 +2788,19 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
 
     # Boost draw when multiple factors align
     p_draw_boosted = pd
-    if len(_draw_factors) >= 3 and top_pick != "Draw":
-        _draw_boost = min(len(_draw_factors) * 0.02, 0.06)
-        p_draw_boosted = min(pd + _draw_boost, 0.55)
+    # Require stronger signal - >=4 factors, smaller boost to avoid false positives
+    if len(_draw_factors) >= 4 and top_pick != "Draw":
+        _draw_boost = min(len(_draw_factors) * 0.015, 0.045)
+        p_draw_boosted = min(pd + _draw_boost, 0.52)
+    # If 3 factors but already high draw prob, minimal boost only
+    elif len(_draw_factors) == 3 and top_pick != "Draw" and pd >= 0.32:
+        p_draw_boosted = min(pd + 0.02, 0.50)
 
     # Modal-scoreline draw boost: when the most likely result IS a drawn
-    # scoreline (0-0/1-1 cluster, strength-neutral), the side pick is a
-    # coin-flip — lift the draw so the primary isn't a value-bleeder.
+    # scoreline (0-0/1-1 cluster, strength-neutral)
     _modal_boosted = _modal_scoreline_draw_boost(exp_h, exp_a, p_draw_boosted)
-    if _modal_boosted > p_draw_boosted + 0.001:
+    # Only apply modal boost if we already have some draw signal
+    if _modal_boosted > p_draw_boosted + 0.001 and len(_draw_factors) >= 3:
         p_draw_boosted = _modal_boosted
         reasoning.append(
             f"⚠ Modal scoreline is a draw ({prob_draw(exp_h, exp_a):.0%} 1X2 draw) — "
@@ -2815,10 +2835,13 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
             odds=prob_to_odds(prob))
 
     # Draw with boosted probability when draw signal is present
-    draw_conf = "Medium" if pd >= 0.30 else "Low"
-    if len(_draw_factors) >= 3:
-        if p_draw_boosted >= 0.36: draw_conf = "Medium-High"
-        elif p_draw_boosted >= 0.30: draw_conf = "Medium"
+    draw_conf = "Medium" if pd >= 0.32 else "Low"
+    if len(_draw_factors) >= 4:
+        if p_draw_boosted >= 0.40: draw_conf = "Medium-High"
+        elif p_draw_boosted >= 0.34: draw_conf = "Medium"
+    elif len(_draw_factors) == 3:
+        if p_draw_boosted >= 0.42: draw_conf = "Medium-High"
+        elif p_draw_boosted >= 0.36: draw_conf = "Medium"
     add("1X2", "Draw", draw_conf, f"ML model {pd:.0%} ({'+'.join(_draw_factors[:3]) if _draw_factors else 'no signal'})",
         model_prob=p_draw_boosted, odds=prob_to_odds(p_draw_boosted))
 
@@ -3781,6 +3804,7 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     _mdo = data.get("_exp_goals")
     _meh, _mea = _mdo if _mdo else (exp_h, exp_a)
     _modal_draw = _modal_scoreline_draw_boost(_meh, _mea, p_draw)
+    # Only apply if already has draw signal (>=3 factors equivalent?) - skip for safety
     if _modal_draw > p_draw + 0.001:
         p_draw = _modal_draw
         _tp2 = p_home + p_draw + p_away
@@ -4078,23 +4102,28 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     # Boost draw confidence when multiple factors align (reduced boost)
     p_draw_boosted = p_draw
     if len(_draw_factors) >= 3 and top_pick != "Draw":
-        _draw_boost = min(len(_draw_factors) * 0.02, 0.06)  # Reduced from 0.03/0.10
-        p_draw_boosted = min(p_draw + _draw_boost, 0.55)  # Capped lower (0.55 vs 0.60)
-        # Upgrade Draw confidence only when boost is significant
-        if p_draw_boosted >= 0.38 and draw_conf == "Low":
+        _draw_boost = min(len(_draw_factors) * 0.015, 0.04)  # More conservative
+        p_draw_boosted = min(p_draw + _draw_boost, 0.52)
+        # Upgrade Draw confidence only when boost is significant and many factors
+        if len(_draw_factors) >= 4 and p_draw_boosted >= 0.40 and draw_conf == "Low":
             draw_conf = "Medium"
-            # Re-add Draw with upgraded confidence
             candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
             add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} ({'+'.join(_draw_factors)})", model_prob=p_draw_boosted)
+        elif len(_draw_factors) >= 5 and p_draw_boosted >= 0.38:
+            # Still allow upgrade if very strong factor count
+            if draw_conf == "Low":
+                draw_conf = "Medium"
+                candidates = [c for c in candidates if not (c["market"] == "1X2" and c["pick"] == "Draw")]
+                add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} ({'+'.join(_draw_factors)})", model_prob=p_draw_boosted)
         reasoning.append(f"⚠ Draw signal ({len(_draw_factors)}f): {', '.join(_draw_factors)}")
 
     # ── Draw override: very conservative — only when model strongly agrees ──
     _draw_override = False
     _draw_override_reason = ""
-    if len(_draw_factors) >= 6 and top_pick != "Draw":  # Raised from 5 to 6
+    if len(_draw_factors) >= 7 and top_pick != "Draw":  # Even stricter
         # Require Draw to clearly dominate AND not be contradicted by form/trans
         _side_max = max(p_home, p_away)
-        if (p_draw >= 0.45 and p_draw - _side_max >= 0.06  # Tightened from 0.42/0.04
+        if (p_draw >= 0.48 and p_draw - _side_max >= 0.10  # Much tighter
             and not _form_clearly_favors and not _trans_clearly_favors):
             _draw_override = True
             _draw_override_reason = f"Draw signal override ({len(_draw_factors)}f, margin {margin:.0%})"
@@ -5079,6 +5108,72 @@ def _fb_1x2_comparison(r):
     if fb_label is None:
         return our_label, None, None
     return our_label, fb_label, (our_val == fb)
+
+
+def _prefetch_scrape(urls, workers):
+    """Yield ``(url, data)`` with scraping run ahead of analysis.
+
+    Scraping is ~93% of a prediction run's wall clock (measured: 2.5s per match
+    on the network against 0.23s of analysis), and it is almost entirely spent
+    waiting on Forebet, so overlapping the fetches is the only speedup that
+    matters. Analysis stays in the consumer thread because SQLite is a single
+    writer and the ML stack is not worth parallelising for 0.23s a match.
+
+    Keep the worker count LOW. A short burst looks wonderful and does not
+    survive contact with a long slate — Forebet throttles by request volume per
+    IP, so the gain shrinks the longer you run and eventually inverts.
+
+    Measured on never-before-fetched fixtures, 40+ each, sustained:
+
+      workers 1 -> 2.50s/match (24.0/min)
+      workers 2 -> 1.71s/match (35.1/min)   <- best
+      workers 4 -> 1.89s/match (31.7/min)
+      workers 6 -> 1.00s/match on a 20-match burst, but 9.4s/match sustained
+      workers 8 -> 6.57s/match (throttled outright)
+
+    An earlier 8-fixture burst test suggested 6 was the sweet spot. It was
+    wrong: bursts hide the throttle, and a 1,088-match run at 6 workers came in
+    at 9.4s a match — three times worse than serial. The default is 2 because
+    that is what held up over a sustained run, not what looked best for 20
+    matches.
+    """
+    if workers <= 1:
+        for u in urls:
+            yield u, scrape_url(u)
+        return
+
+    from concurrent.futures import ThreadPoolExecutor
+    from collections import deque
+
+    window = max(2, min(int(workers) * 2, len(urls)))
+    with ThreadPoolExecutor(max_workers=int(workers)) as ex:
+        pending = deque()
+        it = iter(urls)
+        for u in it:
+            pending.append((u, ex.submit(scrape_url, u)))
+            if len(pending) >= window:
+                break
+        while pending:
+            u, fut = pending.popleft()
+            if len(pending) < window:
+                nxt = next(it, None)
+                if nxt is not None:
+                    pending.append((nxt, ex.submit(scrape_url, nxt)))
+            try:
+                yield u, fut.result()
+            except Exception as exc:  # a worker blew up; don't lose the run
+                yield u, {"_scrape_error": str(exc)}
+
+
+# When False (the default) a prediction run writes exactly one report:
+# predictions/picks.html. Set from the --all-reports CLI flag in main().
+WRITE_LEGACY_REPORTS = False
+
+# How often a run refreshes predictions/picks.html mid-flight. A 946-match
+# weekday slate takes ~20 minutes; publishing every 50 means there is always a
+# current report to open instead of a terminal that looks hung. Module-level so
+# tests can shrink it.
+PUBLISH_EVERY = 50
 
 
 def _write_html(results, all_urls, compare_forebet, high_only,
@@ -6136,6 +6231,33 @@ function applyFilters() {{
         _save_to.write_text(html)
         return _save_to
 
+    # ── THE report ──
+    # One file, gated on measured historical performance. Written first and
+    # opened first because it is the only report that states how often the
+    # selections it recommends have actually landed. See reliable_report.py.
+    picks_path = None
+    n_rel = 0
+    try:
+        import reliable_report as _rr
+        picks_path = pred_dir / "picks.html"
+        _rr.write_report(
+            results, picks_path,
+            label=_title_suffix.strip(" ()") or "run",
+            source=f"{len(results)} matches")
+        rows = _rr.build_rows(results, _rr.load_ledger())
+        n_rel = sum(1 for r in rows if r["tier"] == _rr.TIER_RELIABLE)
+        log(f"Reliable picks report: {picks_path.resolve()} "
+            f"({n_rel}/{len(results)} cleared the gate)")
+    except Exception as _pe:
+        log(f"Reliable picks report skipped: {_pe}")
+
+    if not WRITE_LEGACY_REPORTS:
+        if picks_path:
+            webbrowser.open(str(picks_path.resolve()))
+            print(f"→ predictions/picks.html  ({n_rel}/{len(results)} cleared the "
+                  f"reliability gate)  ← the report; use --all-reports for the legacy views")
+        return picks_path, None, None, None, None
+
     report_path = pred_dir / "latest.html"
 
     # Archive previous latest if it exists
@@ -6215,6 +6337,8 @@ function applyFilters() {{
         log(f"Bettor card report skipped: {_be}")
 
     # ── Auto-open in browser ──
+    if picks_path:
+        webbrowser.open(str(picks_path.resolve()))
     webbrowser.open(str(report_path.resolve()))
     if yellow_path:
         webbrowser.open(str(yellow_path.resolve()))
@@ -6228,6 +6352,8 @@ function applyFilters() {{
         webbrowser.open(str(bettor_path.resolve()))
 
     # ── Best-picks / consensus / high-conviction reports summary ──
+    if picks_path:
+        print(f"→ predictions/picks.html  ← THE report ({n_rel}/{len(results)} cleared the reliability gate)")
     if yellow_path:
         print(f"→ predictions/best.html  ({len([r for r in results if _has_yellow_pick(r)])} yellow-border matches)")
     if consistent_path:
@@ -6447,6 +6573,71 @@ def _fetch_getrs_matches(params: dict, session,
     return kept, league_map, by_league
 
 
+def _write_links_file(out_file: str, urls) -> None:
+    """Write a links file with a provenance header.
+
+    These files carry the extension ``.html`` for historical reasons but hold
+    nothing but one URL per line, which made them look like scraped HTML and
+    invited the question "why doesn't pr parse this?". The header comment (the
+    link reader already skips ``#``) records when the slate was generated, which
+    is what lets ``pr links/today.html`` tell yesterday's finished fixtures from
+    today's upcoming ones without guessing.
+    """
+    urls = list(urls)
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    with open(out_file, "w") as f:
+        f.write(f"# generated {datetime.now().isoformat(timespec='seconds')} "
+                f"— {len(urls)} match URL(s)\n")
+        for u in urls:
+            f.write(u + "\n")
+
+
+def _links_generated_at(path: str):
+    """Parse the generation stamp from a links file, or its mtime as a fallback.
+
+    Files written before the header existed still work: their mtime is used, so
+    an old hand-made file is judged on when it was last touched.
+    """
+    try:
+        with open(path) as f:
+            first = f.readline()
+    except OSError:
+        return None
+    m = re.match(r"#\s*generated\s+([0-9T:\-]+)", first.strip())
+    if m:
+        try:
+            return datetime.fromisoformat(m.group(1))
+        except ValueError:
+            pass
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path))
+    except OSError:
+        return None
+
+
+def _slate_needs_refresh(path: str, kind: str):
+    """Is a generated slate stale? Returns (stale, reason).
+
+    ``today`` is stale the moment the calendar rolls over — yesterday's slate is
+    a list of matches that have already been played, which is precisely the
+    failure mode that makes a run look broken and makes the bettor card report
+    no bets. ``weekday`` is a rolling multi-day list, so it only goes stale once
+    it is more than half a day old.
+    """
+    stamp = _links_generated_at(path)
+    if stamp is None:
+        return False, ""
+    if kind == "today":
+        if stamp.date() != datetime.now().date():
+            return True, (f"it was built on {stamp.date()} and today is "
+                          f"{datetime.now().date()}")
+        return False, ""
+    hours = (datetime.now() - stamp).total_seconds() / 3600.0
+    if hours > 12:
+        return True, f"it is {hours:.0f}h old"
+    return False, ""
+
+
 def fetch_today_links(leagues_file: str = "data/leagues_db.json",
                       out_file: str = "links/today.html",
                       today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
@@ -6531,9 +6722,7 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
                 uniq.append(r)
 
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
-    with open(out_file, "w") as f:
-        for r in uniq:
-            f.write(r["url"] + "\n")
+    _write_links_file(out_file, [r["url"] for r in uniq])
 
     print(f"\nFetched {len(uniq)} matches today + tonight (00:00–06:00)")
     by_country = {}
@@ -6643,9 +6832,7 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
                 uniq.append(r)
 
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
-    with open(out_file, "w") as f:
-        for r in uniq:
-            f.write(r["url"] + "\n")
+    _write_links_file(out_file, [r["url"] for r in uniq])
 
     print(f"\nFetched {len(uniq)} matches Mon–Fri ({start_date} → {end_date})")
     by_country = {}
@@ -6660,16 +6847,71 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
     return out_file
 
 
+def _resolve_links_path(path: str) -> str:
+    """Find a links file, searching the usual places if it isn't in the cwd.
+
+    A bare name like ``jp03.html`` is the normal thing to type, but the repo has
+    its slates in ``links/`` and ad-hoc ones often sit in the home directory.
+    Guessing silently would be worse than useless, so this only searches when
+    the given path genuinely does not exist, and it says which file it used.
+    """
+    if os.path.isfile(path):
+        return path
+    base = os.path.basename(path)
+    here = os.path.dirname(os.path.abspath(__file__))
+    for folder in (os.getcwd(), os.path.join(here, "links"),
+                   os.path.join(here, "data"), os.path.expanduser("~")):
+        cand = os.path.join(folder, base)
+        if os.path.isfile(cand):
+            log(f"[{path} not found here — using {cand}]")
+            return cand
+    searched = "\n  ".join(
+        [os.getcwd(), os.path.join(here, "links"),
+         os.path.join(here, "data"), os.path.expanduser("~")])
+    log(f"No links file called '{base}'. Looked in:\n  {searched}")
+    log("Give a full path, or drop the file into links/ and try again.")
+    raise SystemExit(1)
+
+
+def _read_links_file(path: str) -> list:
+    """Read match URLs from a links file, one per line or embedded in HTML.
+
+    The generated slates are plain URL lists wearing an ``.html`` extension, so
+    the line-based read is the normal path. But the name invites handing it a
+    saved page, and reading that line by line yields a few hundred fragments of
+    markup instead of an error — so if the file actually contains tags, pull the
+    Forebet match URLs out of it instead.
+    """
+    resolved = _resolve_links_path(path)
+    with open(resolved, encoding="utf-8", errors="ignore") as f:
+        text = f.read()
+
+    if "<" in text and ">" in text:
+        found = re.findall(
+            r"https?://(?:www\.)?forebet\.com/en/football/matches/[^\"'<>\\\s]+", text)
+        uniq = list(dict.fromkeys(found))
+        if uniq:
+            log(f"[{resolved} looks like HTML — extracted {len(uniq)} match URL(s)]")
+            return uniq
+        log(f"No Forebet match URLs found inside {resolved}")
+        return []
+
+    urls = [ln.strip() for ln in text.splitlines()
+            if ln.strip() and not ln.startswith("#")]
+    if not urls:
+        log(f"No URLs found in {resolved}")
+    return urls
+
+
 def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                             high_only: bool = False, json_out: bool = False, html_out: bool = False,
                             compare_forebet: bool = True,
-                            use_ml: bool = False, single_link: bool = False):
+                            use_ml: bool = False, single_link: bool = False,
+                            workers: int = 2, analysis: str = "default"):
     """Read Forebet links, scrape, analyze, store, and output predictions."""
-    with open(links_path) as f:
-        urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    urls = _read_links_file(links_path)
 
     if not urls:
-        log("No URLs found in " + links_path)
         return
 
     # Filter to only /football/matches/ URLs (skip /previews/)
@@ -6689,15 +6931,22 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
     else:
         log("  No injury data available")
 
-    BATCH_SIZE = 50  # flush HTML every N matches
+    BATCH_SIZE = PUBLISH_EVERY  # flush HTML every N matches
     results = []
     batch_num = 0          # how many batches flushed so far
     _pred_dir = Path(__file__).parent / "predictions"
     _pred_dir.mkdir(exist_ok=True)
 
     def _flush_batch(results_so_far: list, batch_index: int, is_final: bool = False) -> None:
-        """Write a batch HTML file and update latest.html with cumulative results."""
-        if not results_so_far or single_link or json_out:
+        """Write a batch HTML file and update latest.html with cumulative results.
+
+        Batch files exist so a long run can be inspected mid-flight, but they
+        are a side effect nobody asked for: a 15-batch run produced 15 files
+        totalling ~46MB, each reprinting the same picks at a different
+        progress point.  They are opt-in via --all-reports; the default run
+        writes only predictions/picks.html at the end.
+        """
+        if not results_so_far or single_link or json_out or not WRITE_LEGACY_REPORTS:
             return
         # Named batch file: predictions/batch_001.html, batch_002.html, …
         batch_label = f"batch_{batch_index:03d}"
@@ -6723,13 +6972,47 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 _title_suffix=f" (in progress — {len(results_so_far)}/{len(match_urls)} done)",
             )
 
-    for i, url in enumerate(match_urls, 1):
+    def _publish_progress(done: int, total: int) -> None:
+        """Refresh the one canonical report mid-run so there is always
+        something to open.
+
+        A 946-match weekday slate takes ~20 minutes. Writing batch_NNN.html
+        files solved that wait by creating a directory of near-duplicate
+        reports; refreshing predictions/picks.html in place solves it without
+        adding a single file. The report is rewritten wholesale each time, so
+        it is always a consistent snapshot rather than an append.
+        """
+        if not results or single_link or json_out:
+            return
+        try:
+            import reliable_report as _rr
+            # auto_rebuild=False: a stale ledger triggers a full DB re-audit, and
+            # doing that on every 50-match publish would re-audit ~20 times a
+            # run. The final report is the one that may rebuild.
+            _rr.write_report(
+                results, _pred_dir / "picks.html",
+                label=f"{done}/{total} done",
+                source=f"{len(results)} of {total} matches predicted so far",
+                auto_rebuild=False)
+            rows = _rr.build_rows(results, _rr.load_ledger())
+            n_ok = sum(1 for r in rows if r["tier"] == _rr.TIER_RELIABLE)
+            log(f"  ✓ picks.html updated ({done}/{total} matches, "
+                f"{n_ok} cleared the gate) — open it now, it keeps refreshing")
+        except Exception as exc:
+            log(f"  [progress report skipped: {exc}]")
+
+    _last_publish = 0
+    _finished_seen = 0
+    for i, (url, data) in enumerate(_prefetch_scrape(match_urls, workers), 1):
         log(f"[{i}/{len(match_urls)}]", end=" ")
-        data = scrape_and_save(url)
+        if data.get("home_team"):
+            log(f" {data['home_team'][:24]} vs {data['away_team'][:24]}")
+        elif data.get("_scrape_error"):
+            log(f"  [Skipped — scrape error: {data['_scrape_error'][:60]}]")
         if not data.get("home_team"):
             if data.get("_blocked"):
                 log("  [Skipped — Cloudflare rate-limited; wait and re-run]")
-            else:
+            elif not data.get("_scrape_error"):
                 log("  [Skipped — no data]")
             continue
 
@@ -6751,8 +7034,17 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                 for _f in _fields:
                     data[f"{_side}_{_f}"] = _s.get(_f, 0)
 
-        # Analyze
-        pred = analyze_from_data(data, use_ml=use_ml)
+        # Analyze. `--analysis pipeline` swaps in the seven-step pipeline that
+        # used to live in predict2.py; its return dict carries the same contract
+        # fields (pick/confidence/score_lean/_poisson_probs/_ml/...), so every
+        # downstream step, DB write and pending-result registration is shared.
+        # Both backends store to the same columns, which is the point: it makes
+        # them directly comparable once results come back.
+        if analysis == "pipeline":
+            from pipeline import run_pipeline as _run_pipeline
+            pred = _run_pipeline(data, use_ml=True, verbose=show_reasoning)
+        else:
+            pred = analyze_from_data(data, use_ml=use_ml)
 
         # ── Minimum odds check for primary pick (improvement 12) ──
         min_odds = 1.10
@@ -6790,6 +7082,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         actual_outcome = None
         correct_pick = None
         if actual_hg is not None and actual_ag is not None:
+            _finished_seen += 1
             if actual_hg > actual_ag:
                 actual_outcome = "Home win"
             elif actual_hg < actual_ag:
@@ -6844,7 +7137,10 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "our_score_lean": pred["score_lean"],
             "our_stake": pred.get("_kelly_stake", 0.0),
             "our_market": pred.get("market", ""),
-            "method_used": pred.get("_method", ""),
+            # Tag the backend so `pr` and `pr2` runs can be told apart in history.db.
+            # predict2.py stored "+pipeline" on every row, so keeping the marker
+            # preserves continuity with those 2,183 rows.
+            "method_used": pred.get("_method", "") + ("+pipeline" if analysis == "pipeline" else ""),
             "poisson_prob_home": poisson_probs[0] if poisson_probs else None,
             "poisson_prob_draw": poisson_probs[1] if poisson_probs else None,
             "poisson_prob_away": poisson_probs[2] if poisson_probs else None,
@@ -7019,12 +7315,22 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
             "league_recent": _get_league_recent_performance(data.get("league", "")),
         })
 
-        # ── Batch flush every BATCH_SIZE matches ──
+        # ── Publish every BATCH_SIZE matches ──
+        # Legacy batch files stay opt-in; by default this refreshes the single
+        # canonical picks.html so a long run has live output to open.
         if len(results) % BATCH_SIZE == 0:
             batch_num += 1
             _flush_batch(results, batch_num, is_final=False)
+            _publish_progress(i, len(match_urls))
 
     # ── Output ──
+    if results and _finished_seen == len(results):
+        log(f"\n⚠ All {len(results)} fixtures in {links_path} have already been "
+            f"played — these are finished matches, not upcoming ones.")
+        if not json_out and not single_link:
+            log("  Nothing here is bettable. Refresh the slate:")
+            log(f"    pr --today            (or drop --no-refresh on this command)")
+
     if json_out:
         json.dump(results, indent=2, ensure_ascii=False, fp=sys.stdout)
         return
@@ -7522,11 +7828,44 @@ Options:
     parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
     parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
     parser.add_argument("--fbref", nargs="?", const="all", default=None, help="Scrape FBref xG stats for leagues (e.g. --fbref 9 or --fbref all)")
+    parser.add_argument("--all-reports", action="store_true",
+                        help="Also write the legacy secondary reports (latest/best/"
+                             "consistent/high80/bankers/bettor + batch files). Off by "
+                             "default so a run produces exactly one file: "
+                             "predictions/picks.html")
+    parser.add_argument("--no-refresh", action="store_true",
+                        help="Predict a generated slate exactly as it is on disk. "
+                             "By default pr links/today.html re-fetches today's "
+                             "fixtures first if the file was built on an earlier "
+                             "date, since yesterday's list is already-played matches.")
+    parser.add_argument("--workers", type=int, default=2, metavar="N",
+                        help="Concurrent Forebet scrapes (default 2). Scraping is "
+                             "93%% of run time, so overlapping fetches is the only "
+                             "real speedup — but Forebet throttles by volume per IP, "
+                             "so keep it low. Sustained: 1 worker 2.50s/match, "
+                             "2 workers 1.71s (best), 4 workers 1.89s, 8 workers "
+                             "6.57s. A short burst flatters higher numbers, so "
+                             "don't read a 20-match test as the real rate.")
+    parser.add_argument("--analysis", choices=("default", "pipeline"), default="default",
+                        help="Analysis backend. 'pipeline' routes each match through "
+                             "pipeline.run_pipeline (the old predict2.py path). Both "
+                             "backends write the same DB columns and queue results, "
+                             "so their accuracy is directly comparable over time.")
 
     args = parser.parse_args()
 
     ensure_alias()
     init_db()
+
+    # By default a prediction run writes exactly ONE report:
+    # predictions/picks.html — the reliability-gated card. The legacy
+    # per-angle reports (latest/best/consistent/high80/bankers/bettor) each
+    # reprint the model's own stated probability without any statement of how
+    # often that kind of pick has actually landed, which is why so many of
+    # them read as confident and are wrong. They stay available behind
+    # --all-reports for anyone who wants the raw views.
+    global WRITE_LEGACY_REPORTS
+    WRITE_LEGACY_REPORTS = bool(getattr(args, "all_reports", False))
 
     # Handle "results" as a special positional command (pr results)
     if args.file and args.file.lower() == "results":
@@ -7619,6 +7958,23 @@ Options:
         return
 
     if args.file:
+        # A generated slate goes stale silently: yesterday's links/today.html is
+        # a list of matches that have already been played, so the run "succeeds"
+        # while predicting nothing bettable. Refresh it in place so one command
+        # is all it takes.
+        if not args.no_refresh:
+            base = os.path.basename(args.file)
+            kind = {"today.html": "today", "weekday.html": "weekday"}.get(base)
+            if kind:
+                stale, why = _slate_needs_refresh(args.file, kind)
+                if stale:
+                    log(f"[{args.file}] is out of date — {why}. Refreshing…")
+                    try:
+                        (fetch_today_links if kind == "today"
+                         else fetch_weekday_links)(out_file=args.file)
+                    except Exception as exc:
+                        log(f"  [refresh failed: {exc} — using the existing file]")
+
         # Detect if argument is a URL or a file path
         if args.file.startswith("http://") or args.file.startswith("https://"):
             import tempfile
@@ -7634,6 +7990,8 @@ Options:
                 compare_forebet=not args.no_compare,
                 use_ml=not args.no_ml,
                 single_link=True,
+                workers=args.workers,
+                analysis=args.analysis,
             )
             os.unlink(tmp_path)
         else:
@@ -7645,6 +8003,8 @@ Options:
                 html_out=args.html,
                 compare_forebet=not args.no_compare,
                 use_ml=not args.no_ml,
+                workers=args.workers,
+                analysis=args.analysis,
             )
     else:
         parser.print_help()

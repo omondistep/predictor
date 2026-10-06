@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import odds_guard
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import mutual_info_classif
@@ -307,10 +308,22 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append((row.get("forebet_draw_pct") or 33) / 100.0)
     f.append((row.get("forebet_away_pct") or 33) / 100.0)
 
-    # Odds
-    f.append(row.get("odds_home") or 2.5)
-    f.append(row.get("odds_draw") or 3.2)
-    f.append(row.get("odds_away") or 3.0)
+    # Odds — routed through odds_guard so a rejected price becomes a neutral
+    # constant instead of a scrambled signal. 97.2% of stored historical odds
+    # fail validation; without this the model fits noise in 6 features.
+    _odds_ok = odds_guard.feature_is_usable(
+        row.get("odds_home"), row.get("odds_draw"), row.get("odds_away"))
+    if _odds_ok:
+        odds_h = row["odds_home"]
+        odds_d = row["odds_draw"]
+        odds_a = row["odds_away"]
+    else:
+        odds_h = odds_guard.NEUTRAL_ODDS["odds_home"]
+        odds_d = odds_guard.NEUTRAL_ODDS["odds_draw"]
+        odds_a = odds_guard.NEUTRAL_ODDS["odds_away"]
+    f.append(odds_h)
+    f.append(odds_d)
+    f.append(odds_a)
 
     # Volatility
     f.append(0.15)
@@ -325,7 +338,6 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     fb_d = (row.get("forebet_draw_pct") or 33) / 100.0
     fb_a = (row.get("forebet_away_pct") or 33) / 100.0
     f.append(fb_h - fb_a)
-    odds_h = row.get("odds_home") or 2.5
     f.append(1.0 / odds_h if odds_h > 1 else 0.5)
 
     # Additional features (must match game record extraction indices 32-41)
@@ -350,9 +362,7 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(-sum(p * math.log(p) for p in probs) / math.log(3))
 
     # Odds-implied overround
-    odds_d = row.get("odds_draw") or 3.2
-    odds_a = row.get("odds_away") or 3.0
-    f.append((1.0 / odds_h + 1.0 / odds_d + 1.0 / odds_a) - 1.0 if odds_h > 1 else 0.0)
+    f.append((1.0 / odds_h + 1.0 / odds_d + 1.0 / odds_a) - 1.0)
 
     # Favorite strength
     f.append(max(fb_h, fb_d, fb_a))
@@ -735,12 +745,12 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
             draw_share = 0.42
         implied_draw = implied_rest * draw_share
         implied_away = implied_rest * (1 - draw_share)
-        f[29] = 1.0 / max(implied_draw, 0.05) if implied_draw > 0 else 3.2
-        f[30] = 1.0 / max(implied_away, 0.05) if implied_away > 0 else 3.0
+        f[29] = 1.0 / max(implied_draw, 0.05) if implied_draw > 0 else odds_guard.NEUTRAL_ODDS["odds_draw"]
+        f[30] = 1.0 / max(implied_away, 0.05) if implied_away > 0 else odds_guard.NEUTRAL_ODDS["odds_away"]
     else:
-        f[28] = 2.5
-        f[29] = 3.2
-        f[30] = 3.0
+        f[28] = odds_guard.NEUTRAL_ODDS["odds_home"]
+        f[29] = odds_guard.NEUTRAL_ODDS["odds_draw"]
+        f[30] = odds_guard.NEUTRAL_ODDS["odds_away"]
 
     # --- Volatility ---
     f[31] = 0.15
