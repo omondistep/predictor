@@ -28,7 +28,11 @@ from typing import Optional, Tuple
 # IV do occur, and are still caught, but only by the stricter end-of-name token
 # check in _RESERVE_TOKEN_RE below.
 _RESERVE_RE = re.compile(
-    r"\b(?:II|III|B|Castilla|B\.\s*U\s*2[0-3]|U\s*(?:1[6-9]|2[0-3])|Reserves?)\b"
+    r"\b(?:II|III|B|Castilla|B\.\s*U\s*2[0-3]|U\s*(?:1[6-9]|2[0-3])|Res(?:erves?)?\.?)\b"
+    # "Res." / "Res" is the Argentine-abbreviated form of "Reserves" (Boca
+    # Juniors Res., River Plate Res.) and is only ever appended to senior
+    # clubs' names. The trailing \b still binds after a swallowed period
+    # because the engine backtracks to the s/. boundary.
     # Eastern-European second teams: "Rubin-2 Kazan", "Rodina-2 Moscow",
     # "Zenit-2". A SINGLE digit only, which is what separates a second team from
     # a founding year: second teams are numbered 2 or 3, whereas "SC Weiche-08",

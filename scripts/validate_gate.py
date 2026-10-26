@@ -108,8 +108,17 @@ def buckets_for(rows):
     return acc
 
 
-def approve(acc, base, min_samples, min_edge, use_wilson=True):
-    """Buckets the gate would publish, given a population to fit on."""
+def approve(acc, base, min_samples, min_edge, use_wilson=True, min_hit=0.0):
+    """Buckets the gate would publish, given a population to fit on.
+
+    Mirrors ``audit_reliability.build_gate`` exactly: sample floor, shrunk edge
+    over the base rate, and a Wilson lower bound that must clear that base rate
+    by the *same* ``min_edge_pts`` — significance is asked at the bar the edge
+    itself has to meet, not against zero, and not against a fixed win rate.
+    ``min_hit`` stays available as an optional absolute floor.  A walk-forward
+    that validated a stricter or looser rule than the one the report actually
+    uses would be measuring nothing.
+    """
     out = {}
     for (market, pred, conf), b in acc.items():
         if b["n"] < min_samples:
@@ -118,7 +127,10 @@ def approve(acc, base, min_samples, min_edge, use_wilson=True):
         edge = shrink(b["hit"], b["n"], b_rate) - b_rate
         if edge * 100 < min_edge:
             continue
-        if use_wilson and A.wilson_lower_bound(b["hit"], b["n"]) <= b_rate:
+        wilson_lo = A.wilson_lower_bound(b["hit"], b["n"])
+        if use_wilson and (wilson_lo - b_rate) * 100 < min_edge:
+            continue
+        if min_hit and wilson_lo < min_hit:
             continue
         out[(market, pred, conf)] = edge
     return out
@@ -134,6 +146,11 @@ def main() -> int:
                          "— each fold is fitted only on its own past)")
     ap.add_argument("--min-samples", type=int, default=A.MIN_SAMPLE)
     ap.add_argument("--min-edge", type=float, default=2.0)
+    ap.add_argument("--min-hit", type=float, default=0.0,
+                    help="optional absolute floor on the Wilson lower bound, "
+                         "matching audit_reliability --min-hit (0 = off, the "
+                         "default; the significance bar itself is relative to "
+                         "each selection's base rate)")
     ap.add_argument("--min-test-n", type=int, default=30,
                     help="a bucket needs this many second-half samples to be judged")
     ap.add_argument("--no-wilson", action="store_true",
@@ -162,7 +179,11 @@ def main() -> int:
 
     wilson = not args.no_wilson
     print(f"Walk-forward validation of the reliability gate — {total:,} resolved matches")
-    print(f"Significance floor: {'ON (Wilson one-sided 95%)' if wilson else 'OFF'}\n")
+    print(f"Significance: "
+          f"{'Wilson one-sided 95% lower bound must clear base by '
+             f'{args.min_edge:g} pts' if wilson else 'OFF'}")
+    print(f"Absolute hit-rate floor: "
+          f"{f'{args.min_hit*100:.0f}% on the Wilson lower bound' if args.min_hit else 'OFF (not used)'}\n")
 
     all_insample, all_oos, kept, tested = [], [], 0, 0
 
@@ -177,7 +198,8 @@ def main() -> int:
         # no future information leaks into the yardstick.
         base_fit, n_fit = base_rates(fit_rows)
         approved = approve(buckets_for(fit_rows), base_fit,
-                           args.min_samples, args.min_edge, wilson)
+                           args.min_samples, args.min_edge, wilson,
+                           args.min_hit)
         if not approved:
             print(f"fold {f+1}: nothing approved on the fitting half — skipping")
             continue

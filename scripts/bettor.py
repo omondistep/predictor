@@ -70,6 +70,16 @@ import odds_guard  # noqa: E402
 REPO = Path(__file__).resolve().parent.parent
 DB = REPO / "history.db"
 
+
+def _venv_python() -> Path:
+    """The repo venv interpreter, whichever layout this OS uses."""
+    for cand in (REPO / ".venv" / "Scripts" / "python.exe",
+                 REPO / ".venv" / "bin" / "python3",
+                 REPO / ".venv" / "bin" / "python"):
+        if cand.exists():
+            return cand
+    return Path(sys.executable)
+
 NON_ML = "--no-ml"
 
 # Target calibration per confidence bucket (expected hit rate).
@@ -147,6 +157,12 @@ NEUTRAL_VENUE_CUT = 0.04
 # the edge at that size, so a real card leaves them unbet.  They stay visible
 # in all_candidates (annotated) for audit.
 DUST_STAKE_PCT = 0.5
+
+# A ticket may never stake more than this share of the bankroll it is betting
+# against.  Legs that would push the sum past it are cut (lowest EV first),
+# never scaled: scaling kept the ticket pinned at the cap and gave every leg a
+# stake the cap had not earned.
+TOTAL_BANKROLL_CAP_PCT = 100.0
 
 # Must be present in an evidence file before it is trusted at all.
 EVIDENCE_REQUIRED = {
@@ -355,9 +371,7 @@ def cmd_audit(args):
 # ─────────────────────────────────────────────
 
 def _run_pr_json(links_path):
-    py = REPO / ".venv" / "bin" / "python"
-    if not py.exists():
-        py = Path(sys.executable)
+    py = _venv_python()
     cmd = [str(py), str(REPO / "predict.py"), "--json", str(links_path)]
     import sys as _sys
     print(f"[book] Scraping {links_path} — this takes ~1-2 min per 10 matches...", file=_sys.stderr)
@@ -565,7 +579,12 @@ def _clean_team(name, date):
 def _rel_factor(acc, league, market):
     pct = acc.get(market, {}).get(_league_family(league))
     if pct is None:
-        return 1.0, "unknown"
+        # No measured accuracy for this league family.  A full stake is earned
+        # by evidence: an unmeasured league gets the same haircut as a measured
+        # but weak one, rather than the 1.0 reserved for STUD/ok.  Treating
+        # "unknown" as "proven" let half a card's stake ride on leagues nothing
+        # has ever been scored in.
+        return 0.5, "unknown"
     if pct >= 0.58:
         return 1.0, "STUD"
     if pct >= 0.50:
@@ -594,12 +613,25 @@ def build_card(matches):
       * stake %  = Quarter-Kelly capped at 5%, scaled by the league's
                    historical accuracy in that market (STUD/ok/WEAK/COLD)
 
-    Returns {"value_picks": [...] only EV>0, "all_candidates": [...],
-             "skipped_finished": n}.
+    Two house gates keep the worst-priced legs off the ticket while leaving
+    them visible in ``all_candidates``, annotated:
+
+      * a reserve / second / youth side is never bet (``is_reserve_fixture`` —
+        the model's senior-team inputs do not describe who is playing)
+      * a leg whose (market, pick, confidence) bucket is HELD by the picks
+        gate (the same ledger ``predictions/picks.html`` uses) is never
+        bet — only RELIABLE/WATCH buckets are stakeable
+
+    Returns {"value_picks": [...] only EV>0 and not gated, "all_candidates":
+             [...], "skipped_finished": n, "blocked_reserve": n,
+             "blocked_held": n}.
     """
     acc = _league_market_accuracy()
+    ledger = _load_reliability_ledger()
     picks = []
     skipped_finished = 0
+    blocked_reserve = 0
+    blocked_held = 0
 
     for m in matches:
         league = _clean_league(m.get("league", "?"))
@@ -610,6 +642,9 @@ def build_card(matches):
         if m.get("actual_home_goals") is not None:
             skipped_finished += 1
             continue
+
+        reserve = is_reserve_fixture(home, away)
+        match_start = len(picks)
 
         odds = {k: m.get(k) for k in ("odds_home", "odds_draw", "odds_away",
                                       "odds_over25", "odds_under25",
@@ -686,7 +721,27 @@ def build_card(matches):
             })
             picks.append(entry)
 
-    value = [p for p in picks if "ev_pct" in p and p["ev_pct"] > 0]
+        # ── house gates: reserve sides and HELD buckets are never ticketed ──
+        # Both stay visible in all_candidates, annotated, so the exclusion is
+        # auditable rather than silent.
+        for e in picks[match_start:]:
+            cl = classify_pick(e.get("pick"), e.get("confidence"), ledger,
+                               market=e.get("market"))
+            e["tier"] = cl["tier"]
+            blocked = []
+            if reserve:
+                blocked.append("reserve/second team — not bettable")
+            if cl["tier"] == TIER_HELD:
+                blocked.append(
+                    f"HELD by picks gate (n={cl.get('n') or 0}) — not bettable")
+            if blocked:
+                e["note"] = " | ".join(x for x in (e.get("note"), *blocked) if x)
+                e["not_bettable"] = True
+                blocked_reserve += int(reserve)
+                blocked_held += int(cl["tier"] == TIER_HELD)
+
+    value = [p for p in picks
+             if "ev_pct" in p and p["ev_pct"] > 0 and not p.get("not_bettable")]
     value.sort(key=lambda p: -p["ev_pct"])
 
     # ── make the ticket actually bettable ──────────────────────────────
@@ -703,10 +758,15 @@ def build_card(matches):
     #     the match is left unbet (its best +EV leg was dust).  Stays visible
     #     in all_candidates, annotated.
     # (4) A slate of simultaneous singles must never demand more than the
-    #     bankroll it stakes against: cap the sum at 100% by scaling
-    #     relative sizes down (keeps sizing ratios intact), then shave off
-    #     any overage the per-leg rounding re-creates so the real total is
-    #     never above 100%.
+    #     bankroll it stakes against: when the sum passes the cap, the
+    #     *lowest-EV* legs come off the card rather than every leg being
+    #     diluted to fit.  Scaling each stake down used to leave the ticket
+    #     permanently at exactly 100% — a full bankroll allocation however
+    #     thin the edges were, with the cap flattering every leg into a
+    #     stake it had not earned — and it kept alive legs the cap had
+    #     effectively disqualified.  A card is allowed to be partial; it is
+    #     never allowed to over-bet.  Cut legs stay visible in
+    #     all_candidates, annotated.
     _ticket = {}
     dropped_dust = 0
     for p in value:
@@ -716,7 +776,7 @@ def build_card(matches):
         if prev is None:
             if p["stake_pct"] < DUST_STAKE_PCT:
                 dropped_dust += 1
-                note = (f"dust stake {p['stake_pct']:.1f}% (<{DUST_STAKE_PCT:.0f}%) — "
+                note = (f"dust stake {p['stake_pct']:.1f}% (<{DUST_STAKE_PCT:g}%) — "
                         "below rational minimum bet size, left unbet")
                 p["note"] = " | ".join(x for x in (p.get("note"), note) if x)
                 continue
@@ -727,33 +787,24 @@ def build_card(matches):
             p["note"] = " | ".join(x for x in (p.get("note"), note) if x)
     value = sorted(_ticket.values(), key=lambda p: -p["ev_pct"])
 
-    scaled = False
-    total_stake = sum(p["stake_pct"] for p in value)
-    if total_stake > 100.0:
-        factor = 100.0 / total_stake
-        for p in value:
-            p["stake_pct"] = round(p["stake_pct"] * factor, 2)
-        scaled = True
-    over = sum(p["stake_pct"] for p in value) - 100.0
-    if over > 1e-9:
-        over = round(over, 2)
-        for p in sorted(value, key=lambda x: -x["stake_pct"]):
-            if over <= 0:
-                break
-            avail = p["stake_pct"] - DUST_STAKE_PCT
-            if avail <= 0:
-                continue
-            cut = min(avail, over)
-            p["stake_pct"] = round(p["stake_pct"] - cut, 2)
-            over = round(over - cut, 2)
+    capped_off = 0
+    if sum(p["stake_pct"] for p in value) > TOTAL_BANKROLL_CAP_PCT:
+        while len(value) > 1 and sum(p["stake_pct"] for p in value) > TOTAL_BANKROLL_CAP_PCT:
+            p = value.pop()          # EV-descending, so the tail goes first
+            capped_off += 1
+            note = (f"cut by the {TOTAL_BANKROLL_CAP_PCT:.0f}% card cap — the "
+                    "ticket would otherwise stake more than the bankroll it "
+                    "is betting against")
+            p["note"] = " | ".join(x for x in (p.get("note"), note) if x)
     total_stake = round(sum(p["stake_pct"] for p in value), 2)
     shadowed = sum(1 for p in picks if "shadowed by" in (p.get("note") or ""))
 
     return {"value_picks": value, "all_candidates": picks,
             "skipped_finished": skipped_finished,
             "total_stake_pct": total_stake,
-            "scaled_down": scaled, "shadowed": shadowed,
-            "dropped_dust": dropped_dust}
+            "capped_off": capped_off, "shadowed": shadowed,
+            "dropped_dust": dropped_dust,
+            "blocked_reserve": blocked_reserve, "blocked_held": blocked_held}
 
 
 def cmd_card(args):
@@ -766,7 +817,7 @@ def cmd_card(args):
     if args.json:
         out = {"value_picks": value, "all_candidates": picks, "skipped_finished": skipped_finished,
                "total_stake_pct": card.get("total_stake_pct"),
-               "scaled_down": card.get("scaled_down"), "shadowed": card.get("shadowed"),
+               "capped_off": card.get("capped_off"), "shadowed": card.get("shadowed"),
                "dropped_dust": card.get("dropped_dust")}
         print(json.dumps(out, indent=2, ensure_ascii=False))
         return
@@ -792,9 +843,10 @@ def cmd_card(args):
         nticket = sum(p["stake_pct"] for p in value)
         print(f"\n  Ticket: {len(value)} single(s) — one/best +EV leg per match, "
               f"total {nticket:.1f}% of bankroll"
-              + (" (scaled down to the 100% cap)" if card.get("scaled_down") else "")
+              + (f" | {card.get('capped_off', 0)} leg(s) cut by the {TOTAL_BANKROLL_CAP_PCT:.0f}% cap"
+                 if card.get("capped_off") else "")
               + f" | {card.get('shadowed', 0)} same-match leg(s) shadowed"
-              + (f" | {card.get('dropped_dust', 0)} dust leg(s) (<{DUST_STAKE_PCT:.0f}%) left unbet"
+              + (f" | {card.get('dropped_dust', 0)} dust leg(s) (<{DUST_STAKE_PCT:g}%) left unbet"
                  if card.get("dropped_dust") else ""))
     if args.all:
         passed = {id(p) for p in value}
@@ -855,6 +907,14 @@ _THR_KEYS = {"1.5": "15", "2.5": "25", "3.5": "35"}
 # stay bound here for backwards compatibility.
 from reserve_filter import (  # noqa: E402
     _RESERVE_RE, _SENIOR_CLUB_ALLOW, reserve_reason, is_reserve_fixture,
+)
+
+# The picks-gate tiers come from the module that writes predictions/picks.html
+# so the card and the report can never disagree about what HELD means.
+# load_ledger is read-only (no auto-rebuild); a missing ledger classifies
+# everything HELD, i.e. an unmeasured bucket is never ticketed.
+from reliable_report import (  # noqa: E402
+    TIER_HELD, classify_pick, load_ledger as _load_reliability_ledger,
 )
 
 # Only these flags block a +EV leg from becoming a BET.  Other flags
@@ -1793,7 +1853,9 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
     rows = ""
     for p in value:
         rel, _ = rel_badges.get(p.get("reliability", ""), ("", ""))
-        notes = " ".join(x for x in (p.get("note"), rel) if x)
+        # The reliability badge is pre-rendered HTML; only the free-text note
+        # gets escaped, or the badge prints as literal "&lt;span …".
+        notes = " ".join(x for x in (escape(p.get("note") or ""), rel) if x)
         mkt = p.get("market", "?")
         pick = p.get("pick", "?")
         rows += (
@@ -1808,7 +1870,7 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
             f'<td style="color:#22c55e;font-weight:700;">{p.get("ev_pct", 0):+.1f}%</td>'
             f'<td>{p.get("odds", 0):.2f}</td>'
             f'<td style="color:#facc15;font-weight:700;">{p.get("stake_pct", 0):.1f}%</td>'
-            f'<td style="color:#94a3b8;">{escape(notes)}</td>'
+            f'<td style="color:#94a3b8;">{notes}</td>'
             f'</tr>\n'
         )
 
@@ -1819,34 +1881,47 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
             f'<td>{p.get("odds", 0):.2f}</td>'
             f'<td>{p.get("stake_pct", 0):.2f}%</td></tr>\n'
             for p in value)
-        scaled_note = ""
-        if card.get("scaled_down"):
-            scaled_note = ('<div style="margin-top:8px;color:#eab308;font-size:0.8rem;">'
-                           'Sum pushed past 100% of bankroll — stakes scaled down '
-                           'proportionally to the cap (sizing ratios kept).</div>')
+        cap_note = ""
+        if card.get("capped_off"):
+            cap_note = ('<div style="margin-top:8px;color:#eab308;font-size:0.8rem;">'
+                        f'Sum pushed past {TOTAL_BANKROLL_CAP_PCT:.0f}% of bankroll — '
+                        f'{card["capped_off"]} lowest-EV leg(s) cut rather than every '
+                        'stake scaled down; the ticket is deliberately partial.</div>')
         dust_note = ""
         if card.get("dropped_dust"):
             dust_note = (f" &middot; {card['dropped_dust']} dust leg(s) "
-                         f"(&lt;{DUST_STAKE_PCT:.0f}%) left unbet")
+                         f"(&lt;{DUST_STAKE_PCT:g}%) left unbet")
+        gate_note = ""
+        if card.get("blocked_reserve") or card.get("blocked_held"):
+            gate_note = (f" &middot; {card.get('blocked_reserve', 0)} reserve / "
+                         f"{card.get('blocked_held', 0)} HELD leg(s) excluded")
         ticket_html = (
             f'<div style="background:#052e16;border:1px solid #22c55e;border-radius:8px;'
             f'padding:12px 14px;margin:0 0 16px;">'
             f'<h2 style="margin:0 0 8px;">🎯 Action Ticket <span style="font-weight:400;'
             f'font-size:0.8rem;color:#94a3b8;">&middot; one/best +EV single per match '
-            f'(0%-stake legs dropped){dust_note} &middot; total &asymp; {total_stake:.1f}% '
+            f'(0%-stake legs dropped){dust_note}{gate_note} &middot; total &asymp; {total_stake:.1f}% '
             f'of bankroll'
-            f'{", capped &le;100%" if card.get("scaled_down") else ""}</span></h2>'
+            f'{f", ≤{TOTAL_BANKROLL_CAP_PCT:.0f}% cap, {card['capped_off']} cut" if card.get("capped_off") else ""}</span></h2>'
             f'<table style="width:100%;font-size:0.84rem;">'
             f'<tr><th>Match</th><th>Bet</th><th>Odds</th><th>Stake</th></tr>{tickets}</table>'
-            f'{scaled_note}</div>')
+            f'{cap_note}</div>')
     else:
+        blocked_txt = ""
+        if card.get("blocked_reserve") or card.get("blocked_held"):
+            blocked_txt = (
+                f'<p style="color:#94a3b8;font-size:0.85rem;margin:8px 0 0;">'
+                f'{card.get("blocked_held", 0)} leg(s) sat in a HELD picks-gate '
+                f'bucket and {card.get("blocked_reserve", 0)} on a reserve '
+                f'fixture — listed below, never bet.</p>')
         ticket_html = (
             f'<div style="background:#1e293b;border:1px solid #ef4444;border-radius:8px;'
             f'padding:16px 20px;margin:0 0 16px;">'
             f'<h2 style="margin:0 0 4px;color:#f87171;">No +EV picks in this slate.</h2>'
             f'<p style="color:#94a3b8;font-size:0.88rem;margin:0;">'
             f'The sharp move is to <strong style="color:#fff;">bet nothing</strong> — '
-            f'no candidate cleared positive expected value after de-vigging bookmaker odds.</p>'
+            f'no candidate cleared positive expected value after de-vigging bookmaker odds.'
+            f'</p>{blocked_txt}'
             f'</div>')
 
     # ── reference block: every candidate (incl. -EV / no-odds) ──
@@ -1908,16 +1983,14 @@ def render_card_html(card, title_suffix="", title="Bettor's Card"):
 {ref_rows}
 </table>
 </details>
-<p class="sub" style="margin-top:16px;">Method: fair probs by proportional de-vig of bookmaker odds; edge = model_prob − fair_prob; EV = model_prob × odds − 1; stake = Quarter-Kelly, capped at 5% of bankroll, multiplied by league reliability in that market (STUD 1.0 / ok 1.0 / WEAK 0.5 / COLD 0.0). No bet without stated edge. The ticket keeps the single best +EV leg per match; legs priced at 0.0% (COLD leagues / negligible edge) are excluded, and a slate sum past 100% of bankroll is scaled down to the cap so the card never over-exposes one bankroll.</p>
+<p class="sub" style="margin-top:16px;">Method: fair probs by proportional de-vig of bookmaker odds; edge = model_prob − fair_prob; EV = model_prob × odds − 1; stake = Quarter-Kelly, capped at 5% of bankroll, multiplied by league reliability in that market (STUD 1.0 / ok 1.0 / WEAK 0.5 / COLD 0.0). A league with no measured accuracy is treated as unproven, not as proven: unknown earns the same 0.5 as WEAK. No bet without stated edge. Two house gates keep the worst-priced legs off the ticket while leaving them listed below: reserve/second-team fixtures are never bet (the model's senior-team inputs do not describe who is playing), and a leg whose (selection, confidence) bucket is HELD by the picks gate is never bet — only RELIABLE/WATCH buckets are stakeable. The ticket keeps the single best +EV leg per match; legs priced at 0.0% (COLD leagues / negligible edge) are excluded, and a slate sum past 100% of bankroll has its lowest-EV legs cut rather than every stake scaled down — a card is allowed to be partial, never to over-bet.</p>
 </body>
 </html>
 """
 
 
 def cmd_learn(args):
-    py = REPO / ".venv" / "bin" / "python"
-    if not py.exists():
-        py = Path(sys.executable)
+    py = _venv_python()
     print("Running local learning step (bias analysis + ML retrain)...")
     rc = subprocess.run([str(py), str(REPO / "predict.py"), "--learn-calibration"]).returncode
     sys.exit(rc)

@@ -165,7 +165,17 @@ FEATURE_NAMES = [
     "common_over25_rate",          # O2.5 rate against common opponents
     "home_hidden_strength",        # 1 if team scores ≥80% despite poor record
     "away_hidden_strength",        # 1 if team scores ≥80% despite poor record
+    # ── Team strength from results history (pre-match Elo, see elo_pass) ──
+    "elo_diff",                    # home Elo − away Elo, home advantage included
+    "elo_home",                    # home team Elo before the match
+    "elo_away",                    # away team Elo before the match
 ]
+
+# Features that carry information only available AFTER the match (half-time
+# goals). They are neutralised to -1 everywhere and never selected for training:
+# at prediction time they are always unknown, so a model that learns from real
+# first-half scores is trained on information it can never have when serving.
+POST_MATCH_FEATURES = frozenset({61, 62, 63})  # ht_home_goals, ht_away_goals, ht_total_goals
 
 # ── Feature categories: market-derived vs independent ──
 # MARKET features are derived from odds/forebet — they encode what the market
@@ -191,6 +201,35 @@ INDEPENDENT_FEATURES = frozenset(i for i in range(len(FEATURE_NAMES))
 
 TARGET_1X2 = "target_1x2"     # 0=away, 1=draw, 2=home
 TARGET_OU = "target_ou"        # 0=under, 1=over
+TARGET_BTTS = "target_btts"    # 0=no, 1=yes
+
+# ── O/U anchor features ──
+# Feature selection ranks by max(mi_1x2, mi_ou), which is dominated by 1X2
+# signal (market probabilities, Elo, form diffs all have ~10x higher MI for
+# 1X2 than for goals). Without forced anchors the deployed set ends up almost
+# pure 1X2, and the O/U head cannot see the league scoring environment — the
+# measured failure mode (e.g. Ecuador Serie A Over 3.5 stated 72% vs realised
+# 0%). These features carry total-goals and league-scoring information and are
+# always included in the selected set (they still count against max_features).
+OU_FORCE_FEATURE_NAMES = frozenset({
+    "exp_total_goals",          # Poisson matchup total
+    "league_avg_goals",         # league scoring environment
+    "league_volatility",
+    "common_over25_rate",       # O2.5 rate vs common opponents
+    "home_gf_avg", "away_gf_avg",
+    "home_ga_avg", "away_ga_avg",
+    "home_home_gf_avg", "home_home_ga_avg",
+    "away_away_gf_avg", "away_away_ga_avg",
+    "home_scored_pct", "away_scored_pct",
+    "home_clean_sheets_pct", "away_clean_sheets_pct",
+    "home_shots_pg", "away_shots_pg",
+    "home_sot_pct", "away_sot_pct",
+    "home_xg_proxy", "away_xg_proxy",
+    "common_btts_rate",
+})
+OU_FORCE_FEATURES = frozenset(
+    i for i, name in enumerate(FEATURE_NAMES) if name in OU_FORCE_FEATURE_NAMES
+) - POST_MATCH_FEATURES
 
 
 def _ppg(form_str: str) -> float:
@@ -243,6 +282,146 @@ def _compute_attack_defense(home_gf, home_ga, away_gf, away_ga):
     exp_h = (h_gf + a_ga) / 2.0
     exp_a = (a_gf + h_ga) / 2.0
     return max(0.1, exp_h), max(0.1, exp_a)
+
+
+# ---------------------------------------------------------------------------
+# Elo team strength from results history
+# ---------------------------------------------------------------------------
+#
+# Team strength built only from the results the system has already settled.
+# Ratings are updated match by match in date order, so a fixture's pre-match
+# rating never contains its own result or any later one. Same-day fixtures
+# all read the ratings as they stood before that day.
+
+ELO_K = 20.0
+ELO_HOME_ADV = 60.0   # used only to update ratings, not stored as a feature
+ELO_INIT = 1500.0
+_ELO_CURRENT: Optional[dict] = None
+
+
+def _elo_team_key(name) -> str:
+    return (name or "").strip().lower()
+
+
+def _elo_parse_date(s):
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s or "", fmt)
+        except ValueError:
+            continue
+    return datetime(1900, 1, 1)
+
+
+def _elo_fixture_key(r: dict) -> str:
+    """Same fixture identity as scripts/audit_reliability.fixture_key."""
+    m = re.search(r"-(\d{5,})\s*$", r.get("forebet_url") or "")
+    if m:
+        return f"fb:{m.group(1)}"
+    return (f"td:{_elo_team_key(r.get('home_team'))}|{_elo_team_key(r.get('away_team'))}"
+            f"|{r.get('match_date') or ''}")
+
+
+def _created_after_kickoff(r: dict) -> bool:
+    """True when a row was stored on a later calendar day than its match date.
+
+    Such a row was scraped after the match, so its features may already reflect
+    the result. Rows with an unreadable timestamp are kept.
+    """
+    try:
+        created = datetime.fromisoformat(r.get("created_at") or "")
+    except ValueError:
+        return False
+    match_day = _elo_parse_date(r.get("match_date"))
+    if match_day.year == 1900:
+        return False
+    return created.date() > match_day.date()
+
+
+def elo_pass(rows: list) -> Tuple[dict, dict]:
+    """Walk settled fixtures in date order, returning pre-match ratings.
+
+    Returns (pre, ratings):
+      pre      fixture key -> (home_elo_before, away_elo_before)
+      ratings  team key    -> rating after the last settled match
+    Duplicate rows for one fixture are counted once (the first row seen).
+    """
+    seen = set()
+    fixtures = []
+    for r in sorted(rows, key=lambda x: (_elo_parse_date(x.get("match_date")),
+                                         x.get("match_time") or "", x.get("id") or 0)):
+        k = _elo_fixture_key(r)
+        if k in seen:
+            continue
+        seen.add(k)
+        fixtures.append((k, r))
+
+    ratings: dict = {}
+    pre: dict = {}
+    i = 0
+    while i < len(fixtures):
+        day = _elo_parse_date(fixtures[i][1].get("match_date"))
+        j = i
+        while j < len(fixtures) and _elo_parse_date(fixtures[j][1].get("match_date")) == day:
+            j += 1
+        batch = fixtures[i:j]
+        for k, r in batch:
+            pre[k] = (ratings.get(_elo_team_key(r["home_team"]), ELO_INIT),
+                      ratings.get(_elo_team_key(r["away_team"]), ELO_INIT))
+        for k, r in batch:
+            h, a = _elo_team_key(r["home_team"]), _elo_team_key(r["away_team"])
+            eh = ratings.get(h, ELO_INIT) + ELO_HOME_ADV
+            ea = ratings.get(a, ELO_INIT)
+            expected = 1.0 / (1.0 + 10 ** ((ea - eh) / 400.0))
+            hg, ag = r["actual_home_goals"], r["actual_away_goals"]
+            score = 1.0 if hg > ag else (0.0 if hg < ag else 0.5)
+            gd = abs(hg - ag)
+            mult = 1.0 if gd <= 1 else (1.5 if gd == 2 else (11 + gd) / 8.0)
+            delta = ELO_K * mult * (score - expected)
+            ratings[h] = ratings.get(h, ELO_INIT) + delta
+            ratings[a] = ratings.get(a, ELO_INIT) - delta
+        i = j
+    return pre, ratings
+
+
+def elo_pre_match_for_rows(rows: list) -> dict:
+    """Map each row id -> (home_elo_before, away_elo_before) for training."""
+    pre, _ = elo_pass(rows)
+    return {r["id"]: pre[_elo_fixture_key(r)] for r in rows
+            if _elo_fixture_key(r) in pre}
+
+
+def _current_elo() -> dict:
+    """Team ratings after every settled result in history.db (cached)."""
+    global _ELO_CURRENT
+    if _ELO_CURRENT is None:
+        _ELO_CURRENT = {}
+        try:
+            conn = sqlite3.connect(str(DB_PATH))
+            conn.row_factory = sqlite3.Row
+            rows = [dict(r) for r in conn.execute(
+                "SELECT id, forebet_url, home_team, away_team, match_date, match_time, "
+                "actual_home_goals, actual_away_goals FROM matches "
+                "WHERE actual_home_goals IS NOT NULL AND actual_away_goals IS NOT NULL")]
+            conn.close()
+            _, _ELO_CURRENT = elo_pass(rows)
+        except sqlite3.Error:
+            _ELO_CURRENT = {}
+    return _ELO_CURRENT
+
+
+def _elo_features_for_row(row: dict) -> list:
+    """[elo_diff, elo_home, elo_away] for one fixture.
+
+    Training rows carry their pre-match ratings (_elo_home_pre/_elo_away_pre).
+    A live fixture has no result yet, so its current rating is the pre-match one.
+    """
+    if row.get("_elo_home_pre") is not None and row.get("_elo_away_pre") is not None:
+        eh, ea = float(row["_elo_home_pre"]), float(row["_elo_away_pre"])
+    else:
+        cur = _current_elo()
+        eh = cur.get(_elo_team_key(row.get("home_team")), ELO_INIT)
+        ea = cur.get(_elo_team_key(row.get("away_team")), ELO_INIT)
+    return [eh - ea, eh, ea]
 
 
 def extract_features_from_db_row(row: dict) -> np.ndarray:
@@ -417,12 +596,12 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     f.append(a_yellows)
     f.append(h_yellows - a_yellows)
 
-    # Half-time goals
-    ht_h = row.get("ht_home_goals")
-    ht_a = row.get("ht_away_goals")
-    f.append(ht_h if ht_h is not None else -1.0)
-    f.append(ht_a if ht_a is not None else -1.0)
-    f.append((ht_h + ht_a) if ht_h is not None and ht_a is not None else -1.0)
+    # Half-time goals: post-match information (see POST_MATCH_FEATURES). Stored
+    # HT scores exist only for finished matches, so reading them would leak the
+    # result into training while serving always sees them as missing.
+    f.append(-1.0)
+    f.append(-1.0)
+    f.append(-1.0)
 
     # Dangerous attacks
     h_dang = row.get("home_dangerous_attacks_pg") or 12.0
@@ -634,6 +813,10 @@ def extract_features_from_db_row(row: dict) -> np.ndarray:
     else:
         # No form details available
         f.extend([0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+
+    # Pre-match Elo (training rows carry their own pre-match value; live
+    # predictions use the team's current rating from the results history).
+    f.extend(_elo_features_for_row(row))
 
     return np.array(f, dtype=np.float32)
 
@@ -856,11 +1039,16 @@ def extract_features_from_game_record(r: dict) -> np.ndarray:
     f[91] = 0.0    # away_xg_proxy
     f[92] = 0.0    # xg_proxy_diff
 
+    # Elo unavailable for game records (no reliable team identity) → neutral
+    f[FEATURE_NAMES.index("elo_diff")] = 0.0
+    f[FEATURE_NAMES.index("elo_home")] = ELO_INIT
+    f[FEATURE_NAMES.index("elo_away")] = ELO_INIT
+
     return f
 
 
-def extract_targets_from_game_record(r: dict) -> Tuple[int, int]:
-    """Extract 1X2 and O/U targets from game record."""
+def extract_targets_from_game_record(r: dict) -> Tuple[int, int, int]:
+    """Extract 1X2, O/U and BTTS targets from game record."""
     hs = int(r.get("home_score", 0))
     aws = int(r.get("away_score", 0))
     if hs > aws:
@@ -870,7 +1058,8 @@ def extract_targets_from_game_record(r: dict) -> Tuple[int, int]:
     else:
         t1x2 = 0  # away
     tou = 1 if (hs + aws) > 2 else 0  # Over 2.5
-    return t1x2, tou
+    tbtts = 1 if (hs > 0 and aws > 0) else 0
+    return t1x2, tou, tbtts
 
 
 # ---------------------------------------------------------------------------
@@ -895,7 +1084,21 @@ class MLPredictor:
         self.gb_model_ou: Optional[GradientBoostingClassifier] = None
         self.xgb_model_ou: Optional[xgb.XGBClassifier] = None
         self.lgb_model_ou: Optional[lgb.LGBMClassifier] = None
+        # BTTS models (Yes/No head — was previously Poisson+Forebet only)
+        self.rf_model_btts: Optional[RandomForestClassifier] = None
+        self.gb_model_btts: Optional[GradientBoostingClassifier] = None
+        self.xgb_model_btts: Optional[xgb.XGBClassifier] = None
+        self.lgb_model_btts: Optional[lgb.LGBMClassifier] = None
+        # Per-line O/U heads (LightGBM only): Over 1.5 / Over 3.5 targets.
+        # The single O/U head is trained on Over 2.5; the multi-threshold loop
+        # in predict.py used that one signal for every line with fixed weights,
+        # which cannot adapt to league scoring environments (measured: Over 1/3/4
+        # buckets were the worst-calibrated in small leagues).
+        self.lgb_model_ou15: Optional[lgb.LGBMClassifier] = None
+        self.lgb_model_ou35: Optional[lgb.LGBMClassifier] = None
         self.scaler: Optional[StandardScaler] = None
+        # (a, b) of logit(p_cal) = a + b * logit(p_raw) for Over 2.5; None = raw
+        self.ou_platt: Optional[Tuple[float, float]] = None
 
         # Calibrated versions
         self.cal_rf_1x2: Optional[CalibratedClassifierCV] = None
@@ -906,6 +1109,12 @@ class MLPredictor:
         self.cal_gb_ou: Optional[CalibratedClassifierCV] = None
         self.cal_xgb_ou: Optional[CalibratedClassifierCV] = None
         self.cal_lgb_ou: Optional[CalibratedClassifierCV] = None
+        self.cal_rf_btts: Optional[CalibratedClassifierCV] = None
+        self.cal_gb_btts: Optional[CalibratedClassifierCV] = None
+        self.cal_xgb_btts: Optional[CalibratedClassifierCV] = None
+        self.cal_lgb_btts: Optional[CalibratedClassifierCV] = None
+        self.cal_lgb_ou15: Optional[CalibratedClassifierCV] = None
+        self.cal_lgb_ou35: Optional[CalibratedClassifierCV] = None
 
         # Feature selection: indices of features used for training/prediction
         self.feature_indices: Optional[np.ndarray] = None
@@ -936,11 +1145,18 @@ class MLPredictor:
               calibration_method: Optional[str] = "sigmoid",
               calibration_split: float = 0.15,
               dates: Optional[list] = None,
-              feature_indices: Optional[np.ndarray] = None):
+              feature_indices: Optional[np.ndarray] = None,
+              y_btts: Optional[np.ndarray] = None,
+              y_ou15: Optional[np.ndarray] = None,
+              y_ou35: Optional[np.ndarray] = None):
         """Train all models with optional sample weights and probability calibration.
 
         When feature_indices is provided, only those features are used for
         training. This prevents the model from over-relying on market odds.
+
+        O/U classifiers are calibrated with isotonic regression (sigmoid cannot
+        express the S-shaped bucket errors seen in small-league O/U buckets);
+        1X2/BTTS/line heads keep sigmoid unless told otherwise.
         """
         n = len(X)
         if n < 100:
@@ -960,7 +1176,12 @@ class MLPredictor:
         X_scaled = self.scaler.fit_transform(X)
 
         # Split calibration set if requested
-        X_train, X_calib, y1_train, y1_calib, y2_train, y2_calib = None, None, None, None, None, None
+        X_train, X_calib = None, None
+        y1_train, y1_calib = None, None
+        y2_train, y2_calib = None, None
+        yb_train, yb_calib = None, None
+        y15_train, y15_calib = None, None
+        y35_train, y35_calib = None, None
         sw_train = None
         if calibration_method and n >= 200:
             # Chronological split: take last calibration_split fraction as calibration
@@ -982,6 +1203,15 @@ class MLPredictor:
             y1_calib = y_1x2[cal_indices]
             y2_train = y_ou[train_indices]
             y2_calib = y_ou[cal_indices]
+            if y_btts is not None:
+                yb_train = y_btts[train_indices]
+                yb_calib = y_btts[cal_indices]
+            if y_ou15 is not None:
+                y15_train = y_ou15[train_indices]
+                y15_calib = y_ou15[cal_indices]
+            if y_ou35 is not None:
+                y35_train = y_ou35[train_indices]
+                y35_calib = y_ou35[cal_indices]
             if sample_weights is not None:
                 sw_train = sample_weights[train_indices]
             print(f"   Training: {len(X_train)}, Calibration: {len(X_calib)} (chronological)")
@@ -989,6 +1219,9 @@ class MLPredictor:
             X_train = X_scaled
             y1_train = y_1x2
             y2_train = y_ou
+            yb_train = y_btts
+            y15_train = y_ou15
+            y35_train = y_ou35
             sw_train = sample_weights
 
         print(f"Training RandomForest for 1X2 ({len(X_train)} examples)...")
@@ -1063,9 +1296,69 @@ class MLPredictor:
         )
         self.lgb_model_ou.fit(X_train, y2_train, sample_weight=sw_train)
 
+        # ── BTTS heads (Yes/No) ──
+        if yb_train is not None and len(np.unique(yb_train)) >= 2:
+            print(f"Training RandomForest for BTTS ({len(X_train)} examples)...")
+            self.rf_model_btts = RandomForestClassifier(
+                n_estimators=300, max_depth=3, min_samples_leaf=60,
+                min_samples_split=100, class_weight="balanced_subsample",
+                random_state=42, n_jobs=-1, max_features="sqrt",
+            )
+            self.rf_model_btts.fit(X_train, yb_train, sample_weight=sw_train)
+
+            print(f"Training GradientBoosting for BTTS ({len(X_train)} examples)...")
+            self.gb_model_btts = GradientBoostingClassifier(
+                n_estimators=150, max_depth=2, min_samples_leaf=60,
+                learning_rate=0.03, subsample=0.60, random_state=42,
+                max_features="sqrt", min_samples_split=120,
+            )
+            self.gb_model_btts.fit(X_train, yb_train, sample_weight=sw_train)
+
+            print(f"Training XGBoost for BTTS ({len(X_train)} examples)...")
+            self.xgb_model_btts = xgb.XGBClassifier(
+                n_estimators=150, max_depth=2, learning_rate=0.03,
+                subsample=0.60, colsample_bytree=0.60, min_child_weight=60,
+                random_state=42, n_jobs=-1, eval_metric="logloss",
+                use_label_encoder=False, reg_alpha=0.5, reg_lambda=2.0,
+            )
+            self.xgb_model_btts.fit(X_train, yb_train, sample_weight=sw_train)
+
+            print(f"Training LightGBM for BTTS ({len(X_train)} examples)...")
+            self.lgb_model_btts = lgb.LGBMClassifier(
+                n_estimators=150, max_depth=3, learning_rate=0.03,
+                subsample=0.60, colsample_bytree=0.60, min_child_samples=80,
+                random_state=42, n_jobs=-1, verbose=-1,
+                reg_alpha=0.5, reg_lambda=2.0,
+            )
+            self.lgb_model_btts.fit(X_train, yb_train, sample_weight=sw_train)
+        else:
+            self.rf_model_btts = self.gb_model_btts = None
+            self.xgb_model_btts = self.lgb_model_btts = None
+
+        # ── Per-line O/U heads (Over 1.5 / Over 3.5, LightGBM only) ──
+        for _tag, _y, _attr, _cal_attr in (
+            ("O/U 1.5", y15_train, "lgb_model_ou15", "cal_lgb_ou15"),
+            ("O/U 3.5", y35_train, "lgb_model_ou35", "cal_lgb_ou35"),
+        ):
+            if _y is not None and len(np.unique(_y)) >= 2:
+                print(f"Training LightGBM for {_tag} ({len(X_train)} examples)...")
+                _m = lgb.LGBMClassifier(
+                    n_estimators=150, max_depth=3, learning_rate=0.03,
+                    subsample=0.60, colsample_bytree=0.60, min_child_samples=80,
+                    random_state=42, n_jobs=-1, verbose=-1,
+                    reg_alpha=0.5, reg_lambda=2.0,
+                )
+                _m.fit(X_train, _y, sample_weight=sw_train)
+                setattr(self, _attr, _m)
+            else:
+                setattr(self, _attr, None)
+                setattr(self, _cal_attr, None)
+
         # Probability calibration on held-out set
         if calibration_method and X_calib is not None and len(X_calib) >= 50:
-            print(f"   Calibrating probabilities using {calibration_method}...")
+            ou_cal_method = "isotonic" if n >= 2000 else calibration_method
+            print(f"   Calibrating probabilities using {calibration_method} "
+                  f"(O/U: {ou_cal_method})...")
             # 1X2 calibration
             self.cal_rf_1x2 = self._calibrate_classifier(
                 self.rf_model_1x2, X_calib, y1_calib, method=calibration_method)
@@ -1075,23 +1368,53 @@ class MLPredictor:
                 self.xgb_model_1x2, X_calib, y1_calib, method=calibration_method)
             self.cal_lgb_1x2 = self._calibrate_classifier(
                 self.lgb_model_1x2, X_calib, y1_calib, method=calibration_method)
-            # O/U calibration
+            # O/U calibration (isotonic: sigmoid cannot express bucket-level
+            # S-shaped errors — the small-league Over 1/3/4 failure mode)
             self.cal_rf_ou = self._calibrate_classifier(
-                self.rf_model_ou, X_calib, y2_calib, method=calibration_method)
+                self.rf_model_ou, X_calib, y2_calib, method=ou_cal_method)
             self.cal_gb_ou = self._calibrate_classifier(
-                self.gb_model_ou, X_calib, y2_calib, method=calibration_method)
+                self.gb_model_ou, X_calib, y2_calib, method=ou_cal_method)
             self.cal_xgb_ou = self._calibrate_classifier(
-                self.xgb_model_ou, X_calib, y2_calib, method=calibration_method)
+                self.xgb_model_ou, X_calib, y2_calib, method=ou_cal_method)
             self.cal_lgb_ou = self._calibrate_classifier(
-                self.lgb_model_ou, X_calib, y2_calib, method=calibration_method)
+                self.lgb_model_ou, X_calib, y2_calib, method=ou_cal_method)
+            # BTTS calibration
+            self.cal_rf_btts = self._calibrate_classifier(
+                self.rf_model_btts, X_calib, yb_calib, method=calibration_method) \
+                if self.rf_model_btts is not None else None
+            self.cal_gb_btts = self._calibrate_classifier(
+                self.gb_model_btts, X_calib, yb_calib, method=calibration_method) \
+                if self.gb_model_btts is not None else None
+            self.cal_xgb_btts = self._calibrate_classifier(
+                self.xgb_model_btts, X_calib, yb_calib, method=calibration_method) \
+                if self.xgb_model_btts is not None else None
+            self.cal_lgb_btts = self._calibrate_classifier(
+                self.lgb_model_btts, X_calib, yb_calib, method=calibration_method) \
+                if self.lgb_model_btts is not None else None
+            # Line-head calibration
+            _m15 = getattr(self, "lgb_model_ou15", None)
+            _m35 = getattr(self, "lgb_model_ou35", None)
+            self.cal_lgb_ou15 = self._calibrate_classifier(
+                _m15, X_calib, y15_calib, method=calibration_method) if _m15 is not None else None
+            self.cal_lgb_ou35 = self._calibrate_classifier(
+                _m35, X_calib, y35_calib, method=calibration_method) if _m35 is not None else None
             n_cal = sum(1 for c in [self.cal_rf_1x2, self.cal_gb_1x2, self.cal_xgb_1x2, self.cal_lgb_1x2,
-                                    self.cal_rf_ou, self.cal_gb_ou, self.cal_xgb_ou, self.cal_lgb_ou] if c is not None)
-            print(f"   Calibrated {n_cal}/8 classifiers")
+                                    self.cal_rf_ou, self.cal_gb_ou, self.cal_xgb_ou, self.cal_lgb_ou,
+                                    self.cal_rf_btts, self.cal_gb_btts, self.cal_xgb_btts, self.cal_lgb_btts,
+                                    self.cal_lgb_ou15, self.cal_lgb_ou35] if c is not None)
+            n_total = 8 + (4 if self.rf_model_btts is not None else 0) \
+                + (1 if getattr(self, "lgb_model_ou15", None) is not None else 0) \
+                + (1 if getattr(self, "lgb_model_ou35", None) is not None else 0)
+            print(f"   Calibrated {n_cal}/{n_total} classifiers")
             self.calibration_method = calibration_method
+            self.calibration_method_ou = ou_cal_method
         else:
             self.cal_rf_1x2 = self.cal_gb_1x2 = self.cal_xgb_1x2 = self.cal_lgb_1x2 = None
             self.cal_rf_ou = self.cal_gb_ou = self.cal_xgb_ou = self.cal_lgb_ou = None
+            self.cal_rf_btts = self.cal_gb_btts = self.cal_xgb_btts = self.cal_lgb_btts = None
+            self.cal_lgb_ou15 = self.cal_lgb_ou35 = None
             self.calibration_method = None
+            self.calibration_method_ou = None
 
         self.is_trained = True
         self.training_examples = n
@@ -1131,6 +1454,20 @@ class MLPredictor:
         accs_ou = [(m.__class__.__name__, (m.predict(X_scaled) == y_ou).mean()) for m in all_ou]
         print(f"   In-sample 1X2: {', '.join(f'{n}={a:.3f}' for n, a in accs_1x2)}")
         print(f"   In-sample O/U: {', '.join(f'{n}={a:.3f}' for n, a in accs_ou)}")
+        self.accuracy_btts = 0.0
+        if y_btts is not None:
+            all_btts = [m for m in (self.rf_model_btts, self.gb_model_btts,
+                                    self.xgb_model_btts, self.lgb_model_btts) if m is not None]
+            if all_btts:
+                self.accuracy_btts = max((m.predict(X_scaled) == y_btts).mean() for m in all_btts)
+                print(f"   In-sample BTTS: {self.accuracy_btts:.3f}")
+        self.accuracy_ou15 = self.accuracy_ou35 = 0.0
+        if y_ou15 is not None and getattr(self, "lgb_model_ou15", None) is not None:
+            self.accuracy_ou15 = (self.lgb_model_ou15.predict(X_scaled) == y_ou15).mean()
+            print(f"   In-sample O/U 1.5: {self.accuracy_ou15:.3f}")
+        if y_ou35 is not None and getattr(self, "lgb_model_ou35", None) is not None:
+            self.accuracy_ou35 = (self.lgb_model_ou35.predict(X_scaled) == y_ou35).mean()
+            print(f"   In-sample O/U 3.5: {self.accuracy_ou35:.3f}")
 
         # Overfitting detection: alert when train-CV gap is too large
         gap_1x2 = self.accuracy_1x2 - self.cv_accuracy_1x2
@@ -1190,6 +1527,47 @@ class MLPredictor:
 
         return sum(probas) / len(probas)
 
+    def predict_proba_btts(self, X: np.ndarray) -> Optional[np.ndarray]:
+        """Return ensemble probabilities for [no, yes], or None when untrained."""
+        models = [(self.rf_model_btts, self.cal_rf_btts),
+                  (self.gb_model_btts, self.cal_gb_btts),
+                  (self.xgb_model_btts, self.cal_xgb_btts),
+                  (self.lgb_model_btts, self.cal_lgb_btts)]
+        models = [(m, c) for m, c in models if m is not None]
+        if not models:
+            return None
+        X_scaled = self.scaler.transform(X)
+        probas = []
+        for model, cal_model in models:
+            if cal_model is not None:
+                probas.append(cal_model.predict_proba(X_scaled))
+            else:
+                probas.append(model.predict_proba(X_scaled))
+        return sum(probas) / len(probas)
+
+    def predict_proba_line(self, X: np.ndarray, line: str) -> Optional[float]:
+        """Return P(Over) for a per-line head ('ou15' or 'ou35'), or None."""
+        model = getattr(self, f"lgb_model_{line}", None)
+        if model is None:
+            return None
+        cal_model = getattr(self, f"cal_lgb_{line}", None)
+        X_scaled = self.scaler.transform(X)
+        proba = (cal_model if cal_model is not None else model).predict_proba(X_scaled)
+        # column 1 = Over when both classes present
+        classes = list((cal_model if cal_model is not None else model).classes_)
+        if 1 in classes:
+            return float(proba[0][classes.index(1)])
+        return None
+
+    def _calibrate_over(self, p: float) -> float:
+        """Apply the out-of-sample Over 2.5 map, if one has been fitted."""
+        if not self.ou_platt:
+            return p
+        a, b = self.ou_platt
+        p = min(max(p, 1e-4), 1 - 1e-4)
+        z = a + b * math.log(p / (1 - p))
+        return 1.0 / (1.0 + math.exp(-z))
+
     def predict_from_row(self, row: dict) -> dict:
         """Predict using one row of features."""
         fv = extract_features_from_db_row(row).reshape(1, -1)
@@ -1210,17 +1588,30 @@ class MLPredictor:
             return {}
         p_1x2 = self.predict_proba_1x2(fv)[0]
         p_ou = self.predict_proba_ou(fv)[0]
-        return {
+        result = {
             "ml_prob_away": float(p_1x2[0]),
             "ml_prob_draw": float(p_1x2[1]),
             "ml_prob_home": float(p_1x2[2]),
-            "ml_prob_under": float(p_ou[0]),
-            "ml_prob_over": float(p_ou[1]),
+            "ml_prob_under": 1.0 - self._calibrate_over(float(p_ou[1])),
+            "ml_prob_over": self._calibrate_over(float(p_ou[1])),
             "ml_prediction": "Home" if p_1x2[2] > max(p_1x2[0], p_1x2[1])
                             else "Away" if p_1x2[0] > p_1x2[1]
                             else "Draw",
             "ml_ou_prediction": "Over" if p_ou[1] > p_ou[0] else "Under",
         }
+        p_btts = self.predict_proba_btts(fv)
+        if p_btts is not None:
+            # Binary classifiers: column 1 = Yes (classes_ is sorted [0, 1])
+            p_yes = float(p_btts[0][1])
+            result["ml_prob_btts_yes"] = p_yes
+            result["ml_prob_btts_no"] = 1.0 - p_yes
+        p15 = self.predict_proba_line(fv, "ou15")
+        if p15 is not None:
+            result["ml_prob_over15"] = p15
+        p35 = self.predict_proba_line(fv, "ou35")
+        if p35 is not None:
+            result["ml_prob_over35"] = p35
+        return result
 
     def save(self):
         """Save individual model components to disk, including calibrated versions."""
@@ -1236,11 +1627,21 @@ class MLPredictor:
         joblib.dump(self.gb_model_ou, path / "gb_ou.joblib")
         joblib.dump(self.xgb_model_ou, path / "xgb_ou.joblib")
         joblib.dump(self.lgb_model_ou, path / "lgb_ou.joblib")
+        joblib.dump(self.rf_model_btts, path / "rf_btts.joblib")
+        joblib.dump(self.gb_model_btts, path / "gb_btts.joblib")
+        joblib.dump(self.xgb_model_btts, path / "xgb_btts.joblib")
+        joblib.dump(self.lgb_model_btts, path / "lgb_btts.joblib")
+        joblib.dump(getattr(self, "lgb_model_ou15", None), path / "lgb_ou15.joblib")
+        joblib.dump(getattr(self, "lgb_model_ou35", None), path / "lgb_ou35.joblib")
         # Save calibrated models if they exist
         for name, model in [("cal_rf_1x2", self.cal_rf_1x2), ("cal_gb_1x2", self.cal_gb_1x2),
                             ("cal_xgb_1x2", self.cal_xgb_1x2), ("cal_lgb_1x2", self.cal_lgb_1x2),
                             ("cal_rf_ou", self.cal_rf_ou), ("cal_gb_ou", self.cal_gb_ou),
-                            ("cal_xgb_ou", self.cal_xgb_ou), ("cal_lgb_ou", self.cal_lgb_ou)]:
+                            ("cal_xgb_ou", self.cal_xgb_ou), ("cal_lgb_ou", self.cal_lgb_ou),
+                            ("cal_rf_btts", self.cal_rf_btts), ("cal_gb_btts", self.cal_gb_btts),
+                            ("cal_xgb_btts", self.cal_xgb_btts), ("cal_lgb_btts", self.cal_lgb_btts),
+                            ("cal_lgb_ou15", getattr(self, "cal_lgb_ou15", None)),
+                            ("cal_lgb_ou35", getattr(self, "cal_lgb_ou35", None))]:
             if model is not None:
                 joblib.dump(model, path / f"{name}.joblib")
         meta = {
@@ -1248,10 +1649,15 @@ class MLPredictor:
             "training_examples": self.training_examples,
             "accuracy_1x2": self.accuracy_1x2,
             "accuracy_ou": self.accuracy_ou,
+            "accuracy_btts": getattr(self, 'accuracy_btts', 0.0),
             "cv_accuracy_1x2": getattr(self, 'cv_accuracy_1x2', 0.0),
             "cv_accuracy_ou": getattr(self, 'cv_accuracy_ou', 0.0),
             "calibration_method": getattr(self, 'calibration_method', None),
+            "calibration_method_ou": getattr(self, 'calibration_method_ou', None),
             "models": ["RF", "GB", "XGB", "LGB"],
+            "has_btts": self.lgb_model_btts is not None,
+            "has_ou_lines": getattr(self, "lgb_model_ou15", None) is not None
+                            and getattr(self, "lgb_model_ou35", None) is not None,
             "feature_indices": self.feature_indices.tolist() if self.feature_indices is not None else None,
         }
         with open(path / "meta.json", "w") as f:
@@ -1298,6 +1704,21 @@ class MLPredictor:
                 except Exception as e2:
                     print(f"[ML] Retraining failed: {e2}")
                     return None
+            # BTTS + per-line O/U heads (optional — older artifacts lack them)
+            for attr, fname in (("rf_model_btts", "rf_btts.joblib"),
+                                ("gb_model_btts", "gb_btts.joblib"),
+                                ("xgb_model_btts", "xgb_btts.joblib"),
+                                ("lgb_model_btts", "lgb_btts.joblib"),
+                                ("lgb_model_ou15", "lgb_ou15.joblib"),
+                                ("lgb_model_ou35", "lgb_ou35.joblib")):
+                fpath = path / fname
+                if fpath.exists():
+                    try:
+                        setattr(ml, attr, joblib.load(fpath))
+                    except Exception:
+                        setattr(ml, attr, None)
+                else:
+                    setattr(ml, attr, None)
         except Exception as e:
             print(f"[ML] Model files incompatible with current environment ({e}). Retraining...")
             try:
@@ -1316,6 +1737,12 @@ class MLPredictor:
             "cal_gb_ou": "cal_gb_ou.joblib",
             "cal_xgb_ou": "cal_xgb_ou.joblib",
             "cal_lgb_ou": "cal_lgb_ou.joblib",
+            "cal_rf_btts": "cal_rf_btts.joblib",
+            "cal_gb_btts": "cal_gb_btts.joblib",
+            "cal_xgb_btts": "cal_xgb_btts.joblib",
+            "cal_lgb_btts": "cal_lgb_btts.joblib",
+            "cal_lgb_ou15": "cal_lgb_ou15.joblib",
+            "cal_lgb_ou35": "cal_lgb_ou35.joblib",
         }
         for attr, fname in cal_paths.items():
             fpath = path / fname
@@ -1330,11 +1757,22 @@ class MLPredictor:
             meta = json.load(f)
         ml.is_trained = meta["is_trained"]
         ml.training_examples = meta["training_examples"]
+        # Out-of-sample Over 2.5 calibration map (scripts/fit_ou_platt.py).
+        # It is kept in its own file so retraining does not erase it.
+        _platt_path = path / "ou_platt.json"
+        if _platt_path.exists():
+            try:
+                _pl = json.loads(_platt_path.read_text())
+                ml.ou_platt = (float(_pl["a"]), float(_pl["b"]))
+            except (KeyError, ValueError, json.JSONDecodeError):
+                ml.ou_platt = None
         ml.accuracy_1x2 = meta.get("accuracy_1x2", 0.0)
         ml.accuracy_ou = meta.get("accuracy_ou", 0.0)
+        ml.accuracy_btts = meta.get("accuracy_btts", 0.0)
         ml.cv_accuracy_1x2 = meta.get("cv_accuracy_1x2", 0.0)
         ml.cv_accuracy_ou = meta.get("cv_accuracy_ou", 0.0)
         ml.calibration_method = meta.get("calibration_method", None)
+        ml.calibration_method_ou = meta.get("calibration_method_ou", None)
         # Load feature selection indices (None means use all features)
         fi = meta.get("feature_indices")
         ml.feature_indices = np.array(fi, dtype=np.int32) if fi else None
@@ -1689,9 +2127,13 @@ def ensemble_predict(
     ml_effective_weight = w_ml
     if ml_pred and w_ml > 0 and ml_model is not None:
         league_key = league or data.get("league", "default")
+        # Look up accuracy for the market being blended; "1X2" is the only
+        # market historically recorded, so O/U/BTTS fall back to full weight
+        # when no per-league evidence exists (same as an unknown league).
+        _ml_mkt = market if market in ("1X2", "O/U", "BTTS") else "1X2"
         try:
             from database import get_ml_league_accuracy
-            ml_acc = get_ml_league_accuracy(league_key, "1X2", min_samples=5)
+            ml_acc = get_ml_league_accuracy(league_key, _ml_mkt, min_samples=5)
             ml_total = ml_acc.get("ml_total", 0)
             if ml_total >= 5 and ml_acc.get("use_ml"):
                 ml_effective_weight = w_ml
@@ -1756,20 +2198,94 @@ def ensemble_predict(
     p_d /= total
     p_a /= total
 
-    # Blend O/U
-    p_over = poisson["prob_over"] * w_poisson
-    p_under = poisson["prob_under"] * w_poisson
+    # ── Per-market weight helper ──
+    # The 1X2 weights above come from the `market` argument; O/U and BTTS are
+    # blended with their own profile + per-league dynamic weights so the
+    # O/U/BTTS rows of MARKET_WEIGHT_PROFILES are no longer dead config.
+    def _market_weights(mkt: str) -> Tuple[float, float, float]:
+        defaults = MARKET_WEIGHT_PROFILES[mkt]
+        wp, wm, wf = defaults["poisson"], defaults["ml"], defaults["forebet"]
+        dyn = None
+        if league:
+            try:
+                from database import get_dynamic_weights
+                dyn = get_dynamic_weights(league=league, market=mkt)
+            except Exception:
+                dyn = None
+        if dyn:
+            blend = 0.80
+            wp = dyn.get("poisson", wp) * blend + wp * (1 - blend)
+            wm = dyn.get("ml", wm) * blend + wm * (1 - blend)
+            wf = dyn.get("forebet", wf) * blend + wf * (1 - blend)
+        if not ml_pred:
+            wp += wm
+            wm = 0.0
+        if not has_forebet:
+            wp += wf
+            wf = 0.0
+        total = wp + wm + wf
+        if total > 0:
+            wp, wm, wf = wp / total, wm / total, wf / total
+        # Same per-league ML cap as the 1X2 blend
+        if ml_pred and wm > 0:
+            try:
+                from database import get_ml_league_accuracy
+                ml_acc = get_ml_league_accuracy(
+                    league or data.get("league", "default"), mkt, min_samples=5)
+                if ml_acc.get("ml_total", 0) >= 5 and not ml_acc.get("use_ml"):
+                    wm *= 0.3
+                    total = wp + wm + wf
+                    if total > 0:
+                        wp, wm, wf = wp / total, wm / total, wf / total
+            except Exception:
+                pass
+        if wm > MAX_ML_WEIGHT:
+            rest = wp + wf
+            wm = MAX_ML_WEIGHT
+            if rest > 0:
+                wp = wp / rest * (1.0 - wm)
+                wf = wf / rest * (1.0 - wm)
+            else:
+                wp, wf = (1.0 - wm), 0.0
+        return wp, wm, wf
+
+    # Blend O/U with O/U profile weights
+    w_p_ou, w_ml_ou, w_fb_ou = _market_weights("O/U")
+    p_over = poisson["prob_over"] * w_p_ou
+    p_under = poisson["prob_under"] * w_p_ou
     if ml_pred:
-        p_over += ml_pred["ml_prob_over"] * ml_effective_weight
-        p_under += ml_pred["ml_prob_under"] * ml_effective_weight
+        p_over += ml_pred["ml_prob_over"] * w_ml_ou
+        p_under += ml_pred["ml_prob_under"] * w_ml_ou
     if has_forebet:
         fb_ou_pct = data.get("forebet_over25_pct") or 50
         fb_ou = fb_ou_pct / 100.0
-        p_over += fb_ou * w_fb
-        p_under += (1 - fb_ou) * w_fb
+        p_over += fb_ou * w_fb_ou
+        p_under += (1 - fb_ou) * w_fb_ou
     ou_total = p_over + p_under
     p_over /= ou_total
     p_under /= ou_total
+
+    # Blend BTTS with BTTS profile weights (Yes/No head; Poisson-derived
+    # prior from expected goals, ML head when trained, Forebet match %)
+    p_btts_yes = None
+    if poisson.get("prob_btts") is not None:
+        w_p_btts, w_ml_btts, w_fb_btts = _market_weights("BTTS")
+        has_ml_btts = bool(ml_pred and ml_pred.get("ml_prob_btts_yes") is not None)
+        has_fb_btts = has_forebet and (data.get("forebet_btts_yes_pct") or 0) > 0
+        if not has_ml_btts:
+            w_p_btts += w_ml_btts
+            w_ml_btts = 0.0
+        if not has_fb_btts:
+            w_p_btts += w_fb_btts
+            w_fb_btts = 0.0
+        denom = w_p_btts + w_ml_btts + w_fb_btts
+        if denom > 0:
+            p_yes = float(poisson["prob_btts"]) * w_p_btts
+            if has_ml_btts:
+                p_yes += ml_pred["ml_prob_btts_yes"] * w_ml_btts
+            if has_fb_btts:
+                p_yes += (data["forebet_btts_yes_pct"] / 100.0) * w_fb_btts
+            p_btts_yes = min(0.99, max(0.01, p_yes / denom))
 
     # Determine prediction and confidence
     max_prob = max(p_h, p_d, p_a)
@@ -1796,6 +2312,8 @@ def ensemble_predict(
         "prob_away": round(p_a, 4),
         "prob_over": round(p_over, 4),
         "prob_under": round(p_under, 4),
+        "prob_btts_yes": round(p_btts_yes, 4) if p_btts_yes is not None else None,
+        "prob_btts_no": round(1.0 - p_btts_yes, 4) if p_btts_yes is not None else None,
         "prediction": pred,
         "confidence": confidence,
         "max_probability": round(max_prob, 4),
@@ -1814,13 +2332,14 @@ def ensemble_predict(
 
 def load_training_data(with_weights: bool = False) -> Tuple:
     """Load training data from game dataset + history.db.
-    
-    When with_weights=True, returns (X, y1, y2, sample_weights, dates) with
-    time decay weights (improvement 5: recent matches weighted more).
-    DB records get higher base weight since they have richer features.
-    dates is a list of datetime objects for chronological splitting.
+
+    Returns (X, y_1x2, y_ou, y_btts, y_ou15, y_ou35, sample_weights, dates).
+    When with_weights=False, sample_weights is None. dates is a list of
+    datetime objects for chronological splitting. DB records get higher base
+    weight since they have richer features.
     """
     X_list, y1_list, y2_list, date_list = [], [], [], []
+    yb_list, y15_list, y35_list = [], [], []
     weight_list = []
     cutoff = datetime.now() - timedelta(days=365)
 
@@ -1836,10 +2355,15 @@ def load_training_data(with_weights: bool = False) -> Tuple:
         for r in valid:
             try:
                 fv = extract_features_from_game_record(r)
-                t1, t2 = extract_targets_from_game_record(r)
+                t1, t2, tb = extract_targets_from_game_record(r)
+                hs = int(r.get("home_score", 0))
+                aws = int(r.get("away_score", 0))
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                yb_list.append(tb)
+                y15_list.append(1 if (hs + aws) > 1 else 0)
+                y35_list.append(1 if (hs + aws) > 3 else 0)
                 # Parse date for chronological ordering
                 match_date_str = r.get("date", "")
                 match_date = None
@@ -1870,10 +2394,37 @@ def load_training_data(with_weights: bool = False) -> Tuple:
               AND actual_home_goals IS NOT NULL
               AND actual_away_goals IS NOT NULL
         """).fetchall()
-        conn.close()
         print(f"History.db: {len(rows)} reviewed records")
+        # Pre-match Elo needs every settled result, not only the reviewed subset.
+        elo_pre = elo_pre_match_for_rows([dict(x) for x in conn.execute(
+            "SELECT id, forebet_url, home_team, away_team, match_date, match_time, "
+            "actual_home_goals, actual_away_goals FROM matches "
+            "WHERE actual_home_goals IS NOT NULL AND actual_away_goals IS NOT NULL")])
+        conn.close()
+        # Training hygiene. Rows created after kickoff may have been scraped
+        # post-match, so their features can carry the result; leaving them in
+        # measurably helps the model fit the result. Duplicate fixtures (same
+        # match stored twice under different URL encodings) are counted once.
+        _n_before_filter = len(rows)
+        _seen_fixtures = set()
+        _clean = []
+        for _r in sorted((dict(x) for x in rows),
+                         key=lambda x: (x.get("created_at") or "", x.get("id") or 0)):
+            if _created_after_kickoff(_r):
+                continue
+            _k = _elo_fixture_key(_r)
+            if _k in _seen_fixtures:
+                continue
+            _seen_fixtures.add(_k)
+            _clean.append(_r)
+        rows = _clean
+        print(f"Training filter: {_n_before_filter} -> {len(rows)} rows "
+              f"(post-kickoff and duplicate fixtures removed)")
         for row in rows:
             r = dict(row)
+            _pv = elo_pre.get(r["id"])
+            if _pv is not None:
+                r["_elo_home_pre"], r["_elo_away_pre"] = _pv
             try:
                 fv = extract_features_from_db_row(r)
                 hs = r["actual_home_goals"]
@@ -1885,9 +2436,13 @@ def load_training_data(with_weights: bool = False) -> Tuple:
                 else:
                     t1 = 0
                 t2 = 1 if (hs + aws) > 2 else 0
+                tb = 1 if (hs > 0 and aws > 0) else 0
                 X_list.append(fv)
                 y1_list.append(t1)
                 y2_list.append(t2)
+                yb_list.append(tb)
+                y15_list.append(1 if (hs + aws) > 1 else 0)
+                y35_list.append(1 if (hs + aws) > 3 else 0)
                 db_count += 1
                 # Parse date for chronological ordering
                 match_date_str = r.get("match_date", "")
@@ -1909,14 +2464,17 @@ def load_training_data(with_weights: bool = False) -> Tuple:
     X = np.array(X_list, dtype=np.float32)
     y1 = np.array(y1_list, dtype=np.int32)
     y2 = np.array(y2_list, dtype=np.int32)
+    yb = np.array(yb_list, dtype=np.int32)
+    y15 = np.array(y15_list, dtype=np.int32)
+    y35 = np.array(y35_list, dtype=np.int32)
     print(f"Total training examples: {len(X)} (game: {len(X)-db_count}, db: {db_count})")
-    
+
+    sw = None
     if with_weights and weight_list:
         sw = np.array(weight_list, dtype=np.float32)
         sw = sw / sw.mean()  # Normalize so mean weight = 1.0
-        return X, y1, y2, sw, date_list
-    
-    return X, y1, y2, date_list
+
+    return X, y1, y2, yb, y15, y35, sw, date_list
 
 
 def _time_decay_weight(date_str: str, cutoff: datetime, half_life_days: int = 90) -> float:
@@ -1944,15 +2502,21 @@ def _time_decay_weight(date_str: str, cutoff: datetime, half_life_days: int = 90
         return 0.7
 
 
-def analyze_feature_importance(X: np.ndarray, y1: np.ndarray, y2: np.ndarray = None):
-    """Compute mutual information for each feature across both targets."""
+def analyze_feature_importance(X: np.ndarray, y1: np.ndarray, y2: np.ndarray = None,
+                               y_btts: np.ndarray = None):
+    """Compute mutual information for each feature across the targets."""
     try:
         mi_1x2 = mutual_info_classif(X, y1, random_state=42)
         mi_ou = mutual_info_classif(X, y2, random_state=42) if y2 is not None else mi_1x2
-        mi = np.maximum(mi_1x2, mi_ou)
+        if y_btts is not None:
+            mi_btts = mutual_info_classif(X, y_btts, random_state=42)
+            mi = np.maximum(np.maximum(mi_1x2, mi_ou), mi_btts)
+            print(f"\nTop 15 features by mutual information (max of 1X2/O/U/BTTS):")
+        else:
+            mi = np.maximum(mi_1x2, mi_ou)
+            print(f"\nTop 15 features by mutual information (max of 1X2/O/U):")
         ranked = sorted(zip(FEATURE_NAMES, mi, mi_1x2, mi_ou), key=lambda x: -x[1])
         independent_count = sum(1 for name, _, _, _ in ranked[:50] if name not in {FEATURE_NAMES[i] for i in MARKET_FEATURES})
-        print(f"\nTop 15 features by mutual information (max of 1X2/O/U):")
         for name, score, mi_h, mi_o in ranked[:15]:
             tag = " [MKT]" if name in {FEATURE_NAMES[i] for i in MARKET_FEATURES} else ""
             print(f"  {name:30s} {score:.4f}  (1X2:{mi_h:.4f} O/U:{mi_o:.4f}){tag}")
@@ -1963,16 +2527,20 @@ def analyze_feature_importance(X: np.ndarray, y1: np.ndarray, y2: np.ndarray = N
 
 def select_features(X: np.ndarray, y1: np.ndarray, y2: np.ndarray,
                     max_features: int = 50, min_independent: int = 30,
+                    y_btts: Optional[np.ndarray] = None,
                     ) -> np.ndarray:
     """Select the most predictive features while ensuring independent features
     are well-represented.
 
     Strategy:
-      1. Compute mutual information for both 1X2 and O/U targets.
-      2. Rank all features by max(mi_1x2, mi_ou).
-      3. Greedily select top features, but require at least `min_independent`
+      1. Compute mutual information for 1X2, O/U and (when given) BTTS targets.
+      2. Rank all features by max(mi_1x2, mi_ou, mi_btts).
+      3. Force-include the O/U anchor features (OU_FORCE_FEATURES) so the O/U
+         head always sees league scoring environment and total-goals signal,
+         even where 1X2 market features dominate the MI ranking.
+      4. Greedily select top features, but require at least `min_independent`
          features from the INDEPENDENT set (not market-derived).
-      4. Return the selected feature indices.
+      5. Return the selected feature indices.
 
     This prevents the model from over-relying on market odds, which are
     already efficient and don't add predictive value beyond what the
@@ -1986,28 +2554,41 @@ def select_features(X: np.ndarray, y1: np.ndarray, y2: np.ndarray,
     try:
         mi_1x2 = mutual_info_classif(X, y1, random_state=42)
         mi_ou = mutual_info_classif(X, y2, random_state=42)
+        if y_btts is not None:
+            mi_btts = mutual_info_classif(X, y_btts, random_state=42)
+            mi_score = np.maximum(np.maximum(mi_1x2, mi_ou), mi_btts)
+        else:
+            mi_score = np.maximum(mi_1x2, mi_ou)
     except Exception:
         return np.arange(min(max_features, n_features))
 
-    # Score = max MI across both targets
-    mi_score = np.maximum(mi_1x2, mi_ou)
-
     # Separate independent and market features by MI score
     independent_ranked = sorted(
-        [(i, mi_score[i]) for i in INDEPENDENT_FEATURES if i < n_features],
+        [(i, mi_score[i]) for i in INDEPENDENT_FEATURES
+         if i < n_features and i not in POST_MATCH_FEATURES],
         key=lambda x: -x[1])
     market_ranked = sorted(
         [(i, mi_score[i]) for i in MARKET_FEATURES if i < n_features],
         key=lambda x: -x[1])
 
     selected = set()
-    # First: pick top min_independent independent features
-    for idx, score in independent_ranked[:min_independent]:
+    # O/U anchors first — they earn their slots regardless of MI rank
+    for idx in OU_FORCE_FEATURES:
+        if idx < n_features:
+            selected.add(idx)
+
+    # Then: pick top min_independent independent features (anchors already
+    # selected still count toward this quota)
+    for idx, score in independent_ranked:
+        if len([i for i in selected if i in INDEPENDENT_FEATURES]) >= min_independent:
+            break
         selected.add(idx)
 
-    # Fill remaining slots from all features (independent + market)
+    # Fill remaining slots from all features (independent + market), never
+    # using post-match information (see POST_MATCH_FEATURES)
     all_ranked = sorted(
-        [(i, mi_score[i]) for i in range(n_features)],
+        [(i, mi_score[i]) for i in range(n_features)
+         if i not in POST_MATCH_FEATURES],
         key=lambda x: -x[1])
     for idx, score in all_ranked:
         if len(selected) >= max_features:
@@ -2017,38 +2598,38 @@ def select_features(X: np.ndarray, y1: np.ndarray, y2: np.ndarray,
     result = np.array(sorted(selected), dtype=np.int32)
     n_ind = sum(1 for i in result if i in INDEPENDENT_FEATURES)
     n_mkt = sum(1 for i in result if i in MARKET_FEATURES)
+    n_ou_anchor = sum(1 for i in result if i in OU_FORCE_FEATURES)
     print(f"Feature selection: {len(result)}/{n_features} features "
-          f"({n_ind} independent, {n_mkt} market)")
+          f"({n_ind} independent, {n_mkt} market, {n_ou_anchor} O/U anchors)")
     return result
 
 
 def train(force: bool = True):
     """Train ML models from available data with time decay and probability calibration.
 
-    Uses Platt scaling (sigmoid) calibration by default when sufficient data exists.
+    Uses Platt scaling (sigmoid) calibration for 1X2/BTTS and isotonic for O/U.
     """
     result = load_training_data(with_weights=True)
-    if len(result) == 5:
-        X, y1, y2, sw, dates = result
-    else:
-        X, y1, y2, dates = result
-        sw = None
+    X, y1, y2, yb, y15, y35, sw, dates = result
 
     if len(X) < 100:
         print("Not enough training data. Skipping ML training.")
         return
 
-    analyze_feature_importance(X, y1, y2)
+    analyze_feature_importance(X, y1, y2, y_btts=yb)
 
     # Feature selection: pick best features, ensuring independent features
-    # are well-represented so the model doesn't just copy market odds
-    feature_indices = select_features(X, y1, y2, max_features=50, min_independent=30)
+    # are well-represented so the model doesn't just copy market odds, and
+    # force-include O/U anchors (league scoring environment + totals).
+    feature_indices = select_features(X, y1, y2, max_features=50, min_independent=30,
+                                      y_btts=yb)
 
     ml = MLPredictor()
     # Use sigmoid calibration when enough data, fall back otherwise
     cal_method = "sigmoid" if len(X) >= 200 else None
     ml.train(X, y1, y2, sample_weights=sw, calibration_method=cal_method,
-             dates=dates, feature_indices=feature_indices)
+             dates=dates, feature_indices=feature_indices,
+             y_btts=yb, y_ou15=y15, y_ou35=y35)
     ml.save()
 
     print(f"\nTraining complete: {ml.training_examples} examples, "

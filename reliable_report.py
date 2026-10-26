@@ -33,9 +33,23 @@ is looked up in the reliability ledger (``data/reliability.json``, built by
 Probabilities are displayed after applying the calibration multiplier measured
 in the ledger, so the number on screen is the one history says to expect.
 
-No odds-derived EV is ever printed: only12% of the odds stored in
-``history.db`` survive validation, so any edge figure computed from them would
-be fiction.  See :mod:`odds_guard`.
+An expected value is printed **only** for a price that passes
+:mod:`odds_guard`: 88% of the odds stored in ``history.db`` are unusable, so an
+edge figure computed from them would be fiction.  A rejected price is reported
+as rejected, never as a number.
+
+Each fixture also carries a *best bet*: the best selection across every
+market the fixture is priced in, not just the model's primary pick and not
+necessarily 1/X/2.  Only a positive-EV candidate qualifies at all, and among
+those the tier decides (RELIABLE over WATCH over HELD) with EV choosing
+inside one tier — EV is ``model × price − 1``, which grows exactly where the
+model disagrees with the market, and measured history says that disagreement
+is the model's error.  When nothing prices, the ranking falls back to this
+match's *model lift over base rate* — calibrated probability minus the
+selection's unconditional base rate — never to the ledger's bucket edge,
+which is one number per bucket and therefore ranks buckets rather than
+matches.  When nothing prices *positive*, the cell prints "no +EV selection"
+rather than a negative number under a Best bet heading.
 """
 
 from __future__ import annotations
@@ -43,6 +57,7 @@ from __future__ import annotations
 import html
 import json
 import os
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional
@@ -60,6 +75,13 @@ LEDGER_MAX_AGE_DAYS = 7
 TIER_RELIABLE = "RELIABLE"
 TIER_WATCH = "WATCH"
 TIER_HELD = "HELD"
+
+# How far the model's probability may sit from the de-vigged market before the
+# Best bet cell prints the gap as a warning.  Measured over 3,146 odds-valid
+# resolved rows: the market's error stays within ±2.5pts of the realised
+# outcome in every disagreement bin while the model's error grows with the gap
+# (up to +22pts), so a wide gap is disagreement to disclose, not value to sell.
+MODEL_MARKET_GAP_PTS = 10.0
 
 _LEDGER_CACHE: Optional[dict] = None
 
@@ -217,6 +239,46 @@ def _ledger_is_market_aware(ledger: Optional[dict]) -> bool:
     return any(k.count("|") >= 2 for k in gate)
 
 
+def _aggregate_gate(ledger: dict, pick: str, market: Optional[str]) -> Optional[dict]:
+    """Sum every confidence of one selection out of the gate.
+
+    Used when a candidate has no confidence of its own — the derived side of a
+    two-way market, or a pipeline that emitted ``None`` — so the exact
+    ``(market, selection, confidence)`` key cannot exist.  The shrinkage is the
+    ledger's own credibility formula, ``(hits + k · base) / (n + k)`` with
+    ``policy.credibility_k``, so an aggregated figure stays on the same scale
+    as the per-confidence ones beside it.
+
+    Returns None when the selection has no gate presence at all, which is the
+    genuine "nothing is known" case.
+    """
+    gate = ledger.get("gate") or {}
+    prefix = (f"{_norm_market(market)}|{pick}|"
+              if _ledger_is_market_aware(ledger) else f"{pick}|")
+    hits = n = 0
+    base = None
+    for key, e in gate.items():
+        if not key.startswith(prefix) or not isinstance(e, dict):
+            continue
+        n += e.get("n") or 0
+        hits += e.get("hits") or 0
+        if base is None:
+            base = e.get("expected")
+    if n <= 0 or not isinstance(base, (int, float)):
+        return None
+    k = (ledger.get("policy") or {}).get("credibility_k") or 120
+    shrunk = (hits + k * base) / (n + k)
+    return {
+        "hit_rate": hits / n,
+        "n": n,
+        "expected": base,
+        "shrunk_rate": shrunk,
+        "edge_pts": round((shrunk - base) * 100, 2),
+        "reason": (f"no pick at this confidence — {n:,} resolved matches "
+                   f"aggregated across every confidence of {pick}"),
+    }
+
+
 def classify_pick(pick: str, confidence: str, ledger: Optional[dict],
                   market: Optional[str] = None) -> dict:
     """Look one pick up in the ledger and decide its tier.
@@ -250,23 +312,45 @@ def classify_pick(pick: str, confidence: str, ledger: Optional[dict],
         else:
             total = totals.get(pick)
         if total:
+            # Display fields come through .get(): a ledger written by an older
+            # audit_reliability.py (totals lacked shrunk_rate) must degrade a
+            # row's numbers, not abort the whole report write — one absent key
+            # once discarded every pick of a 722-match run.
             out.update({
-                "hit_rate": total["hit_rate"], "n": total["n"],
-                "expected": total["expected"], "shrunk_rate": total["shrunk_rate"],
-                "edge_pts": total["edge_pts"],
+                "hit_rate": total.get("hit_rate"), "n": total.get("n", 0),
+                "expected": total.get("expected"),
+                "shrunk_rate": total.get("shrunk_rate"),
+                "edge_pts": total.get("edge_pts"),
                 "reason": f"no pick at this confidence in history "
-                          f"({total['n']} resolved matches at other confidences)",
+                          f"({total.get('n', 0)} resolved matches at other confidences)",
             })
+            return out
+        # The totals accumulator only covers the selections that have appeared
+        # as a primary prediction, so it silently omits whole selections —
+        # Over 2.5 and BTTS No are absent from a ledger that has thousands of
+        # resolved matches for both.  Sum the gate's own per-confidence buckets
+        # instead; reporting "0 matches" for those would be a factually wrong
+        # answer to "how much is known here".
+        agg = _aggregate_gate(ledger, pick, market)
+        if agg:
+            out.update(agg)
+            if agg["n"] >= (ledger.get("policy") or {}).get("min_samples", 200):
+                out["tier"] = TIER_WATCH
+            return out
         return out
 
+    # Same rule as the totals fallback: read defensively. A missing field can
+    # cost a row its numbers, but it must never cost the run its report.
     out.update({
-        "hit_rate": entry["hit_rate"], "n": entry["n"],
-        "expected": entry["expected"], "shrunk_rate": entry["shrunk_rate"],
-        "edge_pts": entry["edge_pts"], "reason": entry["reason"],
+        "hit_rate": entry.get("hit_rate"), "n": entry.get("n", 0),
+        "expected": entry.get("expected"),
+        "shrunk_rate": entry.get("shrunk_rate"),
+        "edge_pts": entry.get("edge_pts"),
+        "reason": entry.get("reason", "no reason recorded in ledger"),
     })
-    if entry["publish"]:
+    if entry.get("publish"):
         out["tier"] = TIER_RELIABLE
-    elif entry["n"] >= (ledger.get("policy") or {}).get("min_samples", 200):
+    elif out["n"] >= (ledger.get("policy") or {}).get("min_samples", 200):
         out["tier"] = TIER_WATCH
     else:
         out["tier"] = TIER_HELD
@@ -379,6 +463,341 @@ def _pick_text(candidate: dict) -> str:
     return f"{pick} ({conf})" if conf else str(pick)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Best bet: rank every market on the fixture, not just the primary pick
+# ─────────────────────────────────────────────────────────────────────────────
+
+_OU_THR = {"0.5": "05", "1.5": "15", "2.5": "25",
+           "3.5": "35", "4.5": "45", "5.5": "55"}
+
+_TIER_RANK = {TIER_RELIABLE: 2, TIER_WATCH: 1, TIER_HELD: 0}
+
+
+def _group_sides(market: str, pick: str) -> Optional[List[str]]:
+    """Every selection that shares one priceable group with ``pick``.
+
+    The three groups are the 1X2 triplet, the two BTTS outcomes, and the two
+    sides of a single goal line.  Nothing outside these is completable: a
+    derived side has to be exhaustive or the book's margin cannot be removed
+    from it later.
+    """
+    if market == "1X2":
+        return ["Home win", "Draw", "Away win"]
+    if market == "BTTS":
+        return ["Yes", "No"]
+    if market == "O/U":
+        m = re.match(r"^(Over|Under)\s+([0-9.]+)$", (pick or "").strip())
+        if m:
+            return [f"Over {m.group(2)}", f"Under {m.group(2)}"]
+    return None
+
+
+def _candidate_universe(res: dict) -> List[dict]:
+    """Every distinct ``(market, pick)`` this fixture actually offers.
+
+    Three sources, in order:
+
+    1. the synthesis shortlist (``all_picks``) — the ranked picks the pipeline
+       led with;
+    2. the ML analysis list (``_ml_analysis.all_picks``) — where the goal lines
+       at every threshold live;
+    3. **the sides the pipeline did not emit.**  The shortlist carries only the
+       side it prefers, so a fixture that leads with ``BTTS No`` offers no
+       ``BTTS Yes`` at all — yet BTTS Yes is exactly what a reader wants priced
+       when the model is wrong, and the 1X2 sides it did not pick are the ones
+       with the long prices.  Filling each group out (probability from the
+       direct key, else ``1 - p`` of a two-way sibling) is what lets the ranking
+       compare *every* side against the book rather than only the side the model
+       happened to lead with.  A derived side inherits its group's confidence:
+       the conviction belongs to the market, not to which side of it lands.
+
+    Reading only source 1 is what confined the old report to whatever the model
+    had already chosen to lead with.
+    """
+    seen, out = set(), []
+    for src in (res.get("all_picks"),
+                (res.get("_ml_analysis") or {}).get("all_picks")):
+        for c in src or []:
+            if not isinstance(c, dict):
+                continue
+            market, pick = c.get("market"), c.get("pick")
+            if not market or not pick or (market, pick) in seen:
+                continue
+            seen.add((market, pick))
+            out.append(c)
+
+    derived = []
+    for c in out:
+        market = c.get("market") or ""
+        sides = _group_sides(market, c.get("pick") or "")
+        if not sides:
+            continue
+        conf = c.get("confidence")
+        sibling = c.get("model_prob")
+        sibling_ok = (isinstance(sibling, (int, float))
+                      and not isinstance(sibling, bool) and 0.0 < sibling < 1.0)
+        for side in sides:
+            if (market, side) in seen:
+                continue
+            prob = _match_prob(res, side)
+            if not isinstance(prob, (int, float)) or isinstance(prob, bool):
+                # A three-way market cannot be completed by subtraction — only
+                # the two-way groups can.
+                if len(sides) == 2 and sibling_ok:
+                    prob = 1.0 - sibling
+                else:
+                    continue
+            if not (0.0 < prob < 1.0):
+                continue
+            seen.add((market, side))
+            derived.append({"market": market, "pick": side,
+                            "confidence": conf, "model_prob": prob,
+                            "_derived": True})
+    return out + derived
+
+
+def _price_group(res: dict, market: str, pick: str):
+    """``(prices, verdict)`` for the priceable group ``pick`` belongs to.
+
+    ``prices`` is ``[(selection, odds), ...]`` in canonical order: the set the
+    book's margin is removed over.  ``verdict`` is what :mod:`odds_guard` says
+    about that group.
+
+    The two failure modes are kept apart on purpose.  ``verdict is None`` means
+    *no price exists* — the feed carries no ``odds_over15`` column, so nobody
+    could quote an EV even if they wanted to.  A verdict with ``ok=False`` means
+    *a price exists and was rejected* — the row is corrupted (duplicate,
+    favourite mismatch, blown overround) and must be reported as unpriceable
+    rather than silently dropped, because a dropped price looks identical to a
+    missing one and hides the integrity problem.
+    """
+    if market == "1X2":
+        sel = [("Home win", "odds_home"), ("Draw", "odds_draw"),
+               ("Away win", "odds_away")]
+    elif market == "BTTS":
+        sel = [("Yes", "odds_btts_yes"), ("No", "odds_btts_no")]
+    elif market == "O/U":
+        m = re.match(r"(Over|Under)\s+([0-9.]+)$", (pick or "").strip())
+        thr = _OU_THR.get(m.group(2)) if m else None
+        if not thr:
+            return [], None
+        sel = [(f"Over {m.group(2)}", f"odds_over{thr}"),
+               (f"Under {m.group(2)}", f"odds_under{thr}")]
+    else:
+        return [], None
+
+    prices = []
+    for selection, key in sel:
+        v = res.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 1.0:
+            prices.append((selection, float(v)))
+    if pick not in {s for s, _ in prices}:
+        return prices, None
+
+    if market == "1X2":
+        if len(prices) != 3:
+            return prices, odds_guard.OddsVerdict(False, "incomplete 1X2 triplet")
+        fb = res.get("forebet_pct")
+        if not (isinstance(fb, (list, tuple)) and len(fb) == 3
+                and all(isinstance(x, (int, float)) for x in fb)):
+            # Without Forebet's own percentages the favourite-agreement test
+            # cannot run, and that test is the only one that catches a
+            # structurally plausible triplet assigned to the wrong outcomes.
+            return prices, odds_guard.OddsVerdict(
+                False, "no Forebet percentages to verify the price against")
+        return prices, odds_guard.validate_1x2(res.get("odds_home"),
+                                               res.get("odds_draw"),
+                                               res.get("odds_away"),
+                                               fb[0], fb[1], fb[2])
+
+    if len(prices) != len(sel):
+        return prices, odds_guard.OddsVerdict(False, "missing")
+    # Name the selection's own price first so its fair probability lands on it.
+    own = dict(prices)[pick]
+    other = next(v for s, v in prices if s != pick)
+    return prices, odds_guard.validate_ou(own, other)
+
+
+def _fair_prob(prices, verdict, market: str, pick: str) -> Optional[float]:
+    """De-vigged price-implied probability for ``pick``, or None."""
+    if not (verdict is not None and verdict.ok and verdict.devig):
+        return None
+    if market == "1X2":
+        idx = ("Home win", "Draw", "Away win").index(pick)
+    else:
+        idx = 0  # validate_ou was handed (own, other)
+    if idx >= len(verdict.devig):
+        return None
+    return float(verdict.devig[idx])
+
+
+def best_candidate(res: dict, ledger: Optional[dict],
+                   primary: Optional[tuple] = None) -> Optional[dict]:
+    """The best bet on this fixture across **every** market.
+
+    ``primary`` is the ``(market, pick)`` the row shows in its Selection column.
+    When a candidate *is* that pick, its probability is taken from the same
+    source the Selection column uses (``_match_prob``), so the EV quoted for a
+    pick can never disagree with the probability printed beside it.  Every other
+    candidate uses the probability the pipeline assigned to it in ``all_picks``,
+    which is what its own ranking is built on.
+
+    "Best" is deliberately not "the model's primary pick", and it is not
+    restricted to 1/X/2 — a BTTS price and a goal-line price and a 1X2 price are
+    alternatives on the same match, and only one of them is the value.
+
+    Ranking is **tier first, then money**, applied in two steps:
+
+    0. **+EV is a precondition.**  A candidate that prices at ≤0 is not a bet
+       (house rule: no bet without +EV), so it never outranks a positive one
+       no matter how good its tier is.
+    1. Among the candidates that price positive, the tier (measured history:
+       RELIABLE over WATCH over HELD) is the first key, in both rank orders
+       below.  EV is only compared *within* one tier.  This matters because EV
+       here is ``model probability × price − 1``: it grows exactly when the
+       model disagrees with the market, and measured history says that
+       disagreement is the model's own error (on odds-valid rows the de-vigged
+       market sits within ±2.5pts of the realised outcome in every disagreement
+       bin while the model is off by up to 22pts).  So a +100% EV on a bucket
+       that never beats its base rate ranks below a +20% EV on one that does.
+    2. Inside the chosen tier the comparison is, in order of availability:
+       **expected value** (calibrated model probability × a price that passed
+       :mod:`odds_guard`, minus one) whenever anything prices, else **model
+       lift over base rate** (``model probability − the selection's
+       unconditional base rate``).  Lift is used only when *nothing* prices (no
+       O/U 1.5 column in the feed, or every price failed validation) and never
+       the ledger's bucket edge: the bucket edge is identical for every pick
+       drawn from the same bucket, so ranking on it selects the historically
+       juiciest *bucket* and says nothing about the match in front of the
+       reader.
+
+    Two outputs are deliberately *not* recommendations, and carry flags the
+    cell renders as such:
+
+    * ``no_value`` — something prices, but every priced candidate is ≤0 EV.
+      The cell prints "no +EV selection" instead of presenting the least bad
+      negative number as a best bet.
+    * ``gap_warning`` — the candidate sits more than 10pts from the de-vigged
+      market.  The cell prints the gap, because that distance is the model
+      disagreeing with a price history has measured as well calibrated.
+
+    The result carries its own ``tier`` so a reader sees how good the price is
+    *and* how often this kind of pick has historically landed.  HELD results
+    additionally carry ``n`` and render "no measured evidence (n=…)".
+
+    Returns None when there is no candidate with a probability to rank.
+    """
+    entries = []
+    for c in _candidate_universe(res):
+        market, pick = c.get("market"), c.get("pick")
+        conf = c.get("confidence") or ""
+        if primary is not None and (market, pick) == primary:
+            stated = _match_prob(res, pick)
+            if not isinstance(stated, (int, float)) or isinstance(stated, bool):
+                stated = c.get("model_prob")
+        else:
+            stated = c.get("model_prob")
+            if not isinstance(stated, (int, float)) or isinstance(stated, bool):
+                stated = _match_prob(res, pick)
+        verdict = classify_pick(pick, conf, ledger, market)
+        entry = {
+            "market": market, "pick": pick, "confidence": conf,
+            "stated_prob": stated if isinstance(stated, (int, float)) else None,
+            "shown_prob": calibrated(stated, ledger) if isinstance(stated, (int, float)) else None,
+            "tier": verdict["tier"],
+            "hit_rate": verdict.get("hit_rate"),
+            "n": verdict.get("n", 0),
+            "expected": verdict.get("expected"),
+            "shrunk_rate": verdict.get("shrunk_rate"),
+            "edge_pts": verdict.get("edge_pts"),
+            "reason": verdict.get("reason"),
+            "odds": None, "ev_pct": None, "price_edge_pct": None,
+            "fair_prob": None, "gap_warning": None, "no_value": False,
+            "note": "", "odds_rejected": False,
+        }
+        if entry["shown_prob"] is not None and entry["expected"] is not None:
+            entry["lift_pts"] = round((entry["shown_prob"] - entry["expected"]) * 100, 2)
+        else:
+            entry["lift_pts"] = None
+        prices, odv = _price_group(res, market, pick)
+        if odv is None:
+            if prices:
+                entry["note"] = f"no price at this threshold ({', '.join(s for s, _ in prices)} priced)"
+        elif not odv.ok:
+            entry["odds_rejected"] = True
+            entry["note"] = f"odds failed validation ({odv.reason}) — not priced"
+        elif entry["shown_prob"] is not None:
+            fair = _fair_prob(prices, odv, market, pick)
+            own = dict(prices).get(pick)
+            if fair is not None and own:
+                entry["odds"] = own
+                entry["fair_prob"] = fair
+                entry["ev_pct"] = round((entry["shown_prob"] * own - 1.0) * 100, 2)
+                entry["price_edge_pct"] = round((entry["shown_prob"] - fair) * 100, 2)
+                # A model probability far from the de-vigged market is the
+                # model disagreeing with a price history measures as well
+                # calibrated — that distance is error, not value, so say so
+                # rather than letting the size of the EV speak for itself.
+                if abs(entry["price_edge_pct"]) > MODEL_MARKET_GAP_PTS:
+                    entry["gap_warning"] = (
+                        f"model {_pct(entry['shown_prob'])} vs market {_pct(fair)} "
+                        f"({_signed(entry['price_edge_pct'], 0)}pt) — gaps this wide "
+                        "have measured as model error, not edge")
+        entries.append(entry)
+
+    if not entries:
+        return None
+
+    # Tier first, then money.  Two hard rules, in this order:
+    #   * +EV is a precondition — a candidate that prices at ≤0 is not a bet,
+    #     so it never outranks a positive one regardless of its tier.
+    #   * among the candidates that do price positive, the tier decides
+    #     (RELIABLE over WATCH over HELD) and EV only chooses *within* the
+    #     winning tier.  The tier is measured history; EV is the model's
+    #     opinion of a price, and history says that opinion is where the model
+    #     is most wrong.
+    priced = [e for e in entries if e["ev_pct"] is not None]
+    if priced:
+        positive = [e for e in priced if e["ev_pct"] > 0]
+        if positive:
+            top = max(_TIER_RANK[e["tier"]] for e in positive)
+            pool = [e for e in positive if _TIER_RANK[e["tier"]] == top]
+            best = max(pool, key=lambda e: (e["ev_pct"], e["shrunk_rate"] or 0.0))
+            best["ranked_by"] = "EV"
+            return best
+        # Nothing on this fixture prices positive.  Rank the least-bad
+        # candidate so the cell can still show what was available, but flag
+        # it: a negative EV printed under a "Best bet" heading reads as a
+        # recommendation, which is the one thing it must not.
+        best = max(priced, key=lambda e: (e["ev_pct"], _TIER_RANK[e["tier"]],
+                                          e["shrunk_rate"] or 0.0))
+        best["ranked_by"] = "EV"
+        best["no_value"] = True
+        return best
+
+    # Nothing prices.  Distinguish the two ways that can happen: every price in
+    # the feed failed odds_guard (a real integrity problem the reader should
+    # know about), versus the feed simply carries no column for these lines.
+    rejected = any(e["odds_rejected"] for e in entries)
+    # Rank by this fixture's lift over the selection's base rate, never by the
+    # bucket edge: that number is one per bucket, so choosing on it selects the
+    # historically juiciest *bucket* and says nothing about the match in front
+    # of the reader.  Same tier-first order as the priced path — lift is also a
+    # model number, so it only ever ranks inside one tier.
+    measured = [e for e in entries if e["lift_pts"] is not None]
+    if not measured:
+        measured = [e for e in entries if e["shown_prob"] is not None]
+    if not measured:
+        return None
+    best = max(measured, key=lambda e: (_TIER_RANK[e["tier"]],
+                                        e["lift_pts"] if e["lift_pts"] is not None else -99.0,
+                                        e["shrunk_rate"] or 0.0))
+    best["ranked_by"] = "model lift"
+    if not best["note"] and rejected:
+        best["note"] = "stored prices failed odds_guard — not priced"
+    return best
+
+
 def _fixture_id(home: str, away: str, kickoff: str) -> Optional[str]:
     """Identity for de-duplicating a slate, or None when it cannot be told apart.
 
@@ -435,21 +854,37 @@ def build_rows(results: Iterable[dict], ledger: Optional[dict]) -> List[dict]:
             seen_fixtures.add(fid)
 
         # Candidate list repeats the primary pick at index 0; skip anything
-        # that is not a genuinely different selection.
+        # that is not a genuinely different selection.  Drawn from the full
+        # universe rather than the synthesis shortlist so a goal line or a BTTS
+        # call the shortlist did not lead with is still counted as an option.
         alternatives = []
-        for c in (res.get("all_picks") or [])[1:6]:
-            if not isinstance(c, dict):
-                continue
+        for c in _candidate_universe(res):
             alt_pick = c.get("pick") or ""
-            if not alt_pick or alt_pick == pick:
-                continue
             alt_market = c.get("market") or market
+            if not alt_pick or (alt_pick == pick and alt_market == market):
+                continue
             alt = classify_pick(alt_pick, c.get("confidence") or "", ledger, alt_market)
             if reserve:
                 alt["tier"] = TIER_HELD
             alternatives.append({"pick": alt_pick,
                                  "confidence": c.get("confidence") or "",
+                                 "market": alt_market,
                                  "tier": alt["tier"]})
+        # Promote what clears the gate before truncating, so the three shown
+        # are not simply the first three considered.
+        alternatives.sort(key=lambda a: -_TIER_RANK[a["tier"]])
+
+        # The fixture's recommendation, ranked across markets by EV (or by the
+        # model's lift over base rate when nothing prices).  A reserve fixture
+        # never gets one: the measured rates behind the tier describe
+        # senior-team football.
+        best = best_candidate(res, ledger, primary=(market, pick))
+        if best is not None:
+            best = dict(best)
+            best["is_primary"] = (best["pick"] == pick
+                                  and best["market"] == market)
+            if reserve:
+                best["tier"] = TIER_HELD
 
         rows.append({
             # The pipeline's result dicts use `home`/`away`/`date`; the DB rows
@@ -470,6 +905,7 @@ def build_rows(results: Iterable[dict], ledger: Optional[dict]) -> List[dict]:
             "reserve_side": reserve,
             "red_flags": [_flag_text(f) for f in (res.get("_red_flags") or [])],
             "warnings": [_flag_text(f) for f in (res.get("_warnings") or [])],
+            "best": best,
             "alternatives": alternatives[:3],
         })
     order = {TIER_RELIABLE: 0, TIER_WATCH: 1, TIER_HELD: 2}
@@ -485,7 +921,7 @@ def build_rows(results: Iterable[dict], ledger: Optional[dict]) -> List[dict]:
 
 _CSS = """
 :root{--bg:#0b1220;--panel:#111c2e;--line:#1e293b;--fg:#e2e8f0;--dim:#94a3b8;
---reliable:#22c55e;--watch:#f59e0b;--held:#64748b;--accent:#60a5fa;}
+--reliable:#22c55e;--watch:#f59e0b;--held:#64748b;--accent:#60a5fa;--neg:#f87171;}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
 background:var(--bg);color:var(--fg);padding:24px;line-height:1.5}
@@ -540,6 +976,14 @@ def _pts(x: Optional[float]) -> str:
         return '<span class="muted">—</span>'
     cls = "pos" if x > 0 else "neg" if x < 0 else "muted"
     return f'<span class="{cls}">{x:+.1f} pts</span>'
+
+
+def _signed(x: Optional[float], digits: int = 1) -> str:
+    """Signed percentage for an EV or price edge, or an em dash when absent."""
+    if x is None:
+        return '<span class="muted">—</span>'
+    cls = "pos" if x > 0 else "neg" if x < 0 else "muted"
+    return f'<span class="{cls}">{x:+.{digits}f}%</span>'
 
 
 def _bar(rate: Optional[float], expected: Optional[float]) -> str:
@@ -635,7 +1079,7 @@ def render_html(rows: List[dict], ledger: Optional[dict], meta: Optional[dict] =
       f'{" (×%.3f)" % mult if mult else ""}</div></div>')
     A(f'<div class="card"><div class="k">Usable odds</div>'
       f'<div class="v">{_pct((odds_ok/odds_total) if odds_total else None, 0)}</div>'
-      f'<div class="n">{"no EV quoted — see note" if (odds_total and odds_ok < odds_total*0.5) else "of stored prices"}</div></div>')
+      f'<div class="n">{"stored in history.db — see note" if (odds_total and odds_ok < odds_total*0.5) else "of stored prices"}</div></div>')
     A("</div>")
 
     A('<div class="legend">'
@@ -643,6 +1087,30 @@ def render_html(rows: List[dict], ledger: Optional[dict], meta: Optional[dict] =
       f'&ge;{(ledger or {}).get("policy",{}).get("min_samples","—")} historical matches</span>'
       '<span><span class="badge b-watch">WATCH</span> measured, but no edge</span>'
       '<span><span class="badge b-held">HELD</span> not recommended</span></div>')
+    A('<div class="note"><b>Best bet is ranked across markets, not handed down '
+      'from the model&rsquo;s pick.</b> For each fixture it takes every selection '
+      'the feed prices &mdash; 1/X/2, both goal lines, both BTTS outcomes &mdash; '
+      'and ranks them in two steps. <b>Only positive expected value qualifies</b> '
+      '(<i>calibrated model probability &times; validated price &minus; 1</i>); '
+      'a price is used only if it passes <code>odds_guard</code>, a rejected '
+      'price is shown as rejected, never as a number. <b>Then the tier decides, '
+      'not the size of the EV</b> &mdash; RELIABLE beats WATCH beats HELD, and '
+      'EV only chooses within one tier, because EV grows exactly when the model '
+      'disagrees with the market and measured history says that disagreement is '
+      'the model&rsquo;s own error. Where nothing prices &mdash; no column for '
+      'the line, or every price rejected &mdash; the ranking falls back to '
+      '<b>model lift over base rate</b>: this match&rsquo;s calibrated '
+      'probability minus what that selection lands on blind. Lift is '
+      'deliberately per-match; the ledger&rsquo;s bucket edge could not be used '
+      'here because it is one number per bucket, so ranking on it would name the '
+      'historically juiciest <i>bucket</i> rather than the best fixture (see the '
+      'bucket-edge note below). Two cell states are warnings, not picks: '
+      '<b style="color:var(--neg)">no +EV selection</b> means every price on the '
+      'fixture came back at or below break-even (the least-bad price is shown '
+      'and marked <i>pass</i>), and a HELD badge carries '
+      '<i>no measured evidence (n=…)</i> naming the sample the pick would be '
+      'judged on. A best bet sitting more than 10pts from the de-vigged market '
+      'prints that gap alongside its EV.</div>')
 
     # The edge column is the most misreadable number on the page: it is a
     # property of the (market, selection, confidence) bucket, so every pick in a
@@ -656,12 +1124,15 @@ def render_html(rows: List[dict], ledger: Optional[dict], meta: Optional[dict] =
       'per-match number here.</div>')
 
     if (odds_total and agree is not None and agree < 0.6):
-        A(f'<div class="note"><b>Why no expected value is shown.</b> Only '
-          f'{odds_ok:,} of {odds_total:,} stored prices ({_pct(odds_ok/odds_total,0)}) pass integrity '
-          f'checks, and the stored 1X2 favourite agrees with Forebet&rsquo;s independent '
-          f'percentage only {_pct(agree)} of the time. Any ROI or EV derived from these prices '
-          'would be fiction, so this report quotes measured <i>hit rates</i> instead — the only '
-          'thing the history can support.</div>')
+        A(f'<div class="note"><b>Where the expected values come from &mdash; '
+          f'not from stored odds.</b> Of the {odds_total:,} prices stored in '
+          f'history.db only {odds_ok:,} ({_pct(odds_ok/odds_total,0)}) pass integrity checks, and '
+          'the stored 1X2 favourite agrees with Forebet&rsquo;s independent percentage only '
+          f'{_pct(agree)} of the time, so no ROI or EV on this page is derived from them. Every '
+          'fixture is priced instead from its own live feed prices, validated one by one: an EV '
+          'is printed only where <code>odds_guard</code> accepted the price, and where nothing '
+          'did, the best-bet column falls back to model lift over base rate and says so. Measured '
+          '<i>hit rates</i> remain the only number the history itself supports.</div>')
 
     # ── Reliable card ──
     A("<h2>Recommended card</h2>")
@@ -796,6 +1267,7 @@ def render_html(rows: List[dict], ledger: Optional[dict], meta: Optional[dict] =
 def _table(rows: List[dict], compact: bool = False) -> str:
     e = html.escape
     out = ["<table><tr><th>Match</th><th>League</th><th>Selection</th>",
+           "<th title='Best selection on this fixture across every market the feed prices — tier first (RELIABLE over WATCH over HELD), then expected value within that tier, and only if the EV is positive; a fixture where nothing prices positive says \"no +EV selection\" instead. Not restricted to 1/X/2 — a BTTS or goal-line price can be the value even when the model leads with something else. Shown on suppressed rows too: a fixture whose primary is HELD can still carry a selection that clears the gate.'>Best bet</th>",
            "<th>Conf.</th><th>Model prob</th><th>Measured hit rate</th>",
            "<th>Base</th><th title='The historical edge of this BUCKET over its base rate. It is identical for every pick in the same bucket, so it says nothing about how good this particular match is — rank by model probability.'>Bucket edge</th><th>Tier</th>"]
     if not compact:
@@ -838,6 +1310,7 @@ def _table(rows: List[dict], compact: bool = False) -> str:
             + (f"<div class='tiny muted'>{e(ko)}</div>" if ko else "") + "</td>"
             f"<td class='tiny muted'>{e(str(r['league']))}</td>"
             f"<td><b>{e(r['pick'])}</b><div class='tiny muted'>{e(r['market'])}</div></td>"
+            f"<td>{_best_cell(r.get('best'), e)}</td>"
             f"<td class='tiny'>{e(r['confidence'])}</td>"
             f"<td class='mono'>{prob_cell}</td>"
             f"<td class='mono'>{rate_cell}</td>"
@@ -848,6 +1321,64 @@ def _table(rows: List[dict], compact: bool = False) -> str:
             f"{'<td>' + notes + '</td>' if not compact else ''}</tr>")
     out.append("</table>")
     return "".join(out)
+
+
+def _best_cell(best: Optional[dict], esc) -> str:
+    """The fixture's Best bet column: selection, price, EV and its own tier.
+
+    Three states are printed as such rather than as a recommendation:
+
+    * ``no_value`` — nothing on the fixture prices positive, so the cell leads
+      with "no +EV selection" and shows the least-bad price underneath.  A
+      negative EV under a *Best bet* heading reads as a bet, which is the one
+      thing it must not.
+    * HELD tier — the selection has no measured history backing it, so the
+      sample it would be judged on is named inline ("no measured evidence
+      (n=…)") instead of leaving the badge to carry the whole warning.
+    * ``gap_warning`` — the model sits far from the de-vigged market; the gap
+      is printed beside the EV so the size of the number cannot be mistaken
+      for confidence.
+    """
+    if not best:
+        return "<span class='muted'>no candidate to rank</span>"
+    badge = {"RELIABLE": "b-reliable", "WATCH": "b-watch",
+             "HELD": "b-held"}[best["tier"]]
+    conf = best.get("confidence") or ""
+    where = (esc(best["market"]) + (f" · {esc(conf)}" if conf else ""))
+
+    if best.get("no_value"):
+        parts = [f"<b style='color:var(--neg)'>no +EV selection</b>",
+                 f"<div class='tiny muted'>{esc(best['pick'])} · {where}</div>"]
+        if best.get("odds") is not None:
+            parts.append(f"<div class='mono tiny'>best available @ {best['odds']:.2f} · "
+                         f"EV {_signed(best.get('ev_pct'))} — pass</div>")
+        parts.append(f"<div><span class='badge {badge}'>{best['tier']}</span></div>")
+        return "".join(parts)
+
+    parts = [f"<b>{esc(best['pick'])}</b>", f"<div class='tiny muted'>{where}</div>"]
+    if best.get("odds") is not None:
+        price = (f"<div class='mono tiny'>@ {best['odds']:.2f} · EV "
+                 f"{_signed(best.get('ev_pct'))}</div>")
+        parts.append(price)
+    elif best.get("note"):
+        parts.append(f"<div class='tiny muted'>{esc(best['note'])}</div>")
+    parts.append(f"<div><span class='badge {badge}'>{best['tier']}</span></div>")
+    if best["tier"] == TIER_HELD:
+        n = best.get("n") or 0
+        ev_txt = f"no measured evidence (n={n})" if n else "no measured history"
+        parts.append(f"<div class='tiny muted'>{ev_txt}</div>")
+    if best.get("gap_warning"):
+        parts.append(f"<div class='tiny muted'>{esc(best['gap_warning'])}</div>")
+    if not best.get("is_primary"):
+        parts.append("<div class='tiny' style='color:var(--accent)'>"
+                     "value sits outside the model pick</div>")
+    if best.get("ranked_by") == "model lift":
+        if best.get("lift_pts") is not None:
+            parts.append(f"<div class='mono tiny'>lift {_pts(best['lift_pts'])}</div>")
+        parts.append("<div class='tiny muted'>ranked by model lift over base rate</div>")
+    elif best.get("ranked_by") and best["ranked_by"] != "EV":
+        parts.append(f"<div class='tiny muted'>ranked by {esc(best['ranked_by'])}</div>")
+    return "".join(parts)
 
 
 # --------------------------------------------------------------------------
@@ -873,6 +1404,7 @@ def write_report(results: Iterable[dict], out_path: Path, label: str = "run",
     out_path.write_text(render_html(rows, ledger, {
         "label": label, "source": source, "show_held": show_held,
     }))
+    write_slip(rows, out_path.parent)
     write_index(out_path.parent)
     return out_path
 
@@ -901,23 +1433,45 @@ code { background:#1e293b; border:1px solid #334155; border-radius:4px;
 </head>
 <body>
 <h1>&#9917; Predictions</h1>
-<p class="sub">A prediction run writes exactly one report. It is gated on measured
-historical performance, not on the model's own stated probability: every pick is
-shown with how often that exact selection has actually landed, and picks with no
-edge over their base rate are not recommended.</p>
+<p class="sub">Every prediction run writes three files: <code>picks.html</code>
+(the gated report), the full card view (<code>latest.html</code>, or
+<code>&lt;Team&gt;.html</code> for a single match) and <code>bettor.html</code>
+(the staking card). picks.html is gated on measured historical performance, not
+on the model's own stated probability: every pick is shown with how often that
+exact selection has actually landed, and picks with no edge over their base rate
+are not recommended.</p>
 
 <a class="card" href="picks.html">
   <b>picks.html &mdash; the report</b>
   <span>RELIABLE / WATCH / HELD tiers, calibration-adjusted probabilities,
-  measured hit rate vs base rate per pick. No EV or ROI.</span>
+  measured hit rate vs base rate per pick, plus a best bet ranked across
+  markets by validated EV.</span>
 </a>
 
-<p class="sub" style="margin-top:22px">The older per-angle views
-(<code>latest</code>, <code>best</code>, <code>consistent</code>,
-<code>high80</code>, <code>bankers</code>, <code>bettor</code>,
-<code>batch_NNN</code>) each reprint the model's stated probability with no
-statement of how often that kind of pick actually lands. They are no longer
-written by default &mdash; regenerate them with
+<a class="card" href="latest.html" style="margin-top:12px;">
+  <b>latest.html &mdash; the full card view</b>
+  <span>Every fixture as a card with confidence, reasoning, filters and the
+  model's stated probabilities (single-match runs write this as
+  &lt;Team&gt;.html).</span>
+</a>
+
+<a class="card" href="bettor.html" style="margin-top:12px;">
+  <b>bettor.html &mdash; the staking card</b>
+  <span>De-vigged edge, EV% and Quarter-Kelly stakes scaled by league
+  reliability.</span>
+</a>
+
+<a class="card" href="slip.html" style="margin-top:12px;">
+  <b>slip.html &mdash; consensus slip</b>
+  <span>Only picks where picks.html (RELIABLE gate) and latest.html
+  (model synthesis) independently agree on the same market and side.</span>
+</a>
+
+<p class="sub" style="margin-top:22px">The remaining per-angle views
+(<code>best</code>, <code>consistent</code>, <code>high80</code>,
+<code>bankers</code>, <code>batch_NNN</code>) each reprint the model's stated
+probability with no statement of how often that kind of pick actually lands.
+They are not written by default &mdash; regenerate them with
 <code>pr --all-reports links.txt</code> if you want them.</p>
 </body>
 </html>
@@ -933,6 +1487,112 @@ def write_index(pred_dir: Path) -> Path:
     p = pred_dir / "index.html"
     p.write_text(INDEX_HTML)
     return p
+
+
+SLIP_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Consensus Slip</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:#0b1220; color:#e2e8f0; padding:24px; }
+.wrap { max-width:900px; margin:0 auto; }
+h1 { font-size:1.5rem; margin-bottom:4px; }
+.sub { color:#94a3b8; font-size:.85rem; margin-bottom:20px; }
+.legend { display:flex; gap:16px; flex-wrap:wrap; font-size:.8rem; color:#94a3b8; margin-bottom:16px; }
+.badge { display:inline-block; padding:2px 8px; border-radius:99px; font-size:.68rem; font-weight:600; letter-spacing:.04em; }
+.b-rel { background:rgba(34,197,94,.15); color:#22c55e; border:1px solid rgba(34,197,94,.4); }
+.b-agree { background:rgba(96,165,250,.15); color:#60a5fa; border:1px solid rgba(96,165,250,.4); }
+.note { background:#111c2e; border:1px solid #1e293b; border-left:3px solid #60a5fa; border-radius:8px; padding:14px 16px; font-size:.84rem; color:#94a3b8; margin-bottom:18px; }
+.note b { color:#e2e8f0; }
+table { width:100%; border-collapse:collapse; background:#111c2e; border:1px solid #1e293b; border-radius:10px; overflow:hidden; font-size:.88rem; }
+th { background:#0f1a2b; color:#94a3b8; font-weight:500; text-align:left; padding:10px 12px; font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; }
+td { padding:10px 12px; border-top:1px solid #1e293b; }
+tr:hover td { background:#16233a; }
+.pick { color:#22c55e; font-weight:700; }
+.odds { color:#facc15; font-weight:700; font-variant-numeric:tabular-nums; }
+.lift { color:#60a5fa; font-weight:600; font-variant-numeric:tabular-nums; }
+.prob { font-variant-numeric:tabular-nums; }
+.conf { display:inline-block; padding:2px 8px; border-radius:4px; font-size:.72rem; font-weight:600; color:#fff; }
+.c-mh { background:#eab308; } .c-m { background:#f97316; } .c-h { background:#3b82f6; }
+.foot { margin-top:24px; padding-top:14px; border-top:1px solid #1e293b; color:#64748b; font-size:.75rem; }
+.empty { background:#111c2e; border:1px solid #1e293b; border-radius:8px; padding:24px; text-align:center; color:#94a3b8; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>&#127919; Consensus Slip</h1>
+<p class="sub">Only picks where <b>picks.html</b> (RELIABLE gate) and <b>latest.html</b> (model synthesis) independently agree on the same market and side</p>
+<div class="legend">
+  <span><span class="badge b-rel">RELIABLE</span> &ge;200 historical matches, beats base rate by &ge;2pt</span>
+  <span><span class="badge b-agree">CONSENSUS</span> both reports pick same market + side</span>
+</div>
+<div class="note"><b>What counts as agreement:</b> the gated report (<code>picks.html</code>) and the raw model report (<code>latest.html</code>) must independently land on the <b>same market and same selection</b> for the same fixture. Only RELIABLE-tier picks are included.</div>
+__TABLE__
+<div class="foot">Generated from picks.html RELIABLE tier where the best bet matches the model's primary pick. Model probabilities are calibration-adjusted. Base rates from data/reliability.json.</div>
+</div>
+</body>
+</html>
+"""
+
+
+def write_slip(rows: List[dict], out_dir: Path) -> Path:
+    """Write ``predictions/slip.html``: RELIABLE picks where both reports agree.
+
+    A row qualifies when it is RELIABLE tier, has a best bet that is not
+    ``no_value``, and that best bet matches the row's primary market+pick
+    (which is what latest.html shows).
+    """
+    agree = []
+    for r in rows:
+        if r["tier"] != TIER_RELIABLE:
+            continue
+        best = r.get("best")
+        if not best or best.get("no_value"):
+            continue
+        # best bet must match primary pick (= what latest.html shows)
+        if not best.get("is_primary"):
+            continue
+        agree.append(r)
+
+    if not agree:
+        table = '<div class="empty">No consensus picks this run &mdash; the two reports did not agree on any RELIABLE fixture.</div>'
+    else:
+        conf_cls = {"High": "c-h", "Medium-High": "c-mh", "Medium": "c-m", "Low": ""}
+        rows_html = []
+        for i, r in enumerate(agree, 1):
+            best = r["best"]
+            odds = f'{best["odds"]:.2f}' if best.get("odds") is not None else "—"
+            prob = f'{best["shown_prob"]:.1%}' if best.get("shown_prob") is not None else "—"
+            base = f'{best["expected"]:.1%}' if best.get("expected") is not None else "—"
+            lift = f'+{best["lift_pts"]:.1f}pt' if best.get("lift_pts") is not None else "—"
+            conf = best.get("confidence") or r["confidence"]
+            cc = conf_cls.get(conf, "")
+            conf_html = f'<span class="conf {cc}">{html.escape(conf)}</span>' if cc else html.escape(conf)
+            rows_html.append(
+                f'<tr><td>{i}</td>'
+                f'<td><b>{html.escape(r["home"])} v {html.escape(r["away"])}</b></td>'
+                f'<td class="pick">{html.escape(best["pick"])}</td>'
+                f'<td>{html.escape(best["market"])}</td>'
+                f'<td class="odds">{odds}</td>'
+                f'<td class="prob">{prob}</td>'
+                f'<td class="prob">{base}</td>'
+                f'<td class="lift">{lift}</td>'
+                f'<td>{conf_html}</td>'
+                f'<td>{html.escape(r["kickoff"] or "")}</td></tr>'
+            )
+        table = (
+            '<table><tr><th>#</th><th>Match</th><th>Pick</th><th>Market</th>'
+            '<th>Odds</th><th>Model</th><th>Base</th><th>Lift</th>'
+            '<th>Conf</th><th>Kickoff</th></tr>'
+            + "".join(rows_html) + "</table>"
+        )
+
+    out = out_dir / "slip.html"
+    out.write_text(SLIP_HTML.replace("__TABLE__", table))
+    return out
 
 
 def summarise(rows: List[dict]) -> str:

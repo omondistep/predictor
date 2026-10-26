@@ -70,36 +70,85 @@ if (Test-Path "$DIR\ml_models\ml_predictor\meta.json") {
 }
 
 # ── pr command (alias) ───────────────────────────────────────────────────
+# .cmd shims in %USERPROFILE%\.local\bin work from cmd.exe, PowerShell and
+# Git-Bash. No pr.ps1 is written there on purpose: PowerShell would prefer it
+# over pr.cmd, and a Restricted execution policy would then refuse to run `pr`
+# at all instead of falling back to the .cmd.
 $bindir = Join-Path $HOME ".local\bin"
 New-Item -ItemType Directory -Force -Path $bindir | Out-Null
 
-# pr.cmd shim (works from cmd, PowerShell and Git-Bash)
-$prCmd = Join-Path $bindir "pr.cmd"
-$escPy  = $venvPy.Replace("'", "''")
-$escPredict = (Join-Path $DIR "predict.py").Replace("'", "''")
-@"
+function Write-CmdShim([string]$Name, [string]$ScriptRel, [string[]]$PreArgs) {
+    $shim = Join-Path $bindir "$Name.cmd"
+    $scriptPath = Join-Path $DIR $ScriptRel
+    $argLine = ""
+    if ($PreArgs) { $argLine = " " + ($PreArgs -join " ") }
+    $body = @"
 @echo off
 rem Football Match Predictor
-"%escPy%" "%escPredict%" %*
-"@ | Set-Content -Path $prCmd -Encoding ASCII
-Write-Host "==> Alias created: $prCmd"
+"$venvPy" "$scriptPath"$argLine %*
+"@
+    Set-Content -Path $shim -Value $body -Encoding ASCII
+    Write-Host "==> Alias created: $shim"
+}
 
-# pr.ps1 (PowerShell-native wrapper, hardcoded to this repo)
-$prPs1 = Join-Path $bindir "pr.ps1"
-$escPy  = $venvPy.Replace("'", "''")
-$escPredict = (Join-Path $DIR "predict.py").Replace("'", "''")
-@"
-`$Python  = "$escPy"
-`$Predict = "$escPredict"
-& `$Python `$Predict `$args
-"@ | Set-Content -Path $prPs1 -Encoding ASCII
-Write-Host "==> Alias created: $prPs1"
+Write-CmdShim "pr"        "predict.py"            @()
+Write-CmdShim "predict"   "predict.py"            @()
+Write-CmdShim "predictor" "predict.py"            @()
+Write-CmdShim "pr2"       "predict.py"            @("--analysis", "pipeline")
+Write-CmdShim "book"      "scripts\bettor.py"     @("card")
 
-# Add .local\bin to user PATH
+# Add .local\bin to the FRONT of the user PATH (so `pr` is unambiguous)
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-if ($userPath -notlike "*$bindir*") {
-    [Environment]::SetEnvironmentVariable("Path", "$userPath;$bindir", "User")
-    Write-Host "==> Added $bindir to user PATH (open a new terminal to use 'pr')"
+$parts = @()
+if ($userPath) {
+    $parts = $userPath -split ';' | Where-Object { $_ -and ($_ -ne $bindir) }
+}
+$parts = @($bindir) + $parts
+[Environment]::SetEnvironmentVariable("Path", ($parts -join ';'), "User")
+$env:Path = $bindir + ";" + $env:Path
+Write-Host "==> $bindir is first on the user PATH"
+
+# ── PowerShell aliases (predict, predict-calibrate, book, output, ...) ────
+# Dot-source scripts\aliases.ps1 from the profile so every shell gets the
+# full alias set. .cmd shims above still cover cmd.exe / no-profile sessions.
+# Target both PowerShell editions (Windows PowerShell 5.1 and pwsh 7+) so
+# whichever one the user opens picks the aliases up.
+$aliasesPath = Join-Path $DIR "scripts\aliases.ps1"
+$dotSource = ". '$aliasesPath'"
+$profiles = @()
+if ($PROFILE) {
+    foreach ($p in @($PROFILE.CurrentUserAllHosts, $PROFILE.CurrentUserCurrentHost)) {
+        if ($p) { $profiles += $p }
+    }
+}
+$docs = [Environment]::GetFolderPath("MyDocuments")
+foreach ($p in @(
+    (Join-Path $docs "WindowsPowerShell\Microsoft.PowerShell_profile.ps1"),
+    (Join-Path $docs "PowerShell\Microsoft.PowerShell_profile.ps1")
+)) {
+    $profiles += $p
+}
+$profiles = $profiles | Where-Object { $_ } | Select-Object -Unique
+
+foreach ($prof in $profiles) {
+    $dir = Split-Path -Parent $prof
+    # Only create profiles for shells that have been used (dir exists) or
+    # that this session is actually running under.
+    $isCurrent = $false
+    if ($PROFILE) {
+        $isCurrent = (($prof -eq $PROFILE.CurrentUserAllHosts) -or ($prof -eq $PROFILE.CurrentUserCurrentHost))
+    }
+    if (-not $isCurrent -and -not (Test-Path $dir)) { continue }
+
+    if ($dir -and -not (Test-Path $dir)) { New-Item -ItemType Directory -Force -Path $dir | Out-Null }
+    $existing = ""
+    if (Test-Path $prof) { $existing = Get-Content $prof -Raw }
+    if ($existing -notmatch [regex]::Escape($aliasesPath)) {
+        Add-Content -Path $prof -Value "`n# Football Predictor aliases`n$dotSource"
+        Write-Host "==> Sourced aliases.ps1 from $prof"
+    } else {
+        Write-Host "==> aliases.ps1 already sourced from $prof"
+    }
 }
 
 # ── Verify install ───────────────────────────────────────────────────────

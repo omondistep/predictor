@@ -514,14 +514,17 @@ def step5_fusion(data: dict, ctx: dict, xg: dict, vecs: dict) -> dict:
     except Exception:
         pass
 
-    # ── Calibrate via isotonic regressions ──
+    # ── Calibrate via per-outcome isotonic maps ──
+    # 1X2 maps are fit on every match (unbiased) so they apply to the blended
+    # probabilities directly; BTTS is conservative (reduces measured BTTS-No
+    # overconfidence). O/U per-line maps are pick-conditioned and are applied
+    # at emission in predict.py, not to the internal signal.
     try:
-        p_home = _p._market_calibrate("1X2", p_home)
-        p_draw = _p._market_calibrate("1X2", p_draw)
-        p_away = _p._market_calibrate("1X2", p_away)
-        p_over = _p._market_calibrate("O/U", p_over)
-        p_under = _p._market_calibrate("O/U", p_under)
-        method_parts.append("isotonic")
+        p_home, p_draw, p_away = _p._outcome_calibrate_1x2(p_home, p_draw, p_away)
+        _p_y_cal = _p._outcome_calibrate_btts(p_btts_y)
+        if _p_y_cal is not None:
+            p_btts_y, p_btts_n = _p_y_cal, 1.0 - _p_y_cal
+        method_parts.append("outcome-isotonic")
     except Exception:
         pass
 

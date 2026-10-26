@@ -48,9 +48,13 @@ Always work in this loop. Skip steps only if the user's request is narrower.
   fair probabilities (`scripts/bettor.py card` does this for you) before
   computing edge.
 - **Stake like a professional.** Quarter-Kelly, hard cap 5% of bankroll,
-  scaled down for leagues where the system's historical hit rate is < 50%.
-  Never chase losses; a losing slate is variance unless the audit says edge has
-  gone.
+  scaled down for leagues where the system's historical hit rate is < 50%. A
+  league with no measured accuracy is **unproven, not proven**: it earns the
+  same 0.5 haircut as a weak league, never the full stake. A ticket that would
+  exceed 100% of the bankroll has its lowest-EV legs **cut** — never scaled up
+  or down to fill the cap, because a card that always ends at 100% is all-in by
+  construction. Never chase losses; a losing slate is variance unless the audit
+  says edge has gone.
 - **Red flags beat everything.** If the data is dirty (stat_fixes present,
   absurd volatility, key players out, tiny h2h from an obscure cup), the pick is
   weak or dead regardless of probability.

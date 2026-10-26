@@ -24,7 +24,17 @@ Supporting toolbox (stdlib, read-only on `history.db`):
 ```
 House rules the agent follows: no bet without +EV (odds de-vigged), ignore
 samples < 25–30, Quarter-Kelly capped at 5%, scrap picks with red flags, never
-commit unless asked.
+commit unless asked. An **unmeasured league is not a proven one**: `unknown`
+accuracy earns the same 0.5 stake haircut as a measured-but-weak league, and a
+ticket that would exceed 100% of the bankroll has its **lowest-EV legs cut**
+rather than having every stake scaled down to fill the cap.
+
+**Two house gates keep the worst-priced legs off the ticket** (both stay
+visible in the card's candidate list, annotated, never staked):
+reserve/second-team fixtures are never bet, and a leg whose
+(market, selection, confidence) bucket is **HELD** by the picks gate
+(`data/reliability.json`, same ledger `picks.html` uses) is never bet — only
+RELIABLE/WATCH buckets are stakeable.
 
 **No EV is quoted for a market whose prices fail `odds_guard` validation.** 88%
 of stored odds are unusable, so a card that prices off them is quoting
@@ -37,10 +47,19 @@ Roman numeral in their official name (e.g. Willem II) are allow-listed in
 `_SENIOR_CLUB_ALLOW` so they are not wrongly flagged; genuine reserve sides
 (Juventus II, KRC Genk II, Zenit-2) still get blocked.
 
-## One Report: `predictions/picks.html`
+## Report Files: `predictions/picks.html` + card view + bettor card
 
-A prediction run writes **exactly one** HTML file: `predictions/picks.html`.
-Open it; ignore anything else in `predictions/`.
+A prediction run writes **three** HTML files:
+
+| File | What it is |
+|------|------------|
+| `predictions/picks.html` | The gated report (see below) — the one to read |
+| `predictions/latest.html` (slate) or `predictions/<Team>.html` (single match) | The classic card view: every fixture as a card with confidence, reasoning and filters |
+| `predictions/bettor.html` | The staking card: de-vigged edge, EV%, Quarter-Kelly stakes |
+
+Everything else in `predictions/` is opt-in via `pr --all-reports`.
+
+The gate in `picks.html` works as follows.
 
 It is gated on measured historical performance rather than on the model's own
 stated probability. Each pick is looked up in `data/reliability.json` and
@@ -48,13 +67,75 @@ placed in one of three tiers:
 
 | Tier | Meaning |
 |------|---------|
-| **RELIABLE** | ≥200 resolved historical matches of this exact (selection, confidence) pair, and its credibility-shrunk hit rate beats the selection's unconditional base rate |
+| **RELIABLE** | ≥200 resolved historical matches of this exact (selection, confidence) pair, its credibility-shrunk hit rate beats the selection's unconditional base rate, and the 95% lower bound on that rate clears the same base rate by the full `min_edge_pts` |
 | **WATCH** | Enough history to measure, but no edge over the base rate — shown, not recommended |
 | **HELD** | Suppressed. No history, or the measured rate is no better than the market gets for free |
 
 The base-rate test is the whole point. "Over 1.5 lands 88% of the time" is not
 a signal — it is the definition of Over 1.5. What matters is whether the model
 beats what you'd get by picking blind.
+
+### Every fixture carries a best bet across all markets
+
+Each row prints a **Best bet** cell: the best selection on that match drawn
+from *every* market the feed prices — 1/X/2, both BTTS outcomes, the goal
+lines — so the recommendation is not obliged to be the model's primary pick and
+is not obliged to be 1/X/2. Two rank orders, in priority:
+
+0. **+EV is a precondition.** A candidate that prices at or below zero is not a
+   bet. When nothing on the fixture prices positive the cell prints
+   **no +EV selection** and shows the least-bad price underneath as *pass* —
+   a negative EV under a Best bet heading reads as a bet, which is the one
+   thing it must not.
+1. **Tier first, EV inside one tier.** Among the candidates that price
+   positive, RELIABLE beats WATCH beats HELD, and `calibrated model
+   probability × validated price − 1` only chooses *within* the winning tier.
+   The reason is in the next section: EV is where the model's opinion of a
+   price diverges from the market, and history measures that divergence as
+   model error. A +100% EV on a bucket that never clears its base rate ranks
+   below a +20% EV on one that does. The price itself must pass `odds_guard`
+   or the candidate is not priced at all; a rejected price is printed as
+   rejected, never as a number (88% of stored odds fail, so most rows say so).
+2. **Model lift over base rate** — this fixture's calibrated probability minus
+   what that selection lands on blind, used when nothing prices. Same
+   tier-first order. It must be lift, not the ledger's bucket edge: the bucket
+   edge is one number per bucket, so ranking on it names the historically
+   juiciest *bucket* rather than the best match — which is exactly what the
+   Bucket-edge column warns readers not to do.
+
+The cell also carries the selection's own tier, so a fat EV on a bucket that
+never clears its base rate is visibly not a recommendation. Two cell states are
+warnings rather than picks: a HELD badge is accompanied by
+`no measured evidence (n=…)` naming the sample the selection would be judged
+on, and a best bet sitting more than 10pts from the de-vigged market prints
+that gap next to its EV. Reserve fixtures never get a best bet: their measured
+rates describe senior-team football.
+
+### Expected value is model disagreement, not edge
+
+Measured on 3,146 odds-valid resolved rows (9,438 side observations), binned by
+how far the model sits from the de-vigged price:
+
+| model − market | n | model says | market says | realised | model err | market err |
+|---|---|---|---|---|---|---|
+| −20pt | 614 | 30.5% | 51.5% | 53.4% | −22.9 | −2.0 |
+| 0 | 4,221 | 29.5% | 29.5% | 30.3% | −0.8 | −0.8 |
+| +20pt | 692 | 59.9% | 38.3% | 39.3% | **+20.6** | −1.0 |
+
+Restricted to longshots (fair ≤25%, the odds range the big EVs come from): model
+34.5%, market 13.6%, realised **12.7%** — market off 0.9pt, model off 21.7pt.
+Where the model and the book disagree, reality follows the book; the model's
+error scales with the gap. So `EV = model × price − 1` measures how wrong the
+model is, not what the market missed: a reported `+144% EV` on a longshot
+corresponds to roughly −6% at the true probability. This is why the best bet
+ranks on tier first, why a gap over 10pts is printed next to the EV, and why
+the largest EVs on a page are the least trustworthy numbers on it.
+
+Followed through at real prices (vig included), the model's own confident 1X2
+picks do not clear the market either: Home n=750 ROI −5.2%, Away n=445 −2.5%,
+Draw n=689 +9.2% (the last drawn from the odds-valid subset, which AGENTS
+flags as biased). The measured hit-rate gate — a bucket beating *its own base
+rate* — remains the only number the history itself supports.
 
 ### The ledger key includes the market
 
@@ -135,17 +216,33 @@ Rebuild the ledger (auto-runs when missing or >7 days stale):
 .venv/bin/python scripts/audit_reliability.py --days 365   # last year only
 ```
 
-### The gate also demands *significant* edges, not just positive ones
+### The gate asks a *relative* significance question, not a fixed one
 
 A bucket publishes when its credibility-shrunk hit rate beats the base rate
-**and** the one-sided 95% Wilson lower bound of that rate beats the base rate
-too (`Z_ONE_SIDED_95 = 1.645` in `scripts/audit_reliability.py`).
+**and** the one-sided 95% Wilson lower bound of that rate clears that same base
+rate by the full `min_edge_pts` — the bar the shrunk edge itself has to meet
+(`Z_ONE_SIDED_95 = 1.645` in `scripts/audit_reliability.py`).
 
-Without it the gate tests 54 buckets at a flat threshold, so some publish purely
-because they were the luckiest of 54 draws. Asking whether the *lower* bound
-clears the bar is a stricter question: is the edge big enough to survive being
-re-measured on fresh matches? It costs one bucket today — `Over 3.5|Low` drops
-out — and `Draw|Low` survives only because 2,326 matches back it.
+Both conditions are measured against *the selection's own base rate*, which is
+the whole design: `Over 3.5` at 35% and `1X2 Home` at 55% are judged by the
+same rule even though one can never win half its matches. There is no absolute
+"must win more often than it loses" constant anywhere in the gate.
+
+There used to be one — `min_hit_rate = 0.55` on the Wilson lower bound — and it
+held 89 of 100 buckets off the page. Four-fold walk-forward comparison is why
+it went: with the floor, 10 buckets judged, 8/10 kept their edge, +6.5 pts
+out-of-sample (−44% shrinkage); with significance reduced to "clears base at
+all", 28 judged / 23 kept — but `O/U|Under 1.5|Medium` (+0.6pt margin) and
+`O/U|Over 3.5|Low` (+0.9pt) then published *and* failed out-of-sample. Asking
+for the full 2pt margin keeps those two out while releasing seven genuinely
+significant buckets the fixed floor was suppressing, giving **17 publishable
+buckets today**. `--min-hit` survives as an opt-in absolute floor (default
+`0.0`) for anyone who wants to reason about stakeability that way.
+
+Without any significance test the gate tests its buckets at a flat threshold,
+so some publish purely because they were the luckiest of the draws. Asking
+whether the *lower* bound clears the bar is the stricter question: is the edge
+big enough to survive being re-measured on fresh matches?
 
 Validate the gate out-of-sample before trusting it:
 
@@ -154,17 +251,19 @@ Validate the gate out-of-sample before trusting it:
 ```
 
 Each fold fits the gate only on its own past, then scores the approved buckets
-on matches the fit never saw. Current results, with the significance floor on:
+on matches the fit never saw. Current results (relative 2pt bar, no absolute
+floor):
 
 | Folds | Judged | Kept edge | In-sample | Out-of-sample | Shrinkage |
 |-------|--------|-----------|-----------|--------------|-----------|
-| 2 | 10 | 9/10 | +10.4 pts | +7.7 pts | −26% |
-| 3 | 20 | 18/20 | +9.9 pts | +7.8 pts | −21% |
-| 4 | 25 | 23/25 | +10.4 pts | +8.3 pts | −20% |
+| 2 | 11 | 10/11 | +10.9 pts | +10.1 pts | −7% |
+| 3 | 18 | 16/18 | +10.9 pts | +9.4 pts | −14% |
+| 4 | 26 | 23/26 | +10.8 pts | +8.9 pts | −18% |
 
-Edges roughly halve out-of-sample — that shrinkage is the honest number, and it
-is why the gate publishes a subset rather than everything that beat its base
-rate in-sample.
+The old absolute floor scored −26% / −21% / −20% on the same folds with a
+third of the coverage. Edges still shrink out-of-sample — that shrinkage is the
+honest number, and it is why the gate publishes a subset rather than everything
+that beat its base rate in-sample.
 
 ### Fixtures are counted once
 
@@ -182,11 +281,10 @@ would then read as strong evidence. It moves the base rates by <0.1pt and the
 publishable set not at all (19/54 either way); it is here so the numbers mean
 what they say.
 
-Legacy per-angle reports (`latest`, `best`, `consistent`, `high80`,
-`bankers`, `bettor`, `batch_NNN`) are still available behind `--all-reports`.
-They each reprint the model's stated probability with no statement of how often
-that kind of pick actually lands, which is why they read as confident and are
-often wrong:
+Legacy per-angle reports (`best`, `consistent`, `high80`, `bankers`,
+`batch_NNN`) are still available behind `--all-reports`. They each reprint the
+model's stated probability with no statement of how often that kind of pick
+actually lands, which is why they read as confident and are often wrong:
 
 ```bash
 pr --all-reports links.txt
@@ -236,6 +334,28 @@ expect. Declared confidence labels are *not* reliable and are never used to
 gate output — realised accuracy is High 59.7%, Medium-High 53.0%, Medium 43.7%,
 Low 29.4%.
 
+## Recent-performance fixes (Oct 2026)
+
+Measured on ex-ante 1X2 picks, Jul–Oct 2026 (9,145 rows). Created-after-kickoff
+rows are excluded from the measurement but not yet from ML training.
+
+- **1X2 Draw is never the primary pick.** Draw picks hit 25.6% against a 24.1%
+  base rate; the ML's Home/Away call on the same rows hit 43.4%. A Draw primary
+  is demoted to the model's favoured side at Low confidence (predict.py,
+  "1X2 Draw is never the primary pick"). The ledger already withholds every
+  1X2 Draw bucket, so this changes the raw pick, not the published report.
+- **Half-time goals are never ML features.** `ht_home_goals` / `ht_away_goals`
+  are written after the match; they were in the deployed feature set and are
+  always unknown at prediction time. Indices 61–63 are neutralised and excluded
+  by `POST_MATCH_FEATURES` in `ml_model.py`.
+- **Pre-match Elo features** (`elo_diff`, `elo_home`, `elo_away`, indices
+  128–130) come from `elo_pass()`, which rates only earlier results. Gain is
+  marginal: a LightGBM walk-forward (Jul–Oct) showed −0.0072 log-loss; the
+  production-model holdout (train <Sep 1, test ex-ante Sep–Oct) showed no
+  measurable change.
+- Known open items: `O/U Over 4.5` hits 17.2% against an 18.4% base; 1H Draw
+  is at base rate but has only 86 scored half-time rows to judge from.
+
 ## Core Commands
 
 | Command | Description |
@@ -283,9 +403,10 @@ apparent hang. Two mechanisms fix it:
 
 **Live output.** A run rewrites the single `predictions/picks.html` every 50
 matches (`PUBLISH_EVERY`). Open it while the run continues; it is always a
-whole-file snapshot, not an append. Nothing else is written — no
+whole-file snapshot, not an append. Nothing else is written *mid-run* — no
 `batch_NNN.html` files, which is what the old batcher produced (46MB across 15
-near-duplicate files).
+near-duplicate files). The card view and `bettor.html` are written once, at the
+end of the run.
 
 **Overlapped fetching.** Measured per match on live fixtures: 2.5s scraping
 against 0.23s of analysis, so scraping is 93% of wall clock and it is spent
@@ -354,9 +475,12 @@ pr --calibrate            # Show accuracy stats per confidence level and league
 ```
 
 ### 4. View reports
-- `predictions/picks.html` — **the only report.** Open this one.
-- The legacy views (`latest`, `batch_NNN`, `best`, `consistent`, `high80`)
-  are written only with `pr --all-reports`.
+- `predictions/picks.html` — **the gated report.** Open this one.
+- `predictions/latest.html` — the full card view (single-match runs write
+  `predictions/<Team>.html` instead, same format).
+- `predictions/bettor.html` — the staking card.
+- The remaining legacy views (`batch_NNN`, `best`, `consistent`, `high80`,
+  `bankers`) are written only with `pr --all-reports`.
 
 ## How It All Fits Together
 

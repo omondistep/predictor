@@ -34,6 +34,10 @@ from database import (
 BASE = Path(__file__).parent
 MODELS_DIR = BASE / "ml_models"
 
+# Cache for calibration_params.json (mtime-checked) — apply_outcome_calibration
+# runs several times per match, and re-reading the JSON each time is wasteful.
+_PARAMS_CACHE = {"mtime": None, "outcomes": {}}
+
 
 def _resolve_result(row: dict) -> Optional[tuple]:
     """Extract actual (home_goals, away_goals) from a row."""
@@ -88,11 +92,17 @@ def _platt_params_from_logits(pos_logits: np.ndarray, neg_logits: np.ndarray,
 # Calibration analysis
 # ---------------------------------------------------------------------------
 
-def analyze_calibration(min_samples: int = 30, days_back: int = 365):
+def analyze_calibration(min_samples: int = 8, days_back: int = 365):
     """Analyze all reviewed predictions and store bias corrections.
 
     For each league/market/probability-bucket, compares the mean predicted
     probability against the actual hit rate and stores the bias.
+
+    Buckets are stored from `min_samples` (default 8) observations — small
+    leagues legitimately produce thin buckets, and dropping them entirely is
+    what left e.g. Paraguay/Ecuador/Kazakhstan O-U buckets uncorrected. The
+    application side (apply_bias_correction) shrinks each stored bias by
+    n/(n+K) so thin buckets move probabilities only slightly.
     """
     conn = get_db()
     cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
@@ -230,32 +240,67 @@ def analyze_calibration(min_samples: int = 30, days_back: int = 365):
 # Bias correction application
 # ---------------------------------------------------------------------------
 
+def _norm_ou_threshold(threshold: str) -> str:
+    """Normalise an O/U threshold label to the storage key form.
+
+    analyze_calibration stores O/U buckets keyed by line, side-agnostic:
+    "Over3" means the 3.5 line (parsed via int()). Application sites pass
+    pick labels ("Over 3.5", "Under 3.5") or the bare side ("Over"/"Under",
+    which in predict.py's main blend always means the 2.5 line). Without
+    this normalisation those lookups never matched, so per-league O/U bias
+    corrections were stored but never applied.
+    """
+    if not threshold:
+        return threshold
+    if threshold in ("Over", "Under"):
+        return "Over2"  # main blended O/U is the 2.5 line
+    m = re.match(r"(?:Over|Under)\s*(\d+\.?\d*)$", threshold.strip(), re.IGNORECASE)
+    if m:
+        try:
+            return f"Over{int(float(m.group(1)))}"
+        except ValueError:
+            return threshold
+    return threshold
+
+
 def apply_bias_correction(league: str, market: str, threshold: str,
-                          prob: float, min_samples: int = 30,
-                          max_bias: float = 0.40) -> float:
+                          prob: float, min_samples: int = 8,
+                          max_bias: float = 0.40,
+                          shrink_k: float = 15.0) -> float:
     """Apply a learned bias correction to a probability.
 
     Looks up the calibration bias for the given league/market/threshold/bucket
-    and adjusts the probability accordingly. Only corrections backed by
-    `min_samples` reviewed examples are eligible, and the applied magnitude is
-    capped at `max_bias` so small-sample noise cannot destroy a probability.
+    and adjusts the probability accordingly. Corrections backed by fewer than
+    `min_samples` reviewed examples are ignored; everything else is shrunk
+    toward zero by the empirical-Bayes factor n/(n + shrink_k), so a 10-sample
+    bucket moves the probability about 40% as far as its raw bias suggests and
+    a 100-sample bucket about 87%. The applied magnitude is additionally capped
+    at `max_bias` so even thick-sample noise cannot destroy a probability.
     """
     if prob <= 0 or prob >= 1:
         return prob
     bucket = _bucket_prob(prob)
+    if market == "O/U":
+        threshold = _norm_ou_threshold(threshold)
     biases = get_calibration_biases(league=league, market=market, min_samples=min_samples)
 
     # Find the closest matching bucket
     best_bias = 0.0
+    best_n = 0
     best_match = None
     for b in biases:
         if b["threshold"] == threshold and b["bucket"] == bucket:
             best_bias = b["bias"]
+            best_n = b.get("sample_count") or 0
             best_match = b
             break
 
     if best_match is None:
         return prob
+
+    # Empirical-Bayes shrinkage: thin buckets are mostly noise
+    if shrink_k > 0 and best_n > 0:
+        best_bias *= best_n / (best_n + shrink_k)
 
     # Cap the correction magnitude: a |bias| > max_bias on a modest sample is
     # more likely noise than signal, so don't let it swallow the base model.
@@ -269,7 +314,7 @@ def apply_bias_correction(league: str, market: str, threshold: str,
 
 
 def apply_all_bias_corrections(league: str, probs_1x2: dict, probs_ou: dict,
-                                min_samples: int = 30,
+                                min_samples: int = 8,
                                 max_bias: float = 0.40) -> tuple:
     """Apply bias corrections to all 1X2 and O/U probabilities."""
     corrected_1x2 = {}
@@ -405,23 +450,34 @@ def auto_retrain(force: bool = False):
 
 def retrain_from_results(force: bool = False):
     """Retrain calibration using isotonic regression on historical results.
-    
+
     This function:
     1. Fetches all historical predictions with results
-    2. For each market (1X2, O/U, BTTS, DNB, DC), fits isotonic regression
-    3. Saves calibration parameters to calibration_params.json
-    
+    2. For each market (1X2, O/U, BTTS, DNB, DC), fits a picked-side isotonic
+       regression (legacy single curve)
+    3. Fits PER-OUTCOME maps — one curve per outcome, trained on every match,
+       not only picked-side rows:
+         - 1X2: Home / Draw / Away, from matches.poisson_prob_* (the final
+           stated 1X2 probabilities stored per fixture)
+         - O/U: one Over curve per line (1.5/2.5/3.5), reconstructed from
+           calibration_log pick-side rows as (P(Over), 1{over})
+         - BTTS: one Yes curve (No is its complement)
+       The single-curve approach collapsed 1X2 to ~0.33 because it pooled
+       outcomes with different base rates; per-outcome maps keep the relative
+       ordering and are renormalized at apply time.
+    4. Saves calibration parameters to calibration_params.json
+
     Returns True if retrained successfully.
     """
     from sklearn.isotonic import IsotonicRegression
     import json
-    
+
     print("[calibrate] Starting isotonic regression retraining...")
-    
+
     # Get calibration data for each market
     markets = ["1X2", "O/U", "BTTS", "DNB", "DC"]
     calibration_data = {}
-    
+
     for market in markets:
         conn = get_db()
         rows = conn.execute("""
@@ -431,11 +487,11 @@ def retrain_from_results(force: bool = False):
             ORDER BY created_at ASC
         """, (market,)).fetchall()
         conn.close()
-        
+
         if len(rows) < 200:  # Need sufficient samples for reliable isotonic regression
             print(f"  [SKIP] {market}: insufficient data ({len(rows)} samples)")
             continue
-        
+
         # Use model_prob when available, fall back to implied probability from odds
         X_list = []
         y_list = []
@@ -447,56 +503,217 @@ def retrain_from_results(force: bool = False):
             else:
                 continue  # Skip rows with neither model_prob nor odds
             y_list.append(r["correct"])
-        
+
         if len(X_list) < 10:
             print(f"  [SKIP] {market}: insufficient usable data ({len(X_list)} samples with prob/odds)")
             continue
-        
+
         X = np.array(X_list)
         y = np.array(y_list)
-        
+
         # Fit isotonic regression
         try:
             ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
             ir.fit(X, y)
-            
+
             # Store ONLY fitted parameters (thresholds + mapped values), not raw data
             calibration_data[market] = {
                 "X_thresholds": ir.X_thresholds_.tolist(),
                 "y_thresholds": ir.y_thresholds_.tolist(),
                 "n_samples": len(X_list),
             }
-            
+
             # Calculate accuracy improvement
             raw_accuracy = np.mean(y)
             calibrated_predictions = ir.predict(X)
             calibrated_accuracy = np.mean((calibrated_predictions > 0.5) == y)
-            
+
             print(f"  [OK] {market}: {len(X_list)} samples, "
                   f"raw acc: {raw_accuracy:.1%}, calibrated acc: {calibrated_accuracy:.1%}")
-            
+
         except Exception as e:
             print(f"  [ERR] {market}: {e}")
             continue
-    
-    if not calibration_data:
+
+    # ── Per-outcome maps ──
+    outcome_data = _fit_outcome_maps()
+
+    if not calibration_data and not outcome_data:
         print("[calibrate] No markets with sufficient data for retraining")
         return False
-    
-    # Save calibration parameters
+
+    # Save calibration parameters (legacy per-market + per-outcome)
     params_path = BASE / "calibration_params.json"
+    # Preserve any existing outcome maps if this fit produced none
+    if outcome_data or not params_path.exists():
+        outcomes_to_save = outcome_data
+    else:
+        try:
+            outcomes_to_save = json.loads(params_path.read_text()).get("outcomes", {})
+        except Exception:
+            outcomes_to_save = {}
     params = {
         "last_retrained": datetime.now().isoformat(),
         "markets": calibration_data,
+        "outcomes": outcomes_to_save,
     }
-    
+
     with open(params_path, 'w') as f:
         json.dump(params, f, indent=2)
-    
+    _PARAMS_CACHE.clear()
+    _PARAMS_CACHE.update({"mtime": None, "outcomes": {}})
+
     print(f"[calibrate] Saved calibration parameters to {params_path}")
-    print(f"[calibrate] Retrained {len(calibration_data)} markets")
-    
+    print(f"[calibrate] Retrained {len(calibration_data)} markets, "
+          f"{sum(len(v) for v in outcomes_to_save.values())} outcome maps")
+
     return True
+
+
+def _fit_isotonic_map(X, y, min_n: int = 200, min_pos: int = 50, min_neg: int = 50):
+    """Fit one isotonic map; returns threshold dict or None."""
+    from sklearn.isotonic import IsotonicRegression
+    X = np.asarray(X, dtype=float)
+    y = np.asarray(y, dtype=float)
+    if len(X) < min_n or int(y.sum()) < min_pos or int(len(y) - y.sum()) < min_neg:
+        return None
+    try:
+        # increasing=True: a higher stated probability must never map to a
+        # lower realised frequency. 'auto' can flip to decreasing on flat
+        # slices, which would invert the calibration.
+        ir = IsotonicRegression(increasing=True, out_of_bounds='clip')
+        ir.fit(X, y)
+        return {
+            "X_thresholds": ir.X_thresholds_.tolist(),
+            "y_thresholds": ir.y_thresholds_.tolist(),
+            "n_samples": int(len(X)),
+        }
+    except Exception:
+        return None
+
+
+def _fit_outcome_maps(days_back: int = 730) -> dict:
+    """Fit per-outcome isotonic maps on ALL resolved predictions.
+
+    1X2 uses the final stated probabilities stored per match
+    (matches.poisson_prob_home/draw/away — despite the column name these hold
+    the blended ex-ante probabilities predict.py saves). O/U and BTTS are
+    reconstructed from calibration_log pick-side rows into (P(outcome),
+    1{outcome}) pairs, so both sides of each market contribute.
+    """
+    cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    outcomes: dict = {"1X2": {}, "O/U": {}, "BTTS": {}}
+
+    # ── 1X2: full stated distribution per match ──
+    conn = get_db()
+    rows = conn.execute("""
+        SELECT poisson_prob_home, poisson_prob_draw, poisson_prob_away,
+               actual_home_goals, actual_away_goals
+        FROM matches
+        WHERE reviewed = 1
+          AND actual_home_goals IS NOT NULL
+          AND actual_away_goals IS NOT NULL
+          AND poisson_prob_home IS NOT NULL
+          AND poisson_prob_draw IS NOT NULL
+          AND poisson_prob_away IS NOT NULL
+          AND (reviewed_at IS NULL OR reviewed_at >= ?)
+    """, (cutoff,)).fetchall()
+    conn.close()
+
+    if rows:
+        ph = np.array([r["poisson_prob_home"] for r in rows])
+        pd_ = np.array([r["poisson_prob_draw"] for r in rows])
+        pa = np.array([r["poisson_prob_away"] for r in rows])
+        hg = np.array([r["actual_home_goals"] for r in rows])
+        ag = np.array([r["actual_away_goals"] for r in rows])
+        y_home = (hg > ag).astype(int)
+        y_draw = (hg == ag).astype(int)
+        y_away = (hg < ag).astype(int)
+        for outcome, X, y in (("Home win", ph, y_home),
+                              ("Draw", pd_, y_draw),
+                              ("Away win", pa, y_away)):
+            m = _fit_isotonic_map(X, y, min_n=500)
+            if m:
+                outcomes["1X2"][outcome] = m
+                print(f"  [OK] 1X2 {outcome}: n={m['n_samples']}")
+            else:
+                print(f"  [SKIP] 1X2 {outcome}: insufficient data")
+    else:
+        print("  [SKIP] 1X2 outcomes: no stored stated probabilities")
+
+    # ── O/U: per-line Over curves from pick-side rows ──
+    conn = get_db()
+    ou_rows = conn.execute("""
+        SELECT our_prediction, model_prob, correct
+        FROM calibration_log
+        WHERE market = 'O/U' AND correct IS NOT NULL AND model_prob IS NOT NULL
+    """).fetchall()
+    conn.close()
+
+    line_pairs: dict = {}  # "Over 2.5" -> ([p_over...], [y_over...])
+    for r in ou_rows:
+        pred = r["our_prediction"] or ""
+        mp = r["model_prob"]
+        if not pred or mp is None or mp <= 0 or mp >= 1:
+            continue
+        m_thresh = re.search(r"(\d+\.?\d*)", pred)
+        if not m_thresh:
+            continue
+        try:
+            thresh = float(m_thresh.group(1))
+        except ValueError:
+            continue
+        if thresh not in (1.5, 2.5, 3.5):
+            continue
+        key = f"Over {thresh}"
+        if pred.startswith("Over"):
+            p_over, y_over = mp, int(r["correct"])
+        elif pred.startswith("Under"):
+            p_over, y_over = 1.0 - mp, 1 - int(r["correct"])
+        else:
+            continue
+        pair = line_pairs.setdefault(key, ([], []))
+        pair[0].append(p_over)
+        pair[1].append(y_over)
+
+    for key, (Xs, ys) in sorted(line_pairs.items()):
+        m = _fit_isotonic_map(Xs, ys, min_n=200)
+        if m:
+            outcomes["O/U"][key] = m
+            print(f"  [OK] O/U {key}: n={m['n_samples']}")
+        else:
+            print(f"  [SKIP] O/U {key}: insufficient data ({len(Xs)})")
+
+    # ── BTTS: one Yes curve (No is the complement) ──
+    conn = get_db()
+    btts_rows = conn.execute("""
+        SELECT our_prediction, model_prob, correct
+        FROM calibration_log
+        WHERE market = 'BTTS' AND correct IS NOT NULL AND model_prob IS NOT NULL
+    """).fetchall()
+    conn.close()
+
+    Xs, ys = [], []
+    for r in btts_rows:
+        pred = r["our_prediction"] or ""
+        mp = r["model_prob"]
+        if mp is None or mp <= 0 or mp >= 1:
+            continue
+        if pred == "Yes":
+            Xs.append(mp)
+            ys.append(int(r["correct"]))
+        elif pred == "No":
+            Xs.append(1.0 - mp)
+            ys.append(1 - int(r["correct"]))
+    m = _fit_isotonic_map(Xs, ys, min_n=200)
+    if m:
+        outcomes["BTTS"]["Yes"] = m
+        print(f"  [OK] BTTS Yes: n={m['n_samples']}")
+    else:
+        print(f"  [SKIP] BTTS Yes: insufficient data ({len(Xs)})")
+
+    # Drop empty market sections
+    return {k: v for k, v in outcomes.items() if v}
 
 
 def apply_calibration(market: str, raw_prob: float) -> float:
@@ -559,15 +776,136 @@ def apply_calibration(market: str, raw_prob: float) -> float:
         return raw_prob
 
     try:
-        ir = IsotonicRegression(increasing='auto', out_of_bounds='clip')
-        ir.X_thresholds_ = X_thresholds
-        ir.y_thresholds_ = y_thresholds
-
-        # Apply calibration
-        calibrated = ir.predict(np.array([raw_prob]))[0]
+        # Linear interpolation over the stored thresholds. Rehydrating an
+        # IsotonicRegression from thresholds alone fails under sklearn >= 1.6
+        # (predict needs fit-time attributes like X_min_), and the previous
+        # bare except silently returned the raw probability.
+        calibrated = np.interp(raw_prob, X_thresholds, y_thresholds)
         return float(np.clip(calibrated, 0.01, 0.99))
     except:
         return raw_prob
+
+
+# ---------------------------------------------------------------------------
+# Per-outcome calibration
+# ---------------------------------------------------------------------------
+#
+# One isotonic curve per OUTCOME, fit on every resolved match (not only
+# picked-side rows). A single pooled curve per market cannot express that a
+# stated 30% Draw lands ~25% of the time while a stated 30% Away lands ~33% —
+# and the old 1X2 attempt at per-outcome calibration collapsed to ~0.33
+# because each curve was fit one-vs-rest on picked-side rows. Fitting each
+# outcome against its own empirical frequency over the full distribution, then
+# renormalising, keeps the Home/Draw/Away (and Over/Under) separation intact.
+
+def _load_outcome_maps() -> dict:
+    """Load per-outcome maps from calibration_params.json (mtime-cached)."""
+    params_path = BASE / "calibration_params.json"
+    try:
+        mtime = params_path.stat().st_mtime
+    except OSError:
+        return {}
+    if _PARAMS_CACHE.get("mtime") == mtime:
+        return _PARAMS_CACHE.get("outcomes") or {}
+    try:
+        import json as _json
+        data = _json.loads(params_path.read_text())
+        outcomes = data.get("outcomes") or {}
+    except Exception:
+        outcomes = {}
+    _PARAMS_CACHE["mtime"] = mtime
+    _PARAMS_CACHE["outcomes"] = outcomes
+    return outcomes
+
+
+def _apply_isotonic_map(prob: float, map_data: dict) -> float:
+    """Apply one stored isotonic map (thresholds format) to a probability.
+
+    Uses plain linear interpolation over the stored thresholds — sklearn's
+    IsotonicRegression.predict requires attributes set during fit (X_min_ etc.)
+    that a threshold-only reconstruction lacks, so rehydrating the estimator
+    silently fails under sklearn >= 1.6 and the bare except returns the raw
+    probability. The thresholds ARE the piecewise-linear curve, so interp is
+    both correct and dependency-free.
+    """
+    if not map_data or prob is None or prob <= 0 or prob >= 1:
+        return prob
+    try:
+        xs = np.asarray(map_data["X_thresholds"], dtype=float)
+        ys = np.asarray(map_data["y_thresholds"], dtype=float)
+        if len(xs) == 0 or len(xs) != len(ys):
+            return prob
+        return float(np.clip(np.interp(prob, xs, ys), 0.01, 0.99))
+    except Exception:
+        return prob
+
+
+def apply_outcome_calibration(market: str, probs: dict) -> dict:
+    """Calibrate each outcome with its own isotonic map.
+
+    market: "1X2" | "O/U" | "BTTS"
+    probs:
+      1X2  — {"Home win": p, "Draw": p, "Away win": p}
+      O/U  — {"Over 1.5": p, "Under 1.5": p} (line inferred from key; bare
+             "Over"/"Under" means the 2.5 line). Only the Over side carries a
+             map; Under is its complement.
+      BTTS — {"Yes": p, "No": p}; Yes carries the map, No is its complement.
+
+    Returns a new dict with calibrated probabilities renormalised to sum to 1.
+    Missing maps leave the input untouched. Callers should fall back to the
+    raw probabilities when the returned dict is unchanged.
+    """
+    outcomes = _load_outcome_maps()
+    maps = outcomes.get(market)
+    if not maps or not probs:
+        return dict(probs)
+
+    if market == "1X2":
+        calibrated = {}
+        for outcome in ("Home win", "Draw", "Away win"):
+            p = probs.get(outcome)
+            m = maps.get(outcome)
+            if p is None:
+                calibrated[outcome] = 0.0
+            elif m:
+                calibrated[outcome] = _apply_isotonic_map(p, m)
+            else:
+                calibrated[outcome] = p
+        total = sum(calibrated.values())
+        if total > 0:
+            return {k: v / total for k, v in calibrated.items()}
+        return dict(probs)
+
+    if market == "O/U":
+        # Find the Over side and its line
+        over_key = next((k for k in probs if k.startswith("Over")), None)
+        under_key = next((k for k in probs if k.startswith("Under")), None)
+        if over_key is None:
+            return dict(probs)
+        p_over_raw = probs[over_key]
+        line_key = over_key if over_key in maps else (
+            "Over 2.5" if over_key == "Over" else over_key)
+        m = maps.get(line_key)
+        if m and p_over_raw is not None and 0 < p_over_raw < 1:
+            p_over = _apply_isotonic_map(p_over_raw, m)
+        else:
+            p_over = p_over_raw
+        out = dict(probs)
+        out[over_key] = p_over
+        if under_key is not None:
+            out[under_key] = 1.0 - p_over
+        return out
+
+    if market == "BTTS":
+        p_yes_raw = probs.get("Yes")
+        m = maps.get("Yes")
+        out = dict(probs)
+        if m and p_yes_raw is not None and 0 < p_yes_raw < 1:
+            out["Yes"] = _apply_isotonic_map(p_yes_raw, m)
+            out["No"] = 1.0 - out["Yes"]
+        return out
+
+    return dict(probs)
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +1046,13 @@ def run_calibration_learning(analyze: bool = True, retrain: bool = False,
             print("  Model retrained successfully")
         else:
             print("  No retrain performed")
+        # Per-outcome isotonic maps (1X2 Home/Draw/Away, O/U per-line, BTTS)
+        # are refit on every learning pass — they are cheap and always benefit
+        # from the latest results.
+        try:
+            retrain_from_results()
+        except Exception as e:
+            print(f"  Outcome-map refit failed: {e}")
 
     if report:
         print("\n[3/3] Generating calibration report...")

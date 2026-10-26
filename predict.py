@@ -50,7 +50,7 @@ from database import (
     store_market_results, get_market_accuracy, get_market_accuracy_history,
     add_pending_result, get_base_rates, pick_base_rate,
 )
-from calibration_learner import auto_retrain, apply_calibration
+from calibration_learner import auto_retrain
 from forebet_scraper import scrape_url, scrape_and_save, ForebetScraper
 from red_flags import detect_red_flags
 
@@ -63,19 +63,47 @@ _CALIBRATION_LEARNER = None
 _BIAS_CORRECTIONS_LOADED = False
 
 
+def _venv_python() -> Path:
+    """The repo venv interpreter, whichever layout this OS uses."""
+    repo = Path(__file__).parent
+    for cand in (repo / ".venv" / "Scripts" / "python.exe",
+                 repo / ".venv" / "bin" / "python3",
+                 repo / ".venv" / "bin" / "python"):
+        if cand.exists():
+            return cand
+    return Path(sys.executable)
+
+
 def schedule_retrain(delay_hours: float = 18.0):
-    """Schedule ML model retrain via cron; fall back to a nohup one-shot
-    sleeper when cron is unavailable (no crontab binary / no daemon), so an
-    18h-ahead retrain still fires on machines without cron."""
+    """Schedule ML model retrain 18h out.
+
+    POSIX: cron, falling back to a nohup one-shot sleeper when cron is
+    unavailable (no crontab binary / no daemon).
+    Windows: Task Scheduler (`schtasks`), which is the supported one-shot
+    there — cron and nohup do not exist, and the POSIX fallback would
+    otherwise fall through to an immediate blocking retrain."""
     import shutil
     import subprocess
     from datetime import timedelta
 
     retrain_time = datetime.now() + timedelta(hours=delay_hours)
     parent = Path(__file__).parent
+    py = _venv_python()
+
+    if os.name == "nt":
+        log_path = Path(os.environ.get("TEMP", parent)) / "retrain.log"
+        retrain_cmd = (
+            f'cd /d "{parent}" && '
+            f'"{py}" -c '
+            f'"from calibration_learner import auto_retrain; auto_retrain(force=True)" '
+            f'>> "{log_path}" 2>&1'
+        )
+        _schedule_schtasks(delay_hours, retrain_cmd, retrain_time)
+        return
+
     retrain_cmd = (
         f"cd {parent} && "
-        f".venv/bin/python3 -c "
+        f"{py} -c "
         f"\"from calibration_learner import auto_retrain; auto_retrain(force=True)\" "
         f">> /tmp/retrain.log 2>&1"
     )
@@ -113,6 +141,29 @@ def schedule_retrain(delay_hours: float = 18.0):
         log(f"Failed to schedule retrain: {e}")
         log("Running retrain immediately instead...")
         auto_retrain(force=True)
+
+
+def _schedule_schtasks(delay_hours: float, retrain_cmd: str, retrain_time):
+    """One-shot retrain via Windows Task Scheduler. Replaces any previous
+    predictor retrain task so repeated runs never stack."""
+    import subprocess
+
+    task_name = "FootballPredictorRetrain"
+    start = retrain_time.strftime("%H:%M")
+    date = retrain_time.strftime("%m/%d/%Y")
+    try:
+        subprocess.run(["schtasks", "/Create", "/F",
+                        "/TN", task_name,
+                        "/TR", f'cmd.exe /c "{retrain_cmd}"',
+                        "/SC", "ONCE",
+                        "/ST", start,
+                        "/SD", date],
+                       capture_output=True, text=True, timeout=20, check=True)
+        eta = retrain_time.strftime("%Y-%m-%d %H:%M")
+        log(f"Auto-retrain scheduled via Task Scheduler ('{task_name}') — fires at {eta}")
+    except Exception as e:
+        log(f"Task Scheduler not available ({e}) — run `pr --learn-calibration` "
+            f"manually once results are in")
 
 
 def _schedule_nohup(delay_hours: float, retrain_cmd: str):
@@ -1714,7 +1765,7 @@ def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_awa
         probs_1x2 = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
         probs_ou = {"Over": p_over, "Under": p_under}
         corrected_1x2, corrected_ou = apply_all_bias_corrections(
-            league_key, probs_1x2, probs_ou, min_samples=30
+            league_key, probs_1x2, probs_ou, min_samples=8
         )
         return (
             corrected_1x2["Home win"],
@@ -1725,6 +1776,41 @@ def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_awa
         )
     except Exception:
         return p_home, p_draw, p_away, p_over, p_under
+
+
+def _outcome_calibrate_1x2(p_home: float, p_draw: float, p_away: float) -> tuple:
+    """Per-outcome isotonic calibration for 1X2 (Home/Draw/Away each own map),
+    renormalised. Falls back to raw when maps are missing."""
+    try:
+        from calibration_learner import apply_outcome_calibration
+        cal = apply_outcome_calibration(
+            "1X2", {"Home win": p_home, "Draw": p_draw, "Away win": p_away})
+        return cal["Home win"], cal["Draw"], cal["Away win"]
+    except Exception:
+        return p_home, p_draw, p_away
+
+
+def _outcome_calibrate_ou_line(thresh: float, p_over: float):
+    """Per-line Over isotonic calibration (Under is the complement).
+    Returns calibrated P(Over), or None when no map exists for the line."""
+    try:
+        from calibration_learner import apply_outcome_calibration
+        cal = apply_outcome_calibration("O/U", {f"Over {thresh}": p_over, f"Under {thresh}": 1.0 - p_over})
+        return cal.get(f"Over {thresh}")
+    except Exception:
+        return None
+
+
+def _outcome_calibrate_btts(p_yes: float):
+    """Per-outcome BTTS calibration (Yes map; No is the complement).
+    Returns calibrated P(Yes), or None when no map exists."""
+    try:
+        from calibration_learner import apply_outcome_calibration
+        cal = apply_outcome_calibration("BTTS", {"Yes": p_yes, "No": 1.0 - p_yes})
+        got = cal.get("Yes")
+        return got if got is not None and got != p_yes else None
+    except Exception:
+        return None
 
 
 def _maybe_auto_calibrate():
@@ -2650,14 +2736,17 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
 
     exp_total = exp_h + exp_a
 
-    # ── BTTS from scoring data ──
-    home_scored = (data.get("home_scored_pct", 50) or 50) / 100.0
-    away_scored = (data.get("away_scored_pct", 50) or 50) / 100.0
-    fb_match_btts = data.get("forebet_btts_yes_pct")
-    if fb_match_btts is not None:
-        p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 0.55 + (fb_match_btts / 100.0) * 0.45))
+    # ── BTTS from scoring data (trained BTTS head when available) ──
+    if ml_pred.get("ml_prob_btts_yes") is not None:
+        p_btts_yes = ml_pred["ml_prob_btts_yes"]
     else:
-        p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 1.2))
+        home_scored = (data.get("home_scored_pct", 50) or 50) / 100.0
+        away_scored = (data.get("away_scored_pct", 50) or 50) / 100.0
+        fb_match_btts = data.get("forebet_btts_yes_pct")
+        if fb_match_btts is not None:
+            p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 0.55 + (fb_match_btts / 100.0) * 0.45))
+        else:
+            p_btts_yes = min(0.85, max(0.15, home_scored * away_scored * 1.2))
     p_btts_no = 1 - p_btts_yes
 
     # DC / DNB from 1X2
@@ -2968,6 +3057,8 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
         elif val_o_h > 0.18: ou_conf_h = "Medium-High"
         elif val_o_h > 0.10: ou_conf_h = "Medium"
         else: ou_conf_h = "Low"
+        if not _high_line_measured(f"Over {thresh}", ou_conf_h):
+            continue
         add("O/U", f"Over {thresh}", ou_conf_h,
             f"ML exp {exp_total:.1f}g model {p_o_h:.0%}o",
             model_prob=p_o_h, odds=prob_to_odds(p_o_h))
@@ -3313,6 +3404,121 @@ def _detect_derby(data: dict) -> dict:
         "home_region": home_region,
         "away_region": away_region,
     }
+
+
+def _high_line_measured(pick: str, conf: str) -> bool:
+    """True when the ledger measures a high-line O/U pick as RELIABLE.
+
+    Over 4.5 / Over 5.5 are emitted from a model probability that is never
+    checked against outcomes. Measured on ex-ante history, Over 4.5 hits 17.2%
+    against an 18.4% base rate, so the emitter must not offer it unless the
+    ledger shows an edge. With no ledger there is no measurement, so the
+    emitter keeps its previous behaviour.
+    """
+    try:
+        import reliable_report as _rr
+    except Exception:
+        return True
+    ledger = _rr.load_ledger()
+    if not ledger:
+        return True
+    tier = _rr.classify_pick(pick, conf, ledger, market="O/U")["tier"]
+    return tier == _rr.TIER_RELIABLE
+
+
+# ── Primary-pick correction rules ──
+# Both rules below decide which side a settled 1X2 fixture should be called on,
+# and both are measurable against history.db. They are module-level functions
+# (not inline) so tests can drive them directly and an offline replay can
+# re-apply them to stored ex-ante probabilities.
+#
+# Measured on 10,145 resolved 1X2 rows with stored ML + Poisson probabilities,
+# split at 2026-09-06 (early / late = the honest out-of-time expectation):
+#
+#   published pick as shipped        43.8%  (43.0 / 45.5)
+#   + _demote_draw_primary           48.9%  (48.1 / 50.4)
+#   + both rules                     49.7%  (49.2 / 50.7)
+#   reference: ML argmax             49.9%  (49.5 / 50.7)
+#   reference: Forebet's own pick    45.3%  (44.9 / 46.0)
+#
+# The two rules are worth ~6 pts on their own. They attack the two ways the
+# ensemble was degrading its own components: Draw primaries (25.8% over 3,095
+# rows) and side overrides of the ML (27.6% over the 39% of rows where the two
+# disagreed, against 54.3% where they agreed).
+
+
+def _demote_draw_primary(primary: dict, candidates: list, reasoning: list,
+                          add, p_home: float, p_draw: float, p_away: float) -> dict:
+    """Never let a 1X2 Draw stand as the primary pick.
+
+    Measured on 9,145 ex-ante 1X2 picks (Jul-Oct 2026): published Draw picks
+    hit 25.6% against a 24.1% base rate (edge +1.5 pts, i.e. none), while the
+    model's own Home/Away call on the same matches hit 43.4%+ (49.8% for the
+    ML H/A rule over all 1X2 rows). The ML draw probability never exceeds
+    ~0.32, so it is almost never the argmax; a Draw primary is demoted to the
+    side the model favours, at Low confidence (measured Low H/A hit: 36.5%),
+    so the reliability gate decides whether it is published.
+
+    Returns *primary* unchanged unless it is a 1X2 Draw.
+    """
+    if not (primary.get("market") == "1X2" and primary.get("pick") == "Draw"):
+        return primary
+    _side = "Home win" if (p_home or 0) >= (p_away or 0) else "Away win"
+    _alt = next((c for c in candidates if c is not primary
+                 and c.get("market") == "1X2" and c.get("pick") == _side), None)
+    if _alt is None:
+        _n_before = len(candidates)
+        add("1X2", _side, "Low",
+            f"draw demoted: model draw {p_draw:.0%} never beats the side ({_side})",
+            model_prob=(p_home if _side == "Home win" else p_away))
+        _alt = next((c for c in candidates[_n_before:]
+                     if c.get("market") == "1X2" and c.get("pick") == _side), None)
+    if _alt is None:
+        _alt = next((c for c in candidates if c is not primary
+                     and not (c.get("market") == "1X2" and c.get("pick") == "Draw")), None)
+    if _alt is not None:
+        primary = _alt
+        reasoning.append("⚠ 1X2 Draw demoted: no measured edge for draw picks")
+    return primary
+
+
+def _apply_ml_side_override(primary: dict, candidates: list, reasoning: list,
+                            add, ml: dict) -> dict:
+    """Let the ML pick the 1X2 side when it disagrees confidently.
+
+    On ex-ante Jul-Oct 2026 rows where the ensemble's Home/Away side differs
+    from the ML's side, the ensemble hit 33.5% and the ML 41.8% (854 rows);
+    the gap is present in both halves of the period and widens with the ML's
+    margin. Override only when the ML margin is >= 5 pts. The switched pick is
+    labelled Low: its confidence has not been measured, so the reliability
+    gate decides whether it is published.
+
+    Returns *primary* unchanged when there is no ML, no 1X2 side pick, or the
+    ML margin is under 5 pts.
+    """
+    if not (primary.get("market") == "1X2"
+            and primary.get("pick") in ("Home win", "Away win") and ml):
+        return primary
+    _mh = ml.get("ml_prob_home")
+    _ma = ml.get("ml_prob_away")
+    if _mh is None or _ma is None or abs(_mh - _ma) < 0.05:
+        return primary
+    _ml_side = "Home win" if _mh >= _ma else "Away win"
+    if _ml_side == primary["pick"]:
+        return primary
+    _alt = next((c for c in candidates if c is not primary
+                 and c.get("market") == "1X2" and c.get("pick") == _ml_side), None)
+    if _alt is None:
+        _n_before = len(candidates)
+        add("1X2", _ml_side, "Low",
+            f"ML side {_ml_side} (margin {abs(_mh - _ma):.0%}) over ensemble {primary['pick']}",
+            model_prob=(_mh if _ml_side == "Home win" else _ma))
+        _alt = next((c for c in candidates[_n_before:]
+                     if c.get("market") == "1X2" and c.get("pick") == _ml_side), None)
+    if _alt is not None:
+        primary = _alt
+        reasoning.append(f"⚠ 1X2 side set to ML ({_ml_side}): ML margin {abs(_mh - _ma):.0%}")
+    return primary
 
 
 def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
@@ -3778,17 +3984,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         p_home, p_draw, p_away = p_home_bias, p_draw_bias, p_away_bias
         p_over, p_under = p_over_bias, p_under_bias
 
-    # ── Apply isotonic regression calibration (improvement 13) ──
-    # O/U is deliberately excluded: the single isotonic curve is fit on picked-side
-    # probabilities that are overwhelmingly Under picks (0.6-0.9), so out_of_bounds
-    # clipping annihilates every Over probability below ~0.55 to ~0.01 (and pollutes
-    # the mid-range). That crushed ml_ou_signal and re-inflated the Under side — the
-    # exact failure this build fixes. O/U honesty now comes from the regression-to-mean
-    # expected-goals correction in _ou_exp instead.
-    p_home = apply_calibration("1X2", p_home)
-    p_draw = apply_calibration("1X2", p_draw)
-    p_away = apply_calibration("1X2", p_away)
-    # p_over / p_under intentionally NOT isotonic-calibrated.
+    # ── League reliability damping on O/U probabilities ──
+    # Unreliable leagues (thin/erratic history) are where the worst O/U
+    # overconfidence buckets live (Paraguay Intermedia, Ecuador Serie A,
+    # Kazakhstan...). Damp toward 0.5 like pipeline.py does — capping the
+    # confidence label alone left the stated probability untouched.
+    if league_reliability < 1.0:
+        p_over = p_over * league_reliability + 0.5 * (1 - league_reliability)
+        p_under = 1.0 - p_over
+
+    # ── Apply per-outcome isotonic calibration (improvement 13, revised) ──
+    # One curve per outcome (Home/Draw/Away), fit on every resolved match and
+    # renormalised — replaces both the dead apply_calibration("1X2") no-op and
+    # the picked-side single-curve that collapsed to ~0.33. O/U keeps the
+    # regression-to-mean expected-goals correction in _ou_exp; its per-line
+    # curves are applied inside the multi-threshold loop below.
+    p_home, p_draw, p_away = _outcome_calibrate_1x2(p_home, p_draw, p_away)
 
     # Re-normalize 1X2 after calibration
     total_1x2 = p_home + p_draw + p_away
@@ -4341,22 +4552,37 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             model_prob=_h1_prob)
 
     # ── O/U Multi-threshold (model-driven) — 0.5 is too trivial to include ──
-    # ML ensemble O/U probability (for 2.5 threshold) — used as blending signal
+    # ML ensemble O/U probability (for 2.5 threshold) — used as blending signal.
+    # Per-line heads (Over 1.5 / Over 3.5, trained directly on those targets)
+    # replace the one-size-fits-all 2.5 signal where available — a 2.5 head
+    # dragged to the 1.5/3.5 lines with fixed 0.15/0.25 weights was the
+    # structural cause of the worst small-league O/U buckets.
     ml_ou_signal = p_over  # ensemble-blended P(Over 2.5)
+    _ml_line_signal = {2.5: ml_ou_signal}
+    if _ml_from_ensemble:
+        _s15 = _ml_from_ensemble.get("ml_prob_over15")
+        _s35 = _ml_from_ensemble.get("ml_prob_over35")
+        if _s15 is not None:
+            _ml_line_signal[1.5] = _s15
+        if _s35 is not None:
+            _ml_line_signal[3.5] = _s35
     _prev_p_o = 1.0  # For monotonicity: P(O1.5) >= P(O2.5) >= P(O3.5)
     for thresh, label_u, label_o in [(1.5, "Under 1.5", "Over 1.5"),
                                       (2.5, "Under 2.5", "Over 2.5"),
                                       (3.5, "Under 3.5", "Over 3.5")]:
         p_o_poisson = prob_over(*_ou_exp(exp_h, exp_a), thresh)
-        # Blend Poisson with ML ensemble signal (threshold-dependent weight)
-        # 2.5: ML is most relevant (direct match), 1.5/3.5: ML is indirect
-        if thresh == 2.5:
+        # Blend Poisson with ML signal. A dedicated per-line head earns a
+        # full 0.35 weight (same as the 2.5 line); without one, fall back to
+        # the old indirect 2.5-signal weights.
+        if thresh in _ml_line_signal and thresh != 2.5:
+            ml_w = 0.35
+        elif thresh == 2.5:
             ml_w = 0.35
         elif thresh == 1.5:
             ml_w = 0.15
         else:  # 3.5
             ml_w = 0.25
-        p_o = p_o_poisson * (1 - ml_w) + ml_ou_signal * ml_w
+        p_o = p_o_poisson * (1 - ml_w) + _ml_line_signal.get(thresh, ml_ou_signal) * ml_w
         # Enforce monotonicity: P(Over i) <= P(Over i-1) (non-increasing)
         p_o = min(p_o, _prev_p_o)
         _prev_p_o = p_o
@@ -4492,8 +4718,18 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             # Append Forebet agreement indicator
             if fb_over is not None and abs(fb_ou_diff) >= 0.15:
                 ou_reason += f" fb{'✓' if fb_ou_diff > 0 else '✗'}"
-            add("O/U", ou_pick, ou_conf, ou_reason,
-                model_prob=p_o if "Over" in ou_pick else p_u)
+            # Per-line isotonic calibration on the EMITTED probability. The maps
+            # are fit on emitted picks (both sides reconstructed to P(Over)), so
+            # they describe how the displayed pick probability actually lands —
+            # applying them to the internal pre-value signal would double-count
+            # the value-vs-base-rate edge. The next refit sees calibrated display
+            # probs and converges toward identity, which is the fixed point we want.
+            _mp_ou = p_o if "Over" in ou_pick else p_u
+            _mp_cal = _outcome_calibrate_ou_line(
+                thresh, _mp_ou if "Over" in ou_pick else 1.0 - _mp_ou)
+            if _mp_cal is not None:
+                _mp_ou = _mp_cal if "Over" in ou_pick else 1.0 - _mp_cal
+            add("O/U", ou_pick, ou_conf, ou_reason, model_prob=_mp_ou)
 
     # ── High O/U lines (4.5 / 5.5) — Over side only ──
     # 3.5 was the model's ceiling, so games expected to score 4+ had no market.
@@ -4514,6 +4750,9 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             _max_conf = "Medium" if league_reliability < 0.5 else "Medium-High"
             if CONF_RANK.get(high_conf, 99) < CONF_RANK[_max_conf]:
                 high_conf = _max_conf
+        if not _high_line_measured(f"Over {thresh}", high_conf):
+            reasoning.append(f"⚠ Over {thresh} held: no measured edge in history")
+            continue
         add("O/U", f"Over {thresh}", high_conf,
             f"exp goals {exp_total:.1f} model {p_o_high:.0%}o",
             model_prob=p_o_high)
@@ -4560,17 +4799,36 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
 
     p_btn = 1.0 - p_btss
 
-    # Past-performance isotonic map (learned from historical BTTS accuracy),
-    # shrunk to raw for small samples and capped for stale-params safety.
-    p_btss = _market_calibrate("BTTS", p_btss)
+    # Per-outcome isotonic map for BTTS (Yes curve fit on all resolved picks,
+    # No is its complement). Falls back to the legacy single-curve map shrunk
+    # toward raw for small samples.
+    _p_btts_cal = _outcome_calibrate_btts(p_btss)
+    if _p_btts_cal is not None:
+        p_btss = _p_btts_cal
+    else:
+        p_btss = _market_calibrate("BTTS", p_btss)
     p_btn = 1.0 - p_btss
+
+    # ── Blend the trained BTTS head (when the ML model carries one) ──
+    # BTTS used to be Poisson+Forebet only, which over-predicted BTTS No in
+    # small leagues (Peru 62%, Argentina Nacional B 55% overconfident buckets).
+    _ml_btts_head = None
+    if _ml_from_ensemble and _ml_from_ensemble.get("ml_prob_btts_yes") is not None:
+        _ml_btts_head = _ml_from_ensemble["ml_prob_btts_yes"]
+        p_btss = p_btss * 0.70 + _ml_btts_head * 0.30
+        p_btn = 1.0 - p_btss
+
+    # ── League reliability damping on BTTS (same as O/U) ──
+    if league_reliability < 1.0:
+        p_btss = p_btss * league_reliability + 0.5 * (1 - league_reliability)
+        p_btn = 1.0 - p_btss
 
     # ── BTTS Yes agreement: emit only where the ML model also leans Yes.
     # Run the ML analysis once here and reuse the result at return, so the
     # agreement check costs nothing beyond the single call per match.
     _ml_agreement = analyze_ml_only(data, main_btts_yes=p_btss) if use_ml else None
-    _ml_btts_yes = None
-    if _ml_agreement:
+    _ml_btts_yes = _ml_btts_head
+    if _ml_btts_yes is None and _ml_agreement:
         _ml_btts_yes = (((_ml_agreement.get("_ml_odds") or {}).get("ml_btts") or {})
                         .get("probs", {}).get("yes"))
 
@@ -4752,6 +5010,14 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             reasoning.append("⚠ BTTS No downgraded to backup (historically -EV)")
         else:
             primary["confidence"] = "Low"
+
+    # ── 1X2 Draw is never the primary pick, and the side follows the ML on a
+    # confident disagreement. Both rules are module-level (see the measured
+    # note above _demote_draw_primary) so tests can drive them directly.
+    primary = _demote_draw_primary(primary, candidates, reasoning, add,
+                                   p_home, p_draw, p_away)
+    primary = _apply_ml_side_override(primary, candidates, reasoning, add,
+                                      _ml_from_ensemble)
 
     # ── Disagreement veto (1X2) ──
     # When BOTH the ML-only panel and Forebet pick a different 1X2 direction,
@@ -5165,8 +5431,9 @@ def _prefetch_scrape(urls, workers):
                 yield u, {"_scrape_error": str(exc)}
 
 
-# When False (the default) a prediction run writes exactly one report:
-# predictions/picks.html. Set from the --all-reports CLI flag in main().
+# Every prediction run writes picks.html, the card-format view (latest.html /
+# <Team>.html) and bettor.html. This flag adds the remaining per-angle reports
+# (best/consistent/high80/bankers/batch_NNN). Set from --all-reports in main().
 WRITE_LEGACY_REPORTS = False
 
 # How often a run refreshes predictions/picks.html mid-flight. A 946-match
@@ -5177,13 +5444,16 @@ PUBLISH_EVERY = 50
 
 
 def _write_html(results, all_urls, compare_forebet, high_only,
-                _save_to=None, _title_suffix="", _with_secondaries=False):
+                _save_to=None, _title_suffix="", _with_secondaries=False,
+                _primary=False):
     """Generate an HTML report of predictions and update index.
 
-    When *_save_to* is provided the HTML is written to that path and the
-    function returns early unless *_with_secondaries=True* is also set, in
-    which case the secondary reports (best/consistent/high80/bankers/bettor)
-    are still generated before returning."""
+    *_primary* marks the run's own call. A primary run always writes three
+    outputs: picks.html (the reliability-gated report), the card-format view
+    (predictions/latest.html for a slate, predictions/<Team>.html for a
+    single link) and bettor.html (the staking card). Secondary angle reports
+    (best/consistent/high80/bankers/batch) pass only *_save_to*, write their
+    file and return; those stay behind --all-reports."""
     import webbrowser
     now = datetime.now().strftime("%Y-%m-%d %H:%M")
     now_file = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -6227,14 +6497,17 @@ function applyFilters() {{
     pred_dir.mkdir(exist_ok=True)
 
     if _save_to:
-        # Direct save (e.g. high-confidence report)
+        # Direct save. Secondary angle reports stop here; the primary
+        # single-link call continues so its run also gets picks.html and
+        # bettor.html.
         _save_to.write_text(html)
-        return _save_to
+        if not _primary:
+            return _save_to
 
     # ── THE report ──
-    # One file, gated on measured historical performance. Written first and
-    # opened first because it is the only report that states how often the
-    # selections it recommends have actually landed. See reliable_report.py.
+    # The reliability-gated report, written first and opened first because it
+    # is the one that states how often the selections it recommends have
+    # actually landed. See reliable_report.py.
     picks_path = None
     n_rel = 0
     try:
@@ -6242,7 +6515,7 @@ function applyFilters() {{
         picks_path = pred_dir / "picks.html"
         _rr.write_report(
             results, picks_path,
-            label=_title_suffix.strip(" ()") or "run",
+            label=_title_suffix.strip(" ()—-") or "run",
             source=f"{len(results)} matches")
         rows = _rr.build_rows(results, _rr.load_ledger())
         n_rel = sum(1 for r in rows if r["tier"] == _rr.TIER_RELIABLE)
@@ -6251,24 +6524,91 @@ function applyFilters() {{
     except Exception as _pe:
         log(f"Reliable picks report skipped: {_pe}")
 
+    # ── Card-format output ──
+    # The classic full view: every fixture as a card with filters, confidence
+    # and reasoning. A slate run writes predictions/latest.html (archiving the
+    # previous one); a single-link run already wrote predictions/<Team>.html
+    # above and must not clobber latest.html, which holds the multi-link run.
+    card_path = None
+    if _primary:
+        if _save_to:
+            card_path = _save_to
+        else:
+            card_path = pred_dir / "latest.html"
+            if card_path.exists():
+                archive_dir = pred_dir / "archive"
+                archive_dir.mkdir(exist_ok=True)
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                card_path.rename(archive_dir / f"{ts}.html")
+            card_path.write_text(html)
+            log(f"Card report: {card_path.resolve()}")
+
+    # ── Bettor's card report (the agent's staking card) ──
+    # Same math as `bettor.py card <json>`: de-vigged edge, EV%, Quarter-Kelly
+    # stakes scaled by league reliability — written on every run alongside the
+    # card view, not only behind --all-reports.
+    bettor_path = None
+    _bcard = None
+    if _primary:
+        try:
+            import importlib.util as _ilu
+            _bspec = _ilu.spec_from_file_location(
+                "bettor_card", Path(__file__).parent / "scripts" / "bettor.py")
+            _bmod = _ilu.module_from_spec(_bspec)
+            _bspec.loader.exec_module(_bmod)
+            _bcard = _bmod.build_card(filtered)
+            bettor_path = pred_dir / "bettor.html"
+            bettor_path.write_text(_bmod.render_card_html(_bcard))
+            log(f"Bettor's card report: {bettor_path.resolve()} "
+                f"({len(_bcard['value_picks'])} +EV picks)")
+        except Exception as _be:
+            log(f"Bettor card report skipped: {_be}")
+
+    def _print_bettor_line():
+        if bettor_path and _bcard:
+            _evn = len(_bcard.get("value_picks") or [])
+            _est = sum(p.get("stake_pct", 0)
+                       for p in (_bcard.get("value_picks") or []))
+            _bline = f"→ predictions/bettor.html  ({_evn} +EV picks"
+            if _evn:
+                _bline += f" · total stake {_est:.1f}%"
+            print(_bline + ")")
+
+    # Single-link run: team card + picks + bettor are written; stop here so
+    # latest.html and the other angle reports are never touched.
+    if _primary and _save_to:
+        if picks_path:
+            webbrowser.open(str(picks_path.resolve()))
+        if bettor_path:
+            webbrowser.open(str(bettor_path.resolve()))
+        if picks_path:
+            print(f"→ predictions/picks.html  ({n_rel}/{len(results)} cleared "
+                  f"the reliability gate)")
+        if card_path:
+            print(f"→ predictions/{card_path.name}  ({len(results)} match"
+                  f"{'es' if len(results) != 1 else ''}, full card view)")
+        _print_bettor_line()
+        return card_path, None, None, None, None
+
     if not WRITE_LEGACY_REPORTS:
         if picks_path:
             webbrowser.open(str(picks_path.resolve()))
-            print(f"→ predictions/picks.html  ({n_rel}/{len(results)} cleared the "
-                  f"reliability gate)  ← the report; use --all-reports for the legacy views")
-        return picks_path, None, None, None, None
+        if card_path:
+            webbrowser.open(str(card_path.resolve()))
+        if bettor_path:
+            webbrowser.open(str(bettor_path.resolve()))
+        if picks_path:
+            print(f"→ predictions/picks.html  ({n_rel}/{len(results)} cleared "
+                  f"the reliability gate)")
+        if card_path:
+            print(f"→ predictions/{card_path.name}  ({len(results)} match"
+                  f"{'es' if len(results) != 1 else ''}, full card view)")
+        _print_bettor_line()
+        return card_path or picks_path, None, None, None, None
 
-    report_path = pred_dir / "latest.html"
-
-    # Archive previous latest if it exists
-    if report_path.exists():
-        archive_dir = pred_dir / "archive"
-        archive_dir.mkdir(exist_ok=True)
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        report_path.rename(archive_dir / f"{ts}.html")
-
-    report_path.write_text(html)
-    log(f"HTML report: {report_path.resolve()}")
+    # ── Legacy angle reports (opt-in via --all-reports) ──
+    # latest.html and bettor.html are already written above.
+    report_path = card_path
 
     # ── Yellow-border (default pick confirmed by both models) report ──
     yellow_results = [r for r in results if _has_yellow_pick(r)]
@@ -6316,30 +6656,11 @@ function applyFilters() {{
                      _save_to=banker_path, _title_suffix=" (Bankers — Highest Success Probability)")
         log(f"Bankers report: {banker_path.resolve()} ({len(banker_results)} matches)")
 
-    # ── Bettor's card report (the agent's staking card) ──
-    # Same math as `bettor.py card <json>`: de-vigged edge, EV%, Quarter-Kelly
-    # stakes scaled by league reliability — rendered as a companion report so
-    # a run ends with the actionable card, not just the match list.
-    bettor_path = None
-    _bcard = None
-    try:
-        import importlib.util as _ilu
-        _bspec = _ilu.spec_from_file_location(
-            "bettor_card", Path(__file__).parent / "scripts" / "bettor.py")
-        _bmod = _ilu.module_from_spec(_bspec)
-        _bspec.loader.exec_module(_bmod)
-        _bcard = _bmod.build_card(filtered)
-        bettor_path = pred_dir / "bettor.html"
-        bettor_path.write_text(_bmod.render_card_html(_bcard))
-        log(f"Bettor's card report: {bettor_path.resolve()} "
-            f"({len(_bcard['value_picks'])} +EV picks)")
-    except Exception as _be:
-        log(f"Bettor card report skipped: {_be}")
-
     # ── Auto-open in browser ──
     if picks_path:
         webbrowser.open(str(picks_path.resolve()))
-    webbrowser.open(str(report_path.resolve()))
+    if report_path:
+        webbrowser.open(str(report_path.resolve()))
     if yellow_path:
         webbrowser.open(str(yellow_path.resolve()))
     if consistent_path:
@@ -6364,14 +6685,7 @@ function applyFilters() {{
         print(f"→ predictions/high80.html  ({len([r for r in results if _high80_picks(r)])} matches >80% | {n_same} shared-outcome, {n_sep} separate-outcome)")
     if banker_path:
         print(f"→ predictions/bankers.html  ({len(banker_results)} highest-probability-of-success matches)")
-    if bettor_path and _bcard:
-        _evn = len(_bcard.get("value_picks") or [])
-        _est = sum(p.get("stake_pct", 0) for p in (_bcard.get("value_picks") or []))
-        _bline = f"→ predictions/bettor.html  ({_evn} +EV picks"
-        if _evn:
-            _bline += f" · total stake {_est:.1f}%"
-        _bline += ")"
-        print(_bline)
+    _print_bettor_line()
 
     return report_path, yellow_path, consistent_path, high80_path, banker_path
 
@@ -6503,22 +6817,35 @@ def _getrs_params(today_page: str, session) -> dict | None:
     """Extract the AJAX params Forebet uses to lazy-load today's match list.
 
     Returns a dict (tp, in, ord, tz, tzs, tze) parsed from the 'More' button's
-    ltodrows(...) call on the today page, or None if not found.
+    ltodrows(...) call on the today page, or None if not found. Fetches through
+    ``fetch_with_retry`` so this bootstrap request gets the same Cloudflare
+    handling (cf_clearance refresh, TLS-profile rotation, real-browser
+    fallback) as every other scrape; a raw ``session.get`` here is what let a
+    stale cf_clearance 403 the AJAX path and force the slow HTML fallback.
     """
-    resp = session.get(today_page, timeout=30)
-    if resp.status_code != 200:
+    from webfetch import fetch_with_retry
+    resp = fetch_with_retry(today_page, timeout=30, session=session)
+    if resp is None or resp.status_code != 200:
+        status = resp.status_code if resp is not None else "no response"
+        print(f"[AJAX params unavailable ({status})]")
         return None
     m = re.search(r'ltodrows\("([^"]+)","([^"]+)","[^"]*","([^"]+)","([^"]+)","(\d+)","(\d+)"\)', resp.text)
-    if not m:
-        return None
-    return {
-        "tp": m.group(1),
-        "in": m.group(2),
-        "ord": m.group(3),
-        "tz": m.group(4),
-        "tzs": m.group(5),
-        "tze": m.group(6),
-    }
+    if m:
+        return {
+            "tp": m.group(1),
+            "in": m.group(2),
+            "ord": m.group(3),
+            "tz": m.group(4),
+            "tzs": m.group(5),
+            "tze": m.group(6),
+        }
+    if ("Just a moment" in resp.text
+            or "cf-browser-verification" in resp.text):
+        reason = "Cloudflare challenge page served"
+    else:
+        reason = f"no ltodrows(...) in {len(resp.text)}-byte page body"
+    print(f"[AJAX params unavailable ({reason})]")
+    return None
 
 
 def _fetch_getrs_matches(params: dict, session,
@@ -6537,12 +6864,17 @@ def _fetch_getrs_matches(params: dict, session,
     url = ("https://www.forebet.com/scripts/getrs.php?ln=en"
            f"&tp={params['tp']}&in={params['in']}&ord={params['ord']}"
            f"&tz={params['tz']}&tzs={params['tzs']}&tze={params['tze']}")
-    resp = session.get(url, timeout=30)
-    if resp.status_code != 200:
+    from webfetch import fetch_with_retry
+    resp = fetch_with_retry(url, timeout=30, session=session)
+    if resp is None or resp.status_code != 200:
+        status = resp.status_code if resp is not None else "no response"
+        print(f"[getrs.php {params.get('in')}: HTTP {status}]")
         return [], {}, {}
     try:
         data = json.loads(resp.text)
     except ValueError:
+        print(f"[getrs.php {params.get('in')}: invalid JSON "
+              f"({len(resp.text)} bytes)]")
         return [], {}, {}
     matches, league_map = data[0], data[1] if len(data) > 1 else {}
 
@@ -6571,6 +6903,47 @@ def _fetch_getrs_matches(params: dict, session,
         if league:
             by_league[league] = by_league.get(league, 0) + 1
     return kept, league_map, by_league
+
+
+def _today_page_links_with_kickoff(today_page: str, session) -> list:
+    """Match URLs + kickoff hard-coded into the today page HTML.
+
+    The AJAX payload covers most of the slate but the page embeds a handful of
+    links the getrs.php feed misses (promoted/overnight fixtures). Each match
+    row on the page carries ``date_bah`` right after its link, so kickoff is
+    parsed without extra per-match requests. Returns list of
+    {"url", "kickoff": datetime or None}, deduplicated by URL.
+    """
+    try:
+        resp = session.get(today_page, timeout=30)
+    except Exception as e:
+        print(f"[today page fetch failed ({e})]")
+        return []
+    if resp.status_code != 200 or not resp.text:
+        return []
+    out = []
+    seen = set()
+    pattern = (r'href="([^"]*?/en/football/matches/[^"]+?)"[^>]*>'
+               r'.*?class="date_bah"[^>]*>\s*'
+               r"(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2})")
+    for href, date in re.findall(pattern, resp.text):
+        if href.startswith("//"):
+            href = "https:" + href
+        elif href.startswith("/"):
+            href = "https://www.forebet.com" + href
+        if not href.startswith("http") or not re.search(r"-\d{6,}$",
+                                                        href.rstrip("/")):
+            continue
+        if href in seen:
+            continue
+        seen.add(href)
+        kickoff = None
+        try:
+            kickoff = datetime.strptime(date.strip(), "%d/%m/%Y %H:%M")
+        except ValueError:
+            pass
+        out.append({"url": href, "kickoff": kickoff})
+    return out
 
 
 def _write_links_file(out_file: str, urls) -> None:
@@ -6664,10 +7037,12 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
 
     uniq = []
     per_league = {}
+    used_ajax = False
 
     try:
         params = _getrs_params(today_page, session)
         if params:
+            used_ajax = True
             today_matches, _, today_by_league = _fetch_getrs_matches(
                 params, session, now, cutoff)
             tomorrow_params = dict(params)
@@ -6685,18 +7060,38 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
             per_league = {**today_by_league}
             for league, n in tomorrow_by_league.items():
                 per_league[league] = per_league.get(league, 0) + n
+        else:
+            print("[AJAX unavailable — falling back to HTML scraping]")
     except Exception as e:
-        print(f"[AJAX fetch failed ({e}) — falling back to HTML scraping]")
+        print(f"[AJAX failed ({e}) — falling back to HTML scraping]")
 
-    if not uniq:
-        # Fallback: scrape today page + league pages from leagues_db.json
-        all_matches = []
+    if uniq:
+        ajax_urls = {r["url"] for r in uniq}
+        extra = [
+            m for m in _today_page_links_with_kickoff(today_page, session)
+            if m["url"] not in ajax_urls
+            and m["kickoff"] and now <= m["kickoff"] < cutoff
+        ]
+        if extra:
+            print(f"[merging {len(extra)} today-page link(s) missing from AJAX]")
+            for m in extra:
+                uniq.append({"url": m["url"], "home_team": "", "away_team": "",
+                             "kickoff": m["kickoff"], "league": ""})
+    else:
+        if not used_ajax:
+            print("[HTML fallback — AJAX never ran]")
+        else:
+            print("[HTML fallback — AJAX returned nothing in the window]")
+        all_by_url = {}
 
         def collect(name: str, rows: list) -> None:
-            kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
-            if kept:
-                per_league[name] = len(kept)
-                all_matches.extend(kept)
+            for r in rows:
+                if not r.get("kickoff") or not (now <= r["kickoff"] < cutoff):
+                    continue
+                if r["url"] in all_by_url:
+                    continue
+                all_by_url[r["url"]] = r
+                per_league[name] = per_league.get(name, 0) + 1
 
         with open(leagues_file) as f:
             leagues = json.load(f)
@@ -6715,11 +7110,7 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
             collect(name, scrape_league_upcoming(path, league_name=name, session=session))
             time.sleep(0.5)
 
-        seen = set()
-        for r in all_matches:
-            if r["url"] not in seen:
-                seen.add(r["url"])
-                uniq.append(r)
+        uniq = list(all_by_url.values())
 
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
     _write_links_file(out_file, [r["url"] for r in uniq])
@@ -6733,6 +7124,9 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
         by_country[country][1] += 1
     for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0])[:25]:
         print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
+    if len(uniq) < 25:
+        print(f"[warning] only {len(uniq)} fixtures — a busy evening should be "
+              "40–90; re-run `pr --today` if this looks low")
     print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
     return out_file
 
@@ -6771,10 +7165,12 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
     session = create_session()
     uniq = []
     per_league = {}
+    used_ajax = False
 
     try:
         params = _getrs_params(today_page, session)
         if params:
+            used_ajax = True
             base_tzs = int(params["tzs"]) + (start_date - now.date()).days * 86400
             base_tze = int(params["tze"]) + (start_date - now.date()).days * 86400
             d = start_date
@@ -6795,18 +7191,26 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
                 for league, n in day_by_league.items():
                     per_league[league] = per_league.get(league, 0) + n
                 d += timedelta(days=1)
+        else:
+            print("[AJAX unavailable — falling back to HTML scraping]")
     except Exception as e:
-        print(f"[AJAX fetch failed ({e}) — falling back to HTML scraping]")
+        print(f"[AJAX failed ({e}) — falling back to HTML scraping]")
 
     if not uniq:
-        # Fallback: scrape league pages from leagues_db.json
-        all_matches = []
+        if not used_ajax:
+            print("[HTML fallback — AJAX never ran]")
+        else:
+            print("[HTML fallback — AJAX returned nothing in the window]")
+        all_by_url = {}
 
         def collect(name: str, rows: list) -> None:
-            kept = [r for r in rows if r.get("kickoff") and now <= r["kickoff"] < cutoff]
-            if kept:
-                per_league[name] = len(kept)
-                all_matches.extend(kept)
+            for r in rows:
+                if not r.get("kickoff") or not (now <= r["kickoff"] < cutoff):
+                    continue
+                if r["url"] in all_by_url:
+                    continue
+                all_by_url[r["url"]] = r
+                per_league[name] = per_league.get(name, 0) + 1
 
         with open(leagues_file) as f:
             leagues = json.load(f)
@@ -6825,11 +7229,7 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
             collect(name, scrape_league_upcoming(path, league_name=name, session=session))
             time.sleep(0.5)
 
-        seen = set()
-        for r in all_matches:
-            if r["url"] not in seen:
-                seen.add(r["url"])
-                uniq.append(r)
+        uniq = list(all_by_url.values())
 
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
     _write_links_file(out_file, [r["url"] for r in uniq])
@@ -7345,7 +7745,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         _base = re.sub(r'\s+', ' ', _base).strip().replace(" ", "_") or "match"
         _single_path = Path(__file__).parent / "predictions" / f"{_base}.html"
         _write_html(results, match_urls, compare_forebet, high_only,
-                    _save_to=_single_path,
+                    _save_to=_single_path, _primary=True,
                     _title_suffix=f" — {_r0.get('home', '')} vs {_r0.get('away', '')}")
         log(f"HTML report: {_single_path.resolve()}")
         webbrowser.open(str(_single_path.resolve()))
@@ -7354,7 +7754,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         # No usable result for a single-link search — don't touch latest.html.
         report_path, yellow_path, consistent_path, high80_path, banker_path = None, None, None, None, None
     else:
-        report_path, yellow_path, consistent_path, high80_path, banker_path = _write_html(results, match_urls, compare_forebet, high_only)
+        report_path, yellow_path, consistent_path, high80_path, banker_path = _write_html(results, match_urls, compare_forebet, high_only, _primary=True)
 
     # Filter by confidence
     if high_only:
@@ -7759,14 +8159,38 @@ def run_calibration():
 # ─────────────────────────────────────────────
 
 def ensure_alias():
-    """Create symlinks in ~/.local/bin/ for easy access."""
+    """Create command aliases in ~/.local/bin/ for easy access.
+
+    POSIX: symlinks to the venv-aware `pr` wrapper.
+    Windows: .cmd shims invoking .venv\\Scripts\\python.exe (a symlink to
+    predict.py is not executable there, and symlinks need admin rights).
+    """
     bindir = Path.home() / ".local" / "bin"
     bindir.mkdir(parents=True, exist_ok=True)
-    # Prefer the venv-aware `pr` wrapper so aliases always use .venv python.
-    # On Windows the bash wrapper won't run, so fall back to predict.py directly.
     src = Path(__file__).resolve()
-    wrapper = src.parent / "pr"
-    target = wrapper if (os.name != "nt" and wrapper.exists()) else src
+    repo = src.parent
+
+    if os.name == "nt":
+        venv_py = repo / ".venv" / "Scripts" / "python.exe"
+        py = venv_py if venv_py.exists() else Path(sys.executable)
+        for name in ("pr", "predict", "predictor"):
+            shim = bindir / f"{name}.cmd"
+            body = (
+                "@echo off\r\n"
+                "rem Football Match Predictor\r\n"
+                f'"{py}" "{src}" %*\r\n'
+            )
+            try:
+                if shim.exists() and shim.read_text(encoding="utf-8", errors="replace") == body:
+                    continue
+                shim.write_text(body, encoding="utf-8")
+                print(f"Alias created: {shim} -> {py} {src.name}")
+            except Exception as e:
+                print(f"Warning: could not create alias for {name}: {e}")
+        return
+
+    wrapper = repo / "pr"
+    target = wrapper if wrapper.exists() else src
     for name in ("pr", "predict", "predictor"):
         bin_path = bindir / name
         if bin_path.exists() and bin_path.samefile(target):
@@ -7829,10 +8253,10 @@ Options:
     parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
     parser.add_argument("--fbref", nargs="?", const="all", default=None, help="Scrape FBref xG stats for leagues (e.g. --fbref 9 or --fbref all)")
     parser.add_argument("--all-reports", action="store_true",
-                        help="Also write the legacy secondary reports (latest/best/"
-                             "consistent/high80/bankers/bettor + batch files). Off by "
-                             "default so a run produces exactly one file: "
-                             "predictions/picks.html")
+                        help="Also write the legacy secondary reports (best/"
+                             "consistent/high80/bankers + batch files). Off by "
+                             "default; every run already writes picks.html, the "
+                             "card view (latest/<Team>.html) and bettor.html")
     parser.add_argument("--no-refresh", action="store_true",
                         help="Predict a generated slate exactly as it is on disk. "
                              "By default pr links/today.html re-fetches today's "
@@ -7857,9 +8281,9 @@ Options:
     ensure_alias()
     init_db()
 
-    # By default a prediction run writes exactly ONE report:
-    # predictions/picks.html — the reliability-gated card. The legacy
-    # per-angle reports (latest/best/consistent/high80/bankers/bettor) each
+    # Every run writes picks.html (the reliability-gated report), the card
+    # view (latest.html or <Team>.html) and bettor.html. The remaining
+    # per-angle reports (best/consistent/high80/bankers/batch_NNN) each
     # reprint the model's own stated probability without any statement of how
     # often that kind of pick has actually landed, which is why so many of
     # them read as confident and are wrong. They stay available behind

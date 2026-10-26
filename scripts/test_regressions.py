@@ -324,6 +324,72 @@ class TestMarketAwareScoring(unittest.TestCase):
             os.unlink(path)
 
 
+class TestOddsStamping(unittest.TestCase):
+    """``--no-stamp`` must still report odds integrity.
+
+    stamp_odds() both classifies and writes.  audit_reliability.py offered
+    --no-stamp to avoid touching the DB, but it skipped the classification too,
+    so the ledger shipped with ``odds_integrity: {}`` and the report's
+    "why most expected values are absent" note never rendered — the one
+    sentence on the page explaining why 88% of prices are unusable was
+    suppressed by the flag meant to protect the database.
+    """
+
+    @staticmethod
+    def _connect(path):
+        import sqlite3
+        conn = sqlite3.connect(path)
+        conn.row_factory = sqlite3.Row
+        conn.execute("""CREATE TABLE matches (
+            id INTEGER PRIMARY KEY, odds_home REAL, odds_draw REAL,
+            odds_away REAL, forebet_home_pct REAL, forebet_draw_pct REAL,
+            forebet_away_pct REAL)""")
+        conn.executemany(
+            "INSERT INTO matches VALUES (?,?,?,?,?,?,?)", [
+                # duplicate: the legacy parser's signature defect
+                (1, 1.75, 1.75, 3.30, 30.0, 47.0, 23.0),
+                # clean triplet, favourite agrees with Forebet's top %
+                (2, 2.10, 3.30, 3.60, 45.0, 28.0, 27.0),
+            ])
+        conn.commit()
+        return conn
+
+    def test_scan_odds_classifies_without_writing(self):
+        import os, tempfile
+        import scripts.audit_reliability as A
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            conn = self._connect(path)
+            counts, updates = A.scan_odds(conn)
+            self.assertEqual(counts, {"duplicate": 1, "ok": 1})
+            self.assertEqual(len(updates), 2)
+            # Read-only: no odds_status column, no row rewritten.
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(matches)")}
+            self.assertNotIn("odds_status", cols)
+            conn.close()
+        finally:
+            os.unlink(path)
+
+    def test_stamp_odds_writes_what_scan_reported(self):
+        import os, tempfile
+        import scripts.audit_reliability as A
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        try:
+            conn = self._connect(path)
+            counts = A.stamp_odds(conn)
+            self.assertEqual(counts, {"duplicate": 1, "ok": 1})
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(matches)")}
+            self.assertIn("odds_status", cols)
+            stamped = {r[0] for r in
+                       conn.execute("SELECT odds_status FROM matches")}
+            self.assertEqual(stamped, {"duplicate", "ok"})
+            conn.close()
+        finally:
+            os.unlink(path)
+
+
 class TestDrawNoBet(unittest.TestCase):
     """A draw pushes the stake back: it is neither a hit nor a miss.
 
@@ -422,7 +488,9 @@ class TestReserveFilter(unittest.TestCase):
         for team in ("Betis III", "UD Almería B", "Pontevedra II",
                      "Puerto Cabello II", "Real Madrid Castilla",
                      "Atlético Madrid B", "Barcelona U19", "FC B",
-                     "Real Madrid IV", "Villarreal B"):
+                     "Real Madrid IV", "Villarreal B",
+                     "Boca Juniors Res.",  # Argentine "Res." abbreviation
+                     "River Plate Res.", "Colón Res."):
             self.assertTrue(is_reserve_side(team), f"{team} not flagged")
 
     def test_senior_clubs_are_not_false_positives(self):
@@ -545,6 +613,81 @@ class TestGateMath(unittest.TestCase):
         self.assertLessEqual(wilson_lower_bound(0, 50), 1.0)
         self.assertEqual(wilson_lower_bound(5, 0), 0.0)
 
+    # ── The gate asks a relative question, not a fixed one ─────────────────
+
+    @staticmethod
+    def _bucket(key, n, hit_rate, expected, market=None, selection=None,
+                confidence="Medium", edge_pts=None):
+        """A measured bucket, with every field build_gate() reads."""
+        hits = int(round(n * hit_rate))
+        shrunk = (hits + 120 * expected) / (n + 120)   # K = 120
+        market = market or key.split("|")[0]
+        selection = selection or key.split("|")[1]
+        return {key: {"market": market, "period": "FT",
+                      "selection": selection, "confidence": confidence,
+                      "n": n, "hits": hits,
+                      "hit_rate": round(hits / n, 4),
+                      "expected": expected,
+                      "shrunk_rate": round(shrunk, 4),
+                      "edge_pts": round((shrunk - expected) * 100, 2),
+                      "priced_n": 0}}
+
+    def test_no_absolute_win_rate_constant(self):
+        """A 40% pick that beats a 33.8% base by a clear margin must publish.
+
+        The gate used to require every published pick to win more than half the
+        time (Wilson lower bound >= 0.55), which no goal-line market can ever
+        satisfy at a sane base rate. Judged against its own base rate, this is
+        a real, statistically solid edge — and it is exactly the shape of
+        "Over 3.5", which the fixed floor kept off the page.
+        """
+        from scripts.audit_reliability import build_gate, wilson_lower_bound
+        b = self._bucket("O/U|Over 3.5|Medium", n=600, hit_rate=0.40,
+                         expected=0.338)
+        self.assertLess(b["O/U|Over 3.5|Medium"]["hit_rate"], 0.50)
+        gate = build_gate({"buckets": b}, min_samples=200, min_edge_pts=2.0)
+        e = gate["O/U|Over 3.5|Medium"]
+        self.assertGreaterEqual(
+            (wilson_lower_bound(e["hits"], e["n"]) - e["expected"]) * 100, 2.0)
+        self.assertTrue(e["publish"], e["reason"])
+        # ...and it still publishes with the optional absolute floor switched
+        # off explicitly, because that is the default.
+        gate2 = build_gate({"buckets": b}, min_samples=200, min_edge_pts=2.0,
+                           min_hit=0.0)
+        self.assertTrue(gate2["O/U|Over 3.5|Medium"]["publish"])
+
+    def test_sliver_edge_over_base_is_held(self):
+        """Clearing base by a sliver is not significance, whatever the hit rate.
+
+        These are the real numbers behind O/U Under 1.5 Medium: 27.5% realised
+        against a 23.1% base (n=338), shrunk edge +3.2pts, but the 95% lower
+        bound stops only 0.6pt clear of base.  Walk-forward validation showed
+        it published when the bar was merely "beats base at all" and then lost
+        its edge out-of-sample, so the margin — not a fixed win rate — is what
+        holds it.
+        """
+        from scripts.audit_reliability import build_gate
+        b = self._bucket("O/U|Under 1.5|Medium", n=338, hit_rate=0.2752,
+                         expected=0.2314)
+        self.assertGreaterEqual(
+            b["O/U|Under 1.5|Medium"]["edge_pts"], 2.0)   # the edge is there
+        gate = build_gate({"buckets": b}, min_samples=200, min_edge_pts=2.0)
+        e = gate["O/U|Under 1.5|Medium"]
+        self.assertFalse(e["publish"])
+        self.assertIn("not significant", e["reason"])
+        self.assertIn("need 2", e["reason"])
+
+    def test_optional_absolute_floor_still_bites(self):
+        """--min-hit remains available as an opt-in absolute floor."""
+        from scripts.audit_reliability import build_gate
+        b = self._bucket("O/U|Over 3.5|Medium", n=600, hit_rate=0.40,
+                         expected=0.338)
+        gate = build_gate({"buckets": b}, min_samples=200, min_edge_pts=2.0,
+                          min_hit=0.55)
+        e = gate["O/U|Over 3.5|Medium"]
+        self.assertFalse(e["publish"])
+        self.assertIn("absolute floor", e["reason"])
+
 
 class TestReportRobustness(unittest.TestCase):
     """A pick the report cannot price must degrade, not take the run down.
@@ -598,6 +741,517 @@ class TestReportRobustness(unittest.TestCase):
         ]
         rows = R.build_rows(results, R.load_ledger())
         self.assertEqual(len(rows), 4)
+
+    def test_stale_ledger_without_totals_shrunk_rate_degrades(self):
+        """A ledger whose totals lack shrunk_rate must not abort the report.
+
+        audit_reliability.py writes it today, but a ledger produced before that
+        fix is still on disk in some clones. classify_pick() used to KeyError on
+        the totals fallback, which an exception handler turned into "Reliable
+        picks report skipped" — every pick of a 722-match run vanished from
+        picks.html even though the buckets themselves were fine.
+        """
+        import reliable_report as R
+        # The crashing ledger was market-aware (gate populated) but its totals
+        # predated the shrunk_rate fix. An empty gate would flip the ledger to
+        # market-unaware lookups and dodge the exact code path that blew up.
+        ledger = {"policy": {"min_samples": 200},
+                  "gate": {"1X2|Home win|High": {"n": 182, "hits": 115,
+                                                 "hit_rate": 0.632, "expected": 0.431,
+                                                 "shrunk_rate": 0.552, "edge_pts": 12.1,
+                                                 "publish": False, "market": "1X2",
+                                                 "reason": "only 182 samples"}},
+                  "totals": {
+            # Old shape: measured numbers but no shrunk_rate.
+            "O/U|Over 2.5": {"market": "O/U", "selection": "Over 2.5",
+                             "n": 84, "hit_rate": 0.631, "expected": 0.549,
+                             "edge_pts": 3.4},
+        }}
+        pick = {"pick": "Over 2.5", "market": "O/U", "confidence": "Medium-High",
+                "home": "Some Home", "away": "Some Away"}
+        row = R.build_rows([pick], ledger)[0]
+        self.assertEqual(row["tier"], R.TIER_HELD)
+        self.assertIsNone(row["verdict"]["shrunk_rate"])
+        self.assertEqual(row["verdict"]["n"], 84)
+
+
+class TestBestBet(unittest.TestCase):
+    """picks.html must be able to recommend a market that is not 1/X/2.
+
+    A fixture whose value sits in BTTS or on the other side of a goal line used
+    to be invisible: the report read only the first six entries of the synthesis
+    shortlist, printed the primary pick, and had no notion of a price at all.
+    A best bet is only worth showing if three things hold — it is ranked across
+    every market the fixture offers, it never quotes a price ``odds_guard``
+    rejected, and it still says something when nothing prices.
+    """
+
+    @staticmethod
+    def _ledger():
+        return {
+            "policy": {"min_samples": 200, "credibility_k": 120,
+                       "min_edge_pts": 2.0},
+            "gate": {
+                "1X2|Draw|Medium": {"n": 640, "hits": 164, "hit_rate": 0.256,
+                                    "expected": 0.2426, "shrunk_rate": 0.254,
+                                    "edge_pts": 1.15, "publish": False,
+                                    "market": "1X2", "reason": "edge too small"},
+                "BTTS|No|Medium": {"n": 900, "hits": 620, "hit_rate": 0.689,
+                                   "expected": 0.4567, "shrunk_rate": 0.655,
+                                   "edge_pts": 19.8, "publish": True,
+                                   "market": "BTTS", "reason": "ok"},
+                "O/U|Over 2.5|Low": {"n": 400, "hits": 150, "hit_rate": 0.375,
+                                     "expected": 0.5479, "shrunk_rate": 0.417,
+                                     "edge_pts": -13.1, "publish": False,
+                                     "market": "O/U", "reason": "below base"},
+            },
+            "totals": {},
+        }
+
+    @staticmethod
+    def _fixture(**over):
+        base = {
+            "home": "Estudiantes Río Cuarto", "away": "CA Aldosivi",
+            "date": "18/10/2026", "market": "1X2", "pick": "Draw",
+            "confidence": "Medium",
+            "forebet_pct": [30.0, 47.0, 23.0],
+            # home == draw: the legacy parser's signature defect.
+            "odds_home": 2.87, "odds_draw": 2.87, "odds_away": 2.80,
+            "odds_btts_yes": 2.25, "odds_btts_no": 1.57,
+            "_p_btts_no": 0.78, "_p_btts_yes": 0.22,
+            "_exp_goals": (1.0, 1.6),
+            "all_picks": [
+                {"market": "1X2", "pick": "Draw", "confidence": "Medium",
+                 "model_prob": 0.40},
+                {"market": "BTTS", "pick": "No", "confidence": "Medium",
+                 "model_prob": 0.78},
+            ],
+        }
+        base.update(over)
+        return base
+
+    def test_best_bet_ranks_across_markets_not_just_the_primary(self):
+        import reliable_report as R
+        row = R.build_rows([self._fixture()], self._ledger())[0]
+        self.assertEqual((row["pick"], row["market"]), ("Draw", "1X2"))
+        best = row["best"]
+        self.assertEqual((best["market"], best["pick"]), ("BTTS", "No"))
+        self.assertFalse(best["is_primary"])
+        self.assertEqual(best["ranked_by"], "EV")
+        self.assertAlmostEqual(best["odds"], 1.57, places=2)
+        self.assertGreater(best["ev_pct"], 0.0)
+
+    def test_rejected_price_is_never_given_an_ev(self):
+        import reliable_report as R
+        res = self._fixture()
+        prices, verdict = R._price_group(res, "1X2", "Draw")
+        self.assertIsNotNone(verdict)
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "duplicate")
+        self.assertEqual(len(prices), 3)
+
+        # With BTTS priced the EV ranking still works and simply never selects
+        # a 1X2 leg; with BTTS also stripped, the fixture falls back to ranking
+        # by model lift and says the prices were rejected rather than pricing
+        # them.
+        only_1x2 = self._fixture(odds_btts_yes=None, odds_btts_no=None,
+                                 all_picks=[{"market": "1X2", "pick": "Draw",
+                                             "confidence": "Medium",
+                                             "model_prob": 0.40}])
+        best = R.best_candidate(only_1x2, self._ledger(),
+                                primary=("1X2", "Draw"))
+        self.assertIsNone(best["ev_pct"])
+        self.assertIsNone(best["odds"])
+        self.assertEqual(best["ranked_by"], "model lift")
+        # Either the candidate's own rejection note or the fixture-wide one —
+        # what matters is that the price is reported as unusable, not quoted.
+        self.assertTrue("validation" in best["note"]
+                        or "odds_guard" in best["note"], best["note"])
+
+    def test_missing_side_of_a_two_way_market_is_offered(self):
+        import reliable_report as R
+        res = self._fixture(
+            all_picks=[{"market": "BTTS", "pick": "No",
+                        "confidence": "Medium", "model_prob": 0.78}])
+        found = {(c["market"], c["pick"]): c
+                 for c in R._candidate_universe(res)}
+        self.assertIn(("BTTS", "Yes"), found)
+        self.assertAlmostEqual(found[("BTTS", "Yes")]["model_prob"], 0.22,
+                               places=6)
+        # A three-way market is never completed by subtraction — only by a
+        # probability the model actually produced.
+        for key in (("1X2", "Home win"), ("1X2", "Away win")):
+            self.assertNotIn(key, found)
+
+    def test_falls_back_to_model_lift_when_nothing_prices(self):
+        import reliable_report as R
+        res = self._fixture(odds_btts_yes=None, odds_btts_no=None,
+                            odds_home=None, odds_draw=None, odds_away=None)
+        best = R.best_candidate(res, self._ledger(), primary=("1X2", "Draw"))
+        self.assertEqual((best["market"], best["pick"]), ("BTTS", "No"))
+        self.assertEqual(best["ranked_by"], "model lift")
+        self.assertIsNone(best["odds"])
+        self.assertEqual(best["tier"], R.TIER_RELIABLE)
+
+    def test_fallback_ranks_this_match_not_the_luckiest_bucket(self):
+        """The bucket edge is one number per bucket — it cannot rank fixtures.
+
+        Give Away win the biggest ledger edge in the set while the model barely
+        rates it in *this* match, and give BTTS No a smaller edge it comfortably
+        beats on this fixture.  Ranking by bucket edge would recommend Away win
+        purely because its bucket is historically juicy; ranking by lift has to
+        pick BTTS No.
+        """
+        import reliable_report as R
+        ledger = self._ledger()
+        ledger["gate"]["1X2|Away win|Medium"] = {
+            "n": 1200, "hits": 617, "hit_rate": 0.514, "expected": 0.3244,
+            "shrunk_rate": 0.508, "edge_pts": 26.0, "publish": True,
+            "market": "1X2", "reason": "ok"}
+        res = self._fixture(
+            odds_home=None, odds_draw=None, odds_away=None,
+            odds_btts_yes=None, odds_btts_no=None,
+            all_picks=[{"market": "BTTS", "pick": "No",
+                        "confidence": "Medium", "model_prob": 0.70},
+                       {"market": "1X2", "pick": "Away win",
+                        "confidence": "Medium", "model_prob": 0.30}])
+        best = R.best_candidate(res, ledger, primary=("BTTS", "No"))
+        self.assertGreater(ledger["gate"]["1X2|Away win|Medium"]["edge_pts"],
+                           ledger["gate"]["BTTS|No|Medium"]["edge_pts"])
+        self.assertEqual(best["ranked_by"], "model lift")
+        self.assertEqual((best["market"], best["pick"]), ("BTTS", "No"))
+        self.assertGreater(best["lift_pts"], 0.0)
+
+    def test_primary_pick_prices_off_the_same_probability_the_row_shows(self):
+        import reliable_report as R
+        res = self._fixture(
+            market="O/U", pick="Over 2.5", confidence="Low",
+            _p_over25=0.30,
+            all_picks=[{"market": "O/U", "pick": "Over 2.5",
+                        "confidence": "Low", "model_prob": 0.44}])
+        row = R.build_rows([res], self._ledger())[0]
+        best = row["best"]
+        self.assertEqual((best["market"], best["pick"]), ("O/U", "Over 2.5"))
+        self.assertTrue(best["is_primary"])
+        self.assertAlmostEqual(best["stated_prob"],
+                               R._match_prob(res, "Over 2.5"), places=6)
+        self.assertEqual(best["shown_prob"], row["shown_prob"])
+
+    def test_selection_absent_from_totals_gets_a_real_sample_count(self):
+        """"0 matches" for Over 2.5 would be false — thousands are known."""
+        import reliable_report as R
+        ledger = self._ledger()
+        verdict = R.classify_pick("Over 2.5", "", ledger, "O/U")
+        self.assertEqual(verdict["n"], 400)
+        self.assertGreater(verdict["shrunk_rate"], 0.0)
+        self.assertLess(verdict["edge_pts"], 0.0)
+        self.assertEqual(verdict["tier"], R.TIER_WATCH)
+
+    # ── tier-first ranking, passes and disclosures ─────────────────────
+
+    def test_tier_outranks_a_fatter_ev(self):
+        """EV grows where the model disagrees with the book — the tier doesn't.
+
+        Over 2.5 prices +33% (WATCH: measured, no edge) against BTTS No at
+        +22% (RELIABLE: beaten its base rate).  Selecting on EV alone named
+        the WATCH leg; the tier decides and EV only ranks inside it.
+        """
+        import reliable_report as R
+        res = self._fixture(
+            odds_over25=1.90, odds_under25=1.95,
+            all_picks=[
+                {"market": "1X2", "pick": "Draw", "confidence": "Medium",
+                 "model_prob": 0.40},
+                {"market": "BTTS", "pick": "No", "confidence": "Medium",
+                 "model_prob": 0.78},
+                {"market": "O/U", "pick": "Over 2.5", "confidence": "Low",
+                 "model_prob": 0.70},
+            ])
+        best = R.best_candidate(res, self._ledger(), primary=("1X2", "Draw"))
+        self.assertEqual((best["market"], best["pick"]), ("BTTS", "No"))
+        self.assertEqual(best["tier"], R.TIER_RELIABLE)
+        # the WATCH alternative really did price higher, or this proves nothing
+        self.assertLess(best["ev_pct"], (0.70 * 1.90 - 1.0) * 100)
+
+    def test_every_price_negative_prints_a_pass_not_a_best_bet(self):
+        """A negative EV under a *Best bet* heading reads as a bet."""
+        import html as _html
+        import reliable_report as R
+        # 0.60 sits in the window where BOTH sides of the BTTS price lose
+        # (>0.637 would make No positive, <0.556 would make Yes positive), and
+        # the goal-line prices are set just wide enough that both Over and
+        # Under (derived from the fixture's Poisson mean, 51.8%) lose too — so
+        # every price on the fixture comes back at or below break-even.
+        res = self._fixture(
+            market="BTTS", pick="No", confidence="Medium",
+            _p_btts_no=0.60, _p_btts_yes=0.40,
+            odds_over25=1.90, odds_under25=1.90,
+            all_picks=[
+                {"market": "BTTS", "pick": "No", "confidence": "Medium",
+                 "model_prob": 0.60},
+                {"market": "O/U", "pick": "Over 2.5", "confidence": "Low",
+                 "model_prob": 0.50},
+            ])
+        best = R.best_candidate(res, self._ledger(), primary=("BTTS", "No"))
+        self.assertTrue(best["no_value"])
+        self.assertLess(best["ev_pct"], 0.0)
+        cell = R._best_cell(best, _html.escape)
+        self.assertIn("no +EV selection", cell)
+        self.assertIn("pass", cell)
+        self.assertIn(best["tier"], cell)   # still says what was available
+
+    def test_held_best_bet_names_the_sample_it_lacks(self):
+        """15 matches is not "no history" and not a recommendation either."""
+        import html as _html
+        import reliable_report as R
+        ledger = self._ledger()
+        ledger["gate"]["O/U|Over 3.5|Medium"] = {
+            "n": 15, "hits": 6, "hit_rate": 0.40, "expected": 0.336,
+            "shrunk_rate": 0.392, "edge_pts": 5.6, "publish": False,
+            "market": "O/U", "reason": "only 15 samples"}
+        res = self._fixture(
+            odds_btts_yes=None, odds_btts_no=None,
+            odds_over35=3.00, odds_under35=1.40,
+            all_picks=[{"market": "O/U", "pick": "Over 3.5",
+                        "confidence": "Medium", "model_prob": 0.45}])
+        best = R.best_candidate(res, ledger, primary=("1X2", "Draw"))
+        self.assertEqual((best["market"], best["pick"]), ("O/U", "Over 3.5"))
+        self.assertEqual(best["tier"], R.TIER_HELD)
+        cell = R._best_cell(best, _html.escape)
+        self.assertIn("no measured evidence (n=15)", cell)
+
+    def test_model_market_gap_beside_the_ev_is_disclosed(self):
+        """A wide gap is the model disagreeing with a well-calibrated price.
+
+        78% against a de-vigged market near 59% is a 19pt disagreement; the
+        cell prints it so the size of the EV cannot pass for confidence.
+        """
+        import html as _html
+        import reliable_report as R
+        best = R.best_candidate(self._fixture(), self._ledger(),
+                                primary=("1X2", "Draw"))
+        self.assertEqual((best["market"], best["pick"]), ("BTTS", "No"))
+        self.assertIsNotNone(best["gap_warning"])
+        self.assertGreater(abs(best["price_edge_pct"]),
+                           R.MODEL_MARKET_GAP_PTS)
+        cell = R._best_cell(best, _html.escape)
+        self.assertIn("model error, not edge", cell)
+
+
+class TestBettorStaking(unittest.TestCase):
+    """Stakes must be earned by evidence and must never over-bet the bankroll.
+
+    Two shipped defects: an unmeasured league was paid the same full stake as
+    a proven one, and the cap was applied by scaling every stake down to fill
+    exactly 100% of the bankroll — so a thin card was always all-in.
+    """
+
+    @staticmethod
+    def _match(home, prob, odds_over=1.90, odds_under=1.95, league="Atlantis Test League"):
+        return {
+            "home": home, "away": "Rivals FC", "date": "19/10/2026",
+            "league": league, "pick": "Over 2.5", "market": "O/U",
+            "odds_over25": odds_over, "odds_under25": odds_under,
+            "all_picks": [{"market": "O/U", "pick": "Over 2.5",
+                           "confidence": "Medium", "model_prob": prob}],
+        }
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import bettor
+        from unittest import mock
+        cls.B = bettor
+        # These tests are about stakes, not the ledger: force every bucket
+        # RELIABLE so a stale or absent reliability.json cannot empty the
+        # ticket out from under them (the HELD gate has its own tests).
+        mock.patch.object(
+            bettor, "classify_pick",
+            lambda pick, confidence, ledger, market=None:
+                {"tier": "RELIABLE", "n": 999}).start()
+        cls.addClassCleanup(mock.patch.stopall)
+
+    def test_unknown_league_gets_the_weak_haircut_not_full_stake(self):
+        B = self.B
+        acc = {"O/U": {B._league_family("Prime Liga"): 0.60,
+                       B._league_family("Seconda Liga"): 0.45}}
+        self.assertEqual(B._rel_factor(acc, "Prime Liga", "O/U"), (1.0, "STUD"))
+        # measured-but-weak is halved …
+        self.assertEqual(B._rel_factor(acc, "Seconda Liga", "O/U"), (0.5, "WEAK"))
+        # … and a league nothing has ever scored sits in the same bucket as
+        # the weak one, not at the STUD stake.
+        self.assertEqual(B._rel_factor(acc, "Atlantis Test League", "O/U"),
+                         (0.5, "unknown"))
+
+    def test_cap_cuts_the_weakest_legs_instead_of_scaling_everyone_down(self):
+        import unittest.mock as mock
+        B = self.B
+        matches = [self._match(f"Team {i}", prob)
+                   for i, prob in enumerate((0.70, 0.68, 0.66, 0.64), start=1)]
+        with mock.patch.object(B, "TOTAL_BANKROLL_CAP_PCT", 9.0):
+            card = B.build_card(matches)
+        legs = card["value_picks"]
+        # 5% x 4 legs at the 5% Kelly cap, halved for the unverified league,
+        # so the sum is 10% against a 9% cap: exactly one leg has to go.
+        self.assertEqual(card["total_stake_pct"], 7.5)
+        self.assertEqual(card["capped_off"], 1)
+        # the weakest EV went, and nobody was diluted to fit
+        cut = [p for p in card["all_candidates"]
+               if "card cap" in (p.get("note") or "")]
+        self.assertEqual(len(cut), 1)
+        self.assertEqual(cut[0]["model_prob"], 0.64)
+        for p in legs:
+            self.assertGreater(p["ev_pct"], 0.0)
+            self.assertEqual(p["stake_pct"],
+                             round(min((p["odds"] * p["model_prob"] - 1)
+                                       / (p["odds"] - 1) * 0.25, 0.05)
+                                   * 100 * 0.5, 3))
+        self.assertEqual(card["total_stake_pct"],
+                         round(sum(p["stake_pct"] for p in legs), 2))
+
+
+class TestBettorGates(unittest.TestCase):
+    """Reserve sides and picks-gate HELD buckets must never reach the ticket.
+
+    A +EV longshot on a youth side, or on a (selection, confidence) bucket
+    with no measured edge, is exactly the class of leg the model is worst at
+    pricing (longshots: model 34.5% vs realised 12.7%) — it stays visible in
+    all_candidates, annotated, and never gets a stake.
+    """
+
+    @staticmethod
+    def _match(home="Rivals United", pick="Over 2.5", prob=0.60):
+        return {
+            "home": home, "away": "Away FC", "date": "20/10/2026",
+            "league": "Atlantis Test League", "pick": pick, "market": "O/U",
+            "odds_over25": 1.90, "odds_under25": 1.95,
+            "all_picks": [{"market": "O/U", "pick": pick,
+                           "confidence": "Medium", "model_prob": prob}],
+        }
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, os.path.join(ROOT, "scripts"))
+        import bettor
+        cls.B = bettor
+
+    def _build(self, tier, n=999, match=None):
+        import unittest.mock as mock
+        with mock.patch.object(self.B, "classify_pick",
+                               lambda pick, confidence, ledger, market=None:
+                                   {"tier": tier, "n": n}):
+            return self.B.build_card([match or self._match()])
+
+    def test_held_bucket_leg_is_visible_but_never_ticketed(self):
+        card = self._build("HELD", n=36)
+        self.assertEqual(card["value_picks"], [])
+        cand = card["all_candidates"]
+        self.assertEqual(len(cand), 1)
+        self.assertTrue(cand[0].get("not_bettable"))
+        self.assertIn("HELD by picks gate (n=36)", cand[0]["note"])
+        self.assertEqual(card["blocked_held"], 1)
+        self.assertEqual(card["blocked_reserve"], 0)
+
+    def test_publishable_bucket_still_tickets(self):
+        card = self._build("RELIABLE")
+        self.assertEqual(len(card["value_picks"]), 1)
+        p = card["value_picks"][0]
+        self.assertEqual(p["tier"], "RELIABLE")
+        self.assertFalse(p.get("not_bettable"))
+        self.assertEqual(card["blocked_held"], 0)
+
+    def test_reserve_fixture_is_never_ticketed(self):
+        card = self._build("RELIABLE", match=self._match(home="Betis III"))
+        self.assertEqual(card["value_picks"], [])
+        cand = card["all_candidates"]
+        self.assertTrue(cand[0].get("not_bettable"))
+        self.assertIn("reserve/second team", cand[0]["note"])
+        self.assertEqual(card["blocked_reserve"], 1)
+
+    def test_watch_bucket_is_still_stakeable(self):
+        card = self._build("WATCH")
+        self.assertEqual(len(card["value_picks"]), 1)
+        self.assertEqual(card["value_picks"][0]["tier"], "WATCH")
+
+    def test_reliability_badge_renders_as_html_not_escaped_text(self):
+        card = self._build("RELIABLE")
+        card["value_picks"][0]["reliability"] = "WEAK"
+        html_out = self.B.render_card_html(card)
+        self.assertIn('<span style="color:#facc15;font-weight:700;">WEAK</span>',
+                      html_out)
+        self.assertNotIn("WEAK&lt;/span&gt;", html_out)
+
+
+class TestMLLeakageAndElo(unittest.TestCase):
+    """The ML feature vector must only contain information known before kickoff.
+
+    Half-time goals are written after the match, so reading them trained the
+    model on results it can never see when serving. Elo must be built only from
+    earlier results so a fixture never rates itself.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import ml_model  # heavy import, so done once
+        cls.M = ml_model
+
+    def test_half_time_goals_are_never_read(self):
+        row = {"home_form": "WWDLW", "away_form": "LLDWL",
+               "ht_home_goals": 3, "ht_away_goals": 2}
+        f = self.M.extract_features_from_db_row(row)
+        self.assertEqual(list(f[61:64]), [-1.0, -1.0, -1.0])
+
+    def test_elo_pre_match_excludes_same_day_and_own_result(self):
+        rows = [
+            # day 1: A thrashes B. Both fixtures on day 2 must see the post-day-1
+            # rating, and the day-2 fixtures must not see each other's result.
+            {"id": 1, "forebet_url": "x-1", "home_team": "A", "away_team": "B",
+             "match_date": "01/01/2026", "match_time": "15:00",
+             "actual_home_goals": 5, "actual_away_goals": 0},
+            {"id": 2, "forebet_url": "x-2", "home_team": "A", "away_team": "C",
+             "match_date": "02/01/2026", "match_time": "15:00",
+             "actual_home_goals": 0, "actual_away_goals": 4},
+            {"id": 3, "forebet_url": "x-3", "home_team": "B", "away_team": "A",
+             "match_date": "02/01/2026", "match_time": "17:00",
+             "actual_home_goals": 1, "actual_away_goals": 1},
+        ]
+        pre = self.M.elo_pre_match_for_rows(rows)
+        self.assertEqual(pre[1], (1500.0, 1500.0))            # nothing known yet
+        self.assertGreater(pre[2][0], 1500.0)                 # A won 5-0 on day 1
+        self.assertLess(pre[3][0], 1500.0)                    # B lost 5-0 on day 1
+        self.assertEqual(pre[2][1], 1500.0)                   # C unrated before day 2
+        # Both day-2 fixtures involving A read A's post-day-1 rating, not the
+        # value after the other day-2 fixture.
+        self.assertEqual(pre[3][1], pre[2][0])
+
+    def test_post_kickoff_rows_detected(self):
+        # Stored the day after the match: may carry the result, so excluded.
+        self.assertTrue(self.M._created_after_kickoff(
+            {"match_date": "01/01/2026", "created_at": "2026-01-02 10:00:00"}))
+        # Stored on the match day: ex-ante.
+        self.assertFalse(self.M._created_after_kickoff(
+            {"match_date": "01/01/2026", "created_at": "2026-01-01 09:00:00"}))
+        # Unreadable timestamp is kept, not silently dropped.
+        self.assertFalse(self.M._created_after_kickoff(
+            {"match_date": "01/01/2026", "created_at": None}))
+
+    def test_over25_calibration_map(self):
+        m = self.M.MLPredictor()
+        self.assertEqual(m._calibrate_over(0.6), 0.6)          # no map: identity
+        m.ou_platt = (-0.42, 1.78)                              # fitted shape
+        lo, mid, hi = (m._calibrate_over(p) for p in (0.3, 0.5, 0.8))
+        self.assertLess(lo, 0.3)                                # pulls low p down
+        self.assertLess(mid, 0.5)                               # level bias removed
+        self.assertLess(mid, hi)                                # still monotone
+
+    def test_post_match_features_never_selected(self):
+        import numpy as np
+        rng = np.random.default_rng(0)
+        X = rng.normal(size=(400, len(self.M.FEATURE_NAMES))).astype(np.float32)
+        y1 = (X[:, 61] > 0).astype(int)        # HT home goals perfectly "predictive"
+        y2 = (X[:, 5] > 0).astype(int)
+        sel = self.M.select_features(X, y1, y2, max_features=50, min_independent=30)
+        self.assertFalse(set(int(i) for i in sel) & self.M.POST_MATCH_FEATURES)
 
 
 if __name__ == "__main__":

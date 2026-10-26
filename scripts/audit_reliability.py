@@ -446,14 +446,17 @@ def base_rate_of(base_rates: dict, market: str, pred: str) -> float:
 # Odds stamping
 # --------------------------------------------------------------------------
 
-def stamp_odds(conn: sqlite3.Connection) -> dict:
-    """Fill matches.odds_status / matches.odds_overround. Idempotent."""
-    existing = {r[1] for r in conn.execute("PRAGMA table_info(matches)")}
-    for col, decl in (("odds_status", "TEXT"), ("odds_overround", "REAL")):
-        if col not in existing:
-            conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {decl}")
-    conn.commit()
+def scan_odds(conn: sqlite3.Connection) -> Tuple[dict, list]:
+    """Classify every stored 1X2 price. Read-only.
 
+    Returns ``(counts, updates)`` where ``counts`` maps each ``odds_guard``
+    verdict reason to how many rows carry it, and ``updates`` is the row list
+    :func:`stamp_odds` writes back.  Split out so that a build run with
+    ``--no-stamp`` still reports odds integrity: writing it into the ledger is
+    what makes the report's "why most expected values are absent" note appear,
+    and the ledger used to ship with an empty ``odds_integrity`` precisely
+    because stamping had been skipped.
+    """
     counts = defaultdict(int)
     upd = []
     for r in conn.execute("""
@@ -467,11 +470,22 @@ def stamp_odds(conn: sqlite3.Connection) -> dict:
             r["forebet_home_pct"], r["forebet_draw_pct"], r["forebet_away_pct"])
         counts[verdict.reason] += 1
         upd.append((verdict.reason, verdict.overround, r["id"]))
+    return dict(counts), upd
 
+
+def stamp_odds(conn: sqlite3.Connection) -> dict:
+    """Fill matches.odds_status / matches.odds_overround. Idempotent."""
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(matches)")}
+    for col, decl in (("odds_status", "TEXT"), ("odds_overround", "REAL")):
+        if col not in existing:
+            conn.execute(f"ALTER TABLE matches ADD COLUMN {col} {decl}")
+    conn.commit()
+
+    counts, upd = scan_odds(conn)
     conn.executemany(
         "UPDATE matches SET odds_status = ?, odds_overround = ? WHERE id = ?", upd)
     conn.commit()
-    return dict(counts)
+    return counts
 
 
 # --------------------------------------------------------------------------
@@ -682,7 +696,8 @@ def measure(conn: sqlite3.Connection, since_days: int = 0,
 # Gate construction
 # --------------------------------------------------------------------------
 
-def build_gate(measured: dict, min_samples: int, min_edge_pts: float) -> dict:
+def build_gate(measured: dict, min_samples: int, min_edge_pts: float,
+               min_hit: float = 0.0) -> dict:
     """Turn measurements into an explicit publish / hold decision table.
 
     A bucket is publishable when it has enough history *and* its
@@ -690,6 +705,27 @@ def build_gate(measured: dict, min_samples: int, min_edge_pts: float) -> dict:
     selection by ``min_edge_pts``.  The base-rate comparison is the honest
     test: "Over 1.5 at 88%" is not a signal, it is simply the definition of
     Over 1.5 landing.
+
+    Significance is measured **relative to that same base rate**: the one-sided
+    95% Wilson lower bound on the raw hit rate must clear the base rate by the
+    full ``min_edge_pts``, not merely by a sliver.  Asking the lower bound to
+    clear the bar — rather than asking it to clear zero — is what makes this a
+    per-selection test instead of a fixed threshold on how often a pick wins:
+    "Over 3.5 at 35%" and "1X2 Home at 55%" are judged against their own base
+    rates, so no market is advantaged by having a naturally high hit rate.
+
+    It replaces an earlier absolute floor (``min_hit >= 0.55`` on that lower
+    bound), which required every published pick to win more than half the time
+    regardless of market.  That constant suppressed 89 of 100 buckets, and a
+    walk-forward showed it bought nothing the relative test does not already
+    catch: with the floor removed and the bar left as "clears base at all",
+    ``O/U|Under 1.5|Medium`` (+0.6pt lower-bound margin) and
+    ``O/U|Over 3.5|Low`` (+0.9pt) both published and both then failed
+    out-of-sample.  Requiring the full 2pt margin removes exactly those two and
+    keeps the seven genuinely significant buckets the floor was holding down.
+    ``min_hit`` remains available as an *optional* absolute floor (0 disables,
+    which is the default) for anyone who wants to reason about stakeability
+    that way.
 
     ROI is reported for reference only and is **never** part of the gate.
     Historical ROI from stored odds is not trustworthy: the odds columns
@@ -703,25 +739,38 @@ def build_gate(measured: dict, min_samples: int, min_edge_pts: float) -> dict:
     gate = {}
     for key, e in measured["buckets"].items():
         wilson_lo = wilson_lower_bound(e["hits"], e["n"])
-        # Two independent conditions must both hold before a bucket may publish:
+        # Three independent conditions must all hold before a bucket may publish:
         #   1. enough history and a credibility-shrunk edge over the base rate
-        #   2. statistical significance -- the lower bound of a one-sided 95%
-        #      confidence interval on the raw hit rate must clear the base rate
+        #   2. statistical significance *at the same bar* — the lower bound of a
+        #      one-sided 95% confidence interval on the raw hit rate must clear
+        #      the base rate by the full min_edge_pts
+        #   3. (optional, off by default) an absolute floor on that lower bound
         # (2) is what stops a 54-way search from promoting buckets that merely
-        # got lucky; see wilson_lower_bound().
+        # got lucky; see wilson_lower_bound().  Because the margin is measured
+        # against each selection's own base rate, a pick that beats a 23% base
+        # by a sliver is held for the same reason a pick that beats a 66% base
+        # by a sliver is held — no absolute constant decides it.
+        margin_pts = (wilson_lo - e["expected"]) * 100
         publishable = (e["n"] >= min_samples
                        and e["edge_pts"] >= min_edge_pts
-                       and wilson_lo > e["expected"])
+                       and margin_pts >= min_edge_pts
+                       and wilson_lo >= min_hit)
         if e["n"] < min_samples:
             reason = f"only {e['n']} samples (need {min_samples})"
         elif e["edge_pts"] < min_edge_pts:
             reason = (f"shrunk rate {e['shrunk_rate']*100:.1f}% does not beat "
                       f"{e['expected']*100:.0f}% base by {min_edge_pts:g} pts")
-        elif wilson_lo <= e["expected"]:
-            reason = (f"edge not significant — 95% lower bound {wilson_lo*100:.1f}% "
-                      f"does not clear {e['expected']*100:.0f}% base")
+        elif margin_pts < min_edge_pts:
+            reason = (f"edge not significant — 95% lower bound "
+                      f"{wilson_lo*100:.1f}% clears {e['expected']*100:.0f}% base "
+                      f"by only {margin_pts:.1f} pts (need {min_edge_pts:g})")
+        elif wilson_lo < min_hit:
+            reason = (f"below the absolute floor — 95% lower bound "
+                      f"{wilson_lo*100:.1f}% is under the {min_hit*100:.0f}% "
+                      f"minimum for a pick that usually wins")
         else:
-            reason = "enough history + beats base rate + edge is statistically significant"
+            reason = ("enough history + beats base rate + edge is statistically "
+                      "significant at the same bar")
         entry = {
             "market": e["market"],
             "period": e["period"],
@@ -836,6 +885,11 @@ def main():
     ap.add_argument("--min-samples", type=int, default=MIN_SAMPLE)
     ap.add_argument("--min-edge", type=float, default=2.0,
                     help="minimum shrunk edge over base rate, in points")
+    ap.add_argument("--min-hit", type=float, default=0.0,
+                    help="optional ABSOLUTE floor on the one-sided 95%% lower "
+                         "bound of the hit rate (0 = off, the default). The "
+                         "gate's own significance bar is relative to each "
+                         "selection's base rate and needs no constant here")
     ap.add_argument("--no-stamp", action="store_true",
                     help="skip writing odds_status back to the DB")
     args = ap.parse_args()
@@ -844,14 +898,20 @@ def main():
     conn.row_factory = sqlite3.Row
 
     odds_summary = {}
-    if not args.no_stamp:
+    if args.no_stamp:
+        # Read-only: the ledger still has to carry the counts, because the
+        # report keys its odds-integrity note on them.  Skipping the write must
+        # not mean shipping an empty object.
+        odds_summary, _ = scan_odds(conn)
+        print("Odds integrity (scanned, not written — --no-stamp)...")
+    else:
         print("Stamping odds integrity...")
         odds_summary = stamp_odds(conn)
-        for reason, count in sorted(odds_summary.items(), key=lambda x: -x[1]):
-            print(f"  {reason:<22} {count:>7}")
-        total = sum(odds_summary.values())
-        ok = odds_summary.get("ok", 0)
-        print(f"  {'-> usable':<22} {ok}/{total} = {ok/max(total,1)*100:.1f}%")
+    for reason, count in sorted(odds_summary.items(), key=lambda x: -x[1]):
+        print(f"  {reason:<22} {count:>7}")
+    total = sum(odds_summary.values())
+    ok = odds_summary.get("ok", 0)
+    print(f"  {'-> usable':<22} {ok}/{total} = {ok/max(total,1)*100:.1f}%")
 
     print("\nMeasuring reliability...")
     measured = measure(conn, since_days=args.days)
@@ -859,7 +919,7 @@ def main():
     calib = calibration(conn)
     conn.close()
 
-    gate = build_gate(measured, args.min_samples, args.min_edge)
+    gate = build_gate(measured, args.min_samples, args.min_edge, args.min_hit)
 
     payload = {
         "generated_at": datetime.now().isoformat(timespec="seconds"),
@@ -867,6 +927,7 @@ def main():
         "policy": {
             "min_samples": args.min_samples,
             "min_edge_pts": args.min_edge,
+            "min_hit_rate": args.min_hit,
             "credibility_k": K,
             "base_rates": {
                 "source": "measured from history: unconditional frequency over "
