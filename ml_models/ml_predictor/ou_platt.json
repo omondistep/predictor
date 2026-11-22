@@ -1,0 +1,14 @@
+{
+  "a": -0.4073565482281922,
+  "b": 1.7607437742613716,
+  "fitted_on": {
+    "cutoff": "2026-09-01",
+    "train_rows": 12846,
+    "test_rows": 7963,
+    "test_over_rate": 0.5483
+  },
+  "cv_logloss_raw": 0.6846,
+  "cv_logloss_platt": 0.6807,
+  "constant_base_logloss": 0.6885,
+  "fitted_at": "2026-10-11T17:30:13"
+}

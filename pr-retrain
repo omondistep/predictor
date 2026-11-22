@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Retrain ML model + calibrate from played results
+set -e
+DIR="$(cd "$(dirname "$0")" && pwd)"
+PYTHON="$DIR/.venv/bin/python"
+
+echo "[1/2] Retraining ML model..."
+"$PYTHON" "$DIR/ml_model.py" --train
+
+echo "[2/2] Running calibration analysis..."
+"$PYTHON" "$DIR/calibration_learner.py" --analyze
+
+echo "Done. Model learned from all results."

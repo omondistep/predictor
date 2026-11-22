@@ -1,0 +1,4857 @@
+[calibrate] Thresholds tightened from 42288 calibration records (8 changes)
+[calibrate] Thresholds tightened from 42288 calibration records (9 changes)
+[calibrate] Thresholds tightened from 42288 calibration records (9 changes)
+[calibrate] Thresholds tightened from 42288 calibration records (9 changes)
+[calibrate] Thresholds tightened from 42288 calibration records (8 changes)
+[calibrate] Thresholds tightened from 42288 calibration records (9 changes)
+[
+  {
+    "url": "https://www.forebet.com/en/football/matches/drochtersen-assel-kickers-emden-2479115",
+    "home": "Drochtersen / Assel",
+    "away": "Kickers Emden15/09/2026 19:30 GMT",
+    "league": "5th place Germany Regionalliga Nord 7th place",
+    "date": "15/09/2026",
+    "time": "19:30",
+    "pick": "Over 3.5",
+    "market": "O/U",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.5 model 69%o/31%u",
+        "model_prob": 0.6946399324499875,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.31691916080754823,
+        "components": {
+          "prob": 0.359,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.5 model 47%o",
+        "model_prob": 0.466103045729932,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.2796533328602083,
+        "components": {
+          "prob": 0.285,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.5 model 82%o/18%u",
+        "model_prob": 0.8200642558573381,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.2740720499608921,
+        "components": {
+          "prob": 0.274,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.5 model 30%o",
+        "model_prob": 0.2954572188979637,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.24058672988762786,
+        "components": {
+          "prob": 0.207,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "model 59%/20%/21% exp 3.0-1.5 pos 6th-8th H:WWWLWL A:WWDDLL",
+        "model_prob": 0.5911553165467363,
+        "implied_prob": 0.5154639175257733,
+        "value_ratio": 1.1468413141006681,
+        "coverage": 1,
+        "decision_value": 0.20648810280508134,
+        "components": {
+          "prob": 0.162,
+          "edge": 0.076,
+          "align": 0.228,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "Yes",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "blended 80%y/20%n ml85% fb94%",
+        "model_prob": 0.7971126288323847,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.19220088336770247,
+        "components": {
+          "prob": 0.25,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 1.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 4.5 model 92%o/8%u",
+        "model_prob": 0.9191979377824532,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.18620296853430057,
+        "components": {
+          "prob": 0.146,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 56% vs 27% (1H exp 1.45-0.67)",
+        "model_prob": 0.5563573500343975,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.09543798759744195,
+        "components": {
+          "prob": 0.056,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DNB",
+        "pick": "Home",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "derived from model",
+        "model_prob": 0.6266446975371261,
+        "implied_prob": 0.5154639175257733,
+        "value_ratio": 1.2156907132220245,
+        "coverage": 1,
+        "decision_value": 0.07427716750585094,
+        "components": {
+          "prob": 0.062,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.20059384941763014,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.028679541720162148,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.063,
+          "align": 0.154,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.20825083403563355,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.002197708600810741,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.104,
+          "align": -0.228,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★O/U: Over 3.5 (Medium-High)",
+      " O/U: Over 4.5 (Medium-High)",
+      " O/U: Over 2.5 (Medium-High)",
+      " O/U: Over 5.5 (Medium-High)",
+      " 1X2: Home win (Medium-High)",
+      " BTTS: Yes (Medium-High)",
+      " O/U: Over 1.5 (Medium)",
+      " 1H: Home win (Medium-High)",
+      " DNB: Home (Medium)",
+      " 1X2: Draw (Low)",
+      " 1X2: Away win (Low)"
+    ],
+    "score_lean": "3-1",
+    "reasoning": [
+      "⚠ Common-opp strength: H GD +2.0/2 vs A GD +0.0/2 → H×1.10 A×0.90",
+      "[SCORING] vs 2 common opponents: Drochtersen / Assel scored in 2/2 (100%), Kickers Emden15/09/2026 19:30 GMT scored in 2/2 (100%)",
+      "[DEFENSE] Vulnerable defenses: Drochtersen / Assel concedes 1.0/game, Kickers Emden15/09/2026 19:30 GMT concedes 2.0/game vs common opponents",
+      "[BTTS] High BTTS rate (100%) against common opponents — both teams score consistently",
+      "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+      "O/U: Over 3.5 (Medium-High) — exp goals 4.5 model 69%o/31%u  [synth 0.317]",
+      "O/U: Over 4.5 (Medium-High) — exp goals 4.5 model 47%o  [synth 0.280]",
+      "O/U: Over 2.5 (Medium-High) — exp goals 4.5 model 82%o/18%u  [synth 0.274]",
+      "O/U: Over 5.5 (Medium-High) — exp goals 4.5 model 30%o  [synth 0.241]",
+      "1X2: Home win (Medium-High) — model 59%/20%/21% exp 3.0-1.5 pos 6th-8th H:WWWLWL A:WWDDLL  [synth 0.206]",
+      "BTTS: Yes (Medium-High) — blended 80%y/20%n ml85% fb94%  [synth 0.192]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours home (agreement -0.23 across 4 sources); O/U pick scored higher than 1X2 Home win (coverage 3 vs 1 outcomes); Expected goals 3.0-1.5 (total 4.5)",
+      "[TRANS-C] Drochtersen / Assel (GD +3) outperforms Kickers Emden15/09/2026 19:30 GMT (GD +0) vs Atlas Delmenhorst",
+      "[TRANS-C] Kickers Emden15/09/2026 19:30 GMT (GD +0) outperforms Drochtersen / Assel (GD -1) vs Hannover 96 II",
+      "[TRANS-D] Common opponents show no clear edge (0.16) — evenly matched",
+      "†Trans: draw tendency (0.12)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: -0.30 (favors H)",
+      "H last 6: 3W-0D-3L (2.5gf 1.5ga, 1.5 ppg)",
+      "A last 6: 3W-2D-1L (2.7gf 2.5ga, 1.8 ppg)",
+      "H at home: 1W-0D-2L (2.7gf 1.3ga)",
+      "A away: 1W-1D-1L (2.7gf 3.7ga)",
+      "Common opponents (2): H GD +2 vs A GD +0",
+      "  vs atlas delmenhorst: H 3-0(W) A 3-3(D)",
+      "  vs hannover 96 ii: H 1-2(L) A 1-1(D)",
+      "Goal diff: H +1.2 vs A +0.0 (diff -1.2, fav H, sig -0.10)",
+      "H trending up (recent 3 better than older)",
+      "A trending up (recent 3 better than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the home side (moderately on form, consensus -0.23); overall the model settles on O/U Over 3.5 (Medium-High), driven by expected total 4.5 goals (model 36%) (O/U covers 3 outcomes vs 1X2's 1) (decision value 0.32). 1X2 prediction: Home win (59%, Medium-High)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      3.0125089076372964,
+      1.4780476229622121
+    ],
+    "_volatility": 0.2,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+draw+synthesis",
+    "_kelly_stake": 0.0,
+    "_model_prob": 0.6946399324499875,
+    "_implied_prob": null,
+    "_odds": null,
+    "_poisson_probs": [
+      0.5911553165467363,
+      0.20059384941763014,
+      0.20825083403563355
+    ],
+    "_ml": {
+      "ml_prob_away": 0.2732376381152144,
+      "ml_prob_draw": 0.23893354899319447,
+      "ml_prob_home": 0.4878288128915911,
+      "ml_prob_under": 0.35456151147867243,
+      "ml_prob_over": 0.6454384885213276,
+      "ml_prediction": "Home",
+      "ml_ou_prediction": "Over"
+    },
+    "_synthesis_rationale": "Component consensus favours home (agreement -0.23 across 4 sources); O/U pick scored higher than 1X2 Home win (coverage 3 vs 1 outcomes); Expected goals 3.0-1.5 (total 4.5)",
+    "_synthesis_ranked": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.31691916080754823,
+        "components": {
+          "prob": 0.359,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.2796533328602083,
+        "components": {
+          "prob": 0.285,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.2740720499608921,
+        "components": {
+          "prob": 0.274,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.24058672988762786,
+        "components": {
+          "prob": 0.207,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "decision_value": 0.20648810280508134,
+        "components": {
+          "prob": 0.162,
+          "edge": 0.076,
+          "align": 0.228,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "Yes",
+        "confidence": "Medium-High",
+        "decision_value": 0.19220088336770247,
+        "components": {
+          "prob": 0.25,
+          "edge": null,
+          "align": -0.069,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_warnings": [
+      "No home-venue attack data",
+      "No away-venue attack data",
+      "Very high O15 (94%)",
+      "No shots data"
+    ],
+    "_red_flags": [],
+    "_backup": {
+      "pick": "Over 4.5",
+      "market": "O/U",
+      "confidence": "Medium-High",
+      "coverage": 1
+    },
+    "_ml_analysis": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "Medium",
+      "all_picks": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.7267623618847856,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.38,
+          "decision_value": 0.258700928027587,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 2
+        },
+        {
+          "market": "BTTS",
+          "pick": "Yes",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML 85%",
+          "model_prob": 0.85,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.18,
+          "decision_value": 0.21849406713104785,
+          "components": {
+            "prob": 0.303,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML exp 2.7g model 80%",
+          "model_prob": 0.8022695853846694,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.25,
+          "decision_value": 0.15158829051494635,
+          "components": {
+            "prob": 0.029,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML model 49%",
+          "model_prob": 0.4878288128915911,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.05,
+          "decision_value": 0.11748082420190165,
+          "components": {
+            "prob": 0.058,
+            "edge": -0.028,
+            "align": 0.204,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.6409805769867379,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.56,
+          "decision_value": 0.1052946054101945,
+          "components": {
+            "prob": 0.076,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.7g model 65% (ML direct)",
+          "model_prob": 0.6454384885213276,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.55,
+          "decision_value": 0.0626086644724245,
+          "components": {
+            "prob": 0.099,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 24% (no signal)",
+          "model_prob": 0.23893354899319447,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 4.19,
+          "decision_value": 0.030739207173187268,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.025,
+            "align": 0.159,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 3.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.7g model 35%",
+          "model_prob": 0.3549016506199041,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.82,
+          "decision_value": 0.022899518072044236,
+          "components": {
+            "prob": 0.02,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 4.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.7g model 19%o",
+          "model_prob": 0.18633944973340966,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.37,
+          "decision_value": 0.015621033041484818,
+          "components": {
+            "prob": 0.005,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 27%",
+          "model_prob": 0.2732376381152144,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 3.66,
+          "decision_value": 0.001696035865936335,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.039,
+            "align": -0.204,
+            "conv": 0.667
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "DC: 1X (Medium)",
+        "☆BTTS: Yes (Medium-High)",
+        "☆O/U: Over 1.5 (Medium-High)",
+        "☆1X2: Home win (Medium-High)",
+        "☆DNB: Home (Medium-High)"
+      ],
+      "reasoning": [
+        "⚠ Common-opp strength: H GD +2.0/2 vs A GD +0.0/2 → H×1.10 A×0.90",
+        "[TRANS-C] Drochtersen / Assel (GD +3) outperforms Kickers Emden15/09/2026 19:30 GMT (GD +0) vs Atlas Delmenhorst",
+        "[TRANS-C] Kickers Emden15/09/2026 19:30 GMT (GD +0) outperforms Drochtersen / Assel (GD -1) vs Hannover 96 II",
+        "[TRANS-D] Common opponents show no clear edge (0.16) — evenly matched",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours home (agreement -0.20 across 3 sources); Expected goals 1.6-1.1 (total 2.7)",
+        "",
+        "⟁SYNTHFORM⟁ home side (-0.22 form, -0.22 consensus); settles on DC: 1X (Medium, dv 0.26). 1X2: Home win (49%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 4W-0D-2L (2.0 ppg)",
+        "A last 6: 2W-2D-2L (1.3 ppg)",
+        "H trending up (recent 3 better than older)",
+        "A trending up (recent 3 better than older)"
+      ],
+      "_exp_goals": [
+        1.5979999999999999,
+        1.125
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0014,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.4878288128915911,
+            "draw": 0.23893354899319447,
+            "away": 0.2732376381152144
+          },
+          "odds": {
+            "home": 2.05,
+            "draw": 4.19,
+            "away": 3.66
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.6454384885213276,
+            "under": 0.35456151147867243
+          },
+          "odds": {
+            "over": 1.55,
+            "under": 2.82
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.85,
+            "no": 0.15000000000000002
+          },
+          "odds": {
+            "yes": 1.18,
+            "no": 6.67
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.7267623618847856,
+            "12": 0.7610664510068055,
+            "X2": 0.5121711871084089
+          },
+          "odds": {
+            "1X": 1.38,
+            "12": 1.31,
+            "X2": 1.95
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.6409805769867379,
+            "away": 0.35901942301326206
+          },
+          "odds": {
+            "home": 1.56,
+            "away": 2.79
+          }
+        },
+        "ml_prediction": "Home",
+        "ml_ou_prediction": "Over"
+      },
+      "_synthesis_rationale": "Component consensus favours home (agreement -0.20 across 3 sources); Expected goals 1.6-1.1 (total 2.7)",
+      "_synthesis_ranked": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium",
+          "decision_value": 0.258700928027587,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "BTTS",
+          "pick": "Yes",
+          "confidence": "Medium-High",
+          "decision_value": 0.21849406713104785,
+          "components": {
+            "prob": 0.303,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "decision_value": 0.15158829051494635,
+          "components": {
+            "prob": 0.029,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "decision_value": 0.11748082420190165,
+          "components": {
+            "prob": 0.058,
+            "edge": -0.028,
+            "align": 0.204,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "decision_value": 0.1052946054101945,
+          "components": {
+            "prob": 0.076,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "decision_value": 0.0626086644724245,
+          "components": {
+            "prob": 0.099,
+            "edge": null,
+            "align": -0.061,
+            "conv": 0.667
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 1.0,
+      "away_scoring_rate": 1.0,
+      "home_defense_vulnerability": 1.0,
+      "away_defense_vulnerability": 2.0,
+      "btts_rate": 1.0,
+      "over25_rate": 1.0,
+      "home_scoring_consistency": "High",
+      "away_scoring_consistency": "High",
+      "reasoning": [
+        "[SCORING] vs 2 common opponents: Drochtersen / Assel scored in 2/2 (100%), Kickers Emden15/09/2026 19:30 GMT scored in 2/2 (100%)",
+        "[DEFENSE] Vulnerable defenses: Drochtersen / Assel concedes 1.0/game, Kickers Emden15/09/2026 19:30 GMT concedes 2.0/game vs common opponents",
+        "[BTTS] High BTTS rate (100%) against common opponents — both teams score consistently",
+        "[O/U] High O2.5 rate (100%) against common opponents — expect goals"
+      ],
+      "home_team": "Drochtersen / Assel",
+      "away_team": "Kickers Emden15/09/2026 19:30 GMT"
+    },
+    "forebet": "1",
+    "forebet_pct": [
+      40,
+      34,
+      26
+    ],
+    "forebet_over25_pct": 80,
+    "forebet_btts_yes_pct": 94,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 0,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "WWWLWL",
+    "away_form": "WWDDLL",
+    "home_pos": 6,
+    "away_pos": 8,
+    "odds_home": 1.94,
+    "odds_draw": 3.79,
+    "odds_away": 3.2,
+    "odds_over25": null,
+    "odds_under25": null,
+    "odds_btts_yes": null,
+    "odds_btts_no": null,
+    "h2h_matches": 3,
+    "h2h_home_wins": 2,
+    "h2h_draws": 1,
+    "h2h_away_wins": 0,
+    "h2h_goals_for": 8,
+    "h2h_goals_against": 4,
+    "h2h_avg_total_goals": 4.0,
+    "home_home_avg_goals_for": null,
+    "home_home_avg_goals_against": null,
+    "away_away_avg_goals_for": null,
+    "away_away_avg_goals_against": null,
+    "home_over15_pct": 88,
+    "home_under15_pct": 13,
+    "away_over15_pct": 100,
+    "away_under15_pct": 0,
+    "home_over25_pct": 88,
+    "home_under25_pct": 13,
+    "away_over25_pct": 88,
+    "away_under25_pct": 13,
+    "home_over35_pct": 50,
+    "home_under35_pct": 50,
+    "away_over35_pct": 88,
+    "away_under35_pct": 13,
+    "home_btts_yes_pct": 75,
+    "home_btts_no_pct": 25,
+    "away_btts_yes_pct": 100,
+    "away_btts_no_pct": 0,
+    "home_scored_pct": 88,
+    "home_conceded_pct": 13,
+    "away_scored_pct": 100,
+    "away_conceded_pct": 0,
+    "home_total_shots_pg": 0.0,
+    "home_shots_ontarget_pct": null,
+    "away_total_shots_pg": 0.0,
+    "away_shots_ontarget_pct": null,
+    "home_clean_sheets_pct": 12.5,
+    "away_clean_sheets_pct": 0.0,
+    "match_id": 24263,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+draw+synthesis",
+    "kelly_stake": 0.0,
+    "pick_odds": null,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 0,
+      "matches": 0,
+      "reason": "Insufficient data for this league"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No league data"
+    }
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/fortuna-dusseldorf-ii-wuppertaler-sv-2510827",
+    "home": "Fortuna Dusseldorf II",
+    "away": "Wuppertaler SV15/09/2026 19:30 GMT",
+    "league": "2nd place Germany Oberliga Niederrhein 18th place",
+    "date": "15/09/2026",
+    "time": "19:30",
+    "pick": "Home win",
+    "market": "1X2",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "model 80%/13%/7% exp 2.6-0.5 pos 3rd-19th H:WLWWWD A:LLLLLL",
+        "model_prob": 0.7969837438118749,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.30900942673279763,
+        "components": {
+          "prob": 0.368,
+          "edge": -0.051,
+          "align": 0.336,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "1X",
+        "confidence": "High",
+        "rank": 1,
+        "reason": "derived from model",
+        "model_prob": 0.8638420896151401,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 2,
+        "decision_value": 0.27147728896125406,
+        "components": {
+          "prob": 0.265,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 3.1 model 47%o/53%u",
+        "model_prob": 0.46585328586173436,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.17628999457173314,
+        "components": {
+          "prob": 0.131,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "12",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "derived from model",
+        "model_prob": 0.7855574799731877,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 2,
+        "decision_value": 0.16121839971428642,
+        "components": {
+          "prob": 0.14,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "blended 31%y/69%n fb49%",
+        "model_prob": 0.6873973435842049,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.1583368850593902,
+        "components": {
+          "prob": 0.235,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DNB",
+        "pick": "Home",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "derived from model",
+        "model_prob": 0.7414564898356897,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.12944722071344417,
+        "components": {
+          "prob": 0.177,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 63% vs 30% (1H exp 1.24-0.25)",
+        "model_prob": 0.626578387462609,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.12831266336985914,
+        "components": {
+          "prob": 0.127,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Low",
+        "rank": 4,
+        "reason": "exp goals 3.1 model 23%o",
+        "model_prob": 0.2290611871269428,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.034896560617025146,
+        "components": {
+          "prob": 0.048,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Low",
+        "rank": 4,
+        "reason": "exp goals 3.1 model 11%o",
+        "model_prob": 0.11165158687374488,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.02244807093382988,
+        "components": {
+          "prob": 0.023,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.12817469798463177,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.036928502664395804,
+        "components": {
+          "prob": 0.0,
+          "edge": 0.019,
+          "align": 0.133,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.07484155820349342,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.0,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.066,
+          "align": -0.336,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★1X2: Home win (Medium-High)",
+      " DC: 1X (High)",
+      " O/U: Over 3.5 (Medium)",
+      " DC: 12 (Medium)",
+      " BTTS: No (Medium)",
+      " DNB: Home (Medium)",
+      " 1H: Home win (Medium-High)",
+      " O/U: Over 4.5 (Low)",
+      " O/U: Over 5.5 (Low)",
+      " 1X2: Draw (Low)",
+      " 1X2: Away win (Low)"
+    ],
+    "score_lean": "3-1",
+    "reasoning": [
+      "1X2: Home win (Medium-High) — model 80%/13%/7% exp 2.6-0.5 pos 3rd-19th H:WLWWWD A:LLLLLL  [synth 0.309]",
+      "DC: 1X (High) — derived from model  [synth 0.271]",
+      "O/U: Over 3.5 (Medium) — exp goals 3.1 model 47%o/53%u  [synth 0.176]",
+      "DC: 12 (Medium) — derived from model  [synth 0.161]",
+      "BTTS: No (Medium) — blended 31%y/69%n fb49%  [synth 0.158]",
+      "DNB: Home (Medium) — derived from model  [synth 0.129]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours home (agreement -0.34 across 3 sources); Market favours this more than model (-5%) -- limited value; Model: H 80% / D 13% / A 7%",
+      "[TRANS-P] Fortuna Dusseldorf II (#3) 16 positions above Wuppertaler SV15/09/2026 19:30 GMT (#19) — standing advantage",
+      "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+      "†Trans: draw tendency (0.12)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: -0.54 (favors H)",
+      "H last 6: 4W-0D-1L (2.2gf 0.6ga, 2.4 ppg)",
+      "A last 6: 0W-0D-4L (0.2gf 1.5ga, 0.0 ppg)",
+      "H at home: 3W-0D-0L (2.7gf 0.3ga)",
+      "A away: 0W-0D-3L (0.3gf 1.3ga)",
+      "Standing: H #3 vs A #19 (16th place gap, fav H, sig -0.30)",
+      "Goal diff: H +1.6 vs A -1.4 (diff -3.0, fav H, sig -0.24)",
+      "H trending down (recent 3 worse than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the home side (strongly on form, consensus -0.34); overall the model settles on 1X2 Home win (Medium-High), driven by model probability 37% (decision value 0.31). 1X2 prediction: Home win (80%, Medium-High)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      2.588293045090379,
+      0.5414289332799246
+    ],
+    "_volatility": 0.2,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "_kelly_stake": 0.0,
+    "_model_prob": 0.7969837438118749,
+    "_implied_prob": null,
+    "_odds": null,
+    "_poisson_probs": [
+      0.7969837438118749,
+      0.12817469798463177,
+      0.07484155820349342
+    ],
+    "_ml": {
+      "ml_prob_away": 0.15952545461015288,
+      "ml_prob_draw": 0.1881497094180373,
+      "ml_prob_home": 0.6523248359718098,
+      "ml_prob_under": 0.3777192213994295,
+      "ml_prob_over": 0.6222807786005704,
+      "ml_prediction": "Home",
+      "ml_ou_prediction": "Over"
+    },
+    "_synthesis_rationale": "Component consensus favours home (agreement -0.34 across 3 sources); Market favours this more than model (-5%) -- limited value; Model: H 80% / D 13% / A 7%",
+    "_synthesis_ranked": [
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "decision_value": 0.30900942673279763,
+        "components": {
+          "prob": 0.368,
+          "edge": -0.051,
+          "align": 0.336,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "1X",
+        "confidence": "High",
+        "decision_value": 0.27147728896125406,
+        "components": {
+          "prob": 0.265,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium",
+        "decision_value": 0.17628999457173314,
+        "components": {
+          "prob": 0.131,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "12",
+        "confidence": "Medium",
+        "decision_value": 0.16121839971428642,
+        "components": {
+          "prob": 0.14,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "decision_value": 0.1583368850593902,
+        "components": {
+          "prob": 0.235,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DNB",
+        "pick": "Home",
+        "confidence": "Medium",
+        "decision_value": 0.12944722071344417,
+        "components": {
+          "prob": 0.177,
+          "edge": null,
+          "align": -0.101,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_warnings": [
+      "No home-venue attack data",
+      "No away-venue attack data",
+      "No shots data"
+    ],
+    "_red_flags": [],
+    "_backup": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "High",
+      "coverage": 2
+    },
+    "_ml_analysis": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "Medium-High",
+      "all_picks": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.8404745453898471,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.19,
+          "decision_value": 0.27468438027280656,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 2
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML model 65%",
+          "model_prob": 0.6523248359718098,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.53,
+          "decision_value": 0.22645066159127902,
+          "components": {
+            "prob": 0.223,
+            "edge": -0.196,
+            "align": 0.538,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.803503852297941,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.24,
+          "decision_value": 0.1785396953110156,
+          "components": {
+            "prob": 0.239,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML exp 2.9g model 82%",
+          "model_prob": 0.8215043435669704,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.22,
+          "decision_value": 0.15318912185131645,
+          "components": {
+            "prob": 0.048,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "BTTS",
+          "pick": "No",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML 60%",
+          "model_prob": 0.598,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.67,
+          "decision_value": 0.10770700663373353,
+          "components": {
+            "prob": 0.145,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 19% (CS:50.0%)",
+          "model_prob": 0.1881497094180373,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.31,
+          "decision_value": 0.06512187062539578,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.079,
+            "align": 0.092,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.9g model 62% (ML direct)",
+          "model_prob": 0.6222807786005705,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.61,
+          "decision_value": 0.04301326175726555,
+          "components": {
+            "prob": 0.076,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 3.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.9g model 39%",
+          "model_prob": 0.38524476007569464,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.6,
+          "decision_value": 0.0300545250451591,
+          "components": {
+            "prob": 0.05,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 4.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.9g model 21%o",
+          "model_prob": 0.20968304835070628,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 4.77,
+          "decision_value": 0.01927628459535272,
+          "components": {
+            "prob": 0.028,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 5.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.9g model 10%o",
+          "model_prob": 0.0992503909123662,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 10.08,
+          "decision_value": 0.010316266319586365,
+          "components": {
+            "prob": 0.01,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 16%",
+          "model_prob": 0.15952545461015288,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 6.27,
+          "decision_value": 0.0,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.018,
+            "align": -0.538,
+            "conv": 0.667
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "☆DC: 1X (Medium-High)",
+        "☆1X2: Home win (Medium-High)",
+        "☆DNB: Home (Medium-High)",
+        "☆O/U: Over 1.5 (Medium-High)",
+        "BTTS: No (Medium)"
+      ],
+      "reasoning": [
+        "[TRANS-P] Fortuna Dusseldorf II (#3) 16 positions above Wuppertaler SV15/09/2026 19:30 GMT (#19) — standing advantage",
+        "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours home (agreement -0.54 across 2 sources); Expected goals 2.4-0.5 (total 2.9)",
+        "",
+        "⟁SYNTHFORM⟁ home side (-0.72 form, -0.72 consensus); settles on DC: 1X (Medium-High, dv 0.27). 1X2: Home win (65%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 4W-1D-1L (2.2 ppg)",
+        "A last 6: 0W-0D-6L (0.0 ppg)"
+      ],
+      "_exp_goals": [
+        2.4,
+        0.548625
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0002,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.6523248359718098,
+            "draw": 0.1881497094180373,
+            "away": 0.15952545461015288
+          },
+          "odds": {
+            "home": 1.53,
+            "draw": 5.31,
+            "away": 6.27
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.6222807786005704,
+            "under": 0.3777192213994295
+          },
+          "odds": {
+            "over": 1.61,
+            "under": 2.65
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.402,
+            "no": 0.598
+          },
+          "odds": {
+            "yes": 2.49,
+            "no": 1.67
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.8404745453898471,
+            "12": 0.8118502905819627,
+            "X2": 0.3476751640281902
+          },
+          "odds": {
+            "1X": 1.19,
+            "12": 1.23,
+            "X2": 2.88
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.803503852297941,
+            "away": 0.19649614770205903
+          },
+          "odds": {
+            "home": 1.24,
+            "away": 5.09
+          }
+        },
+        "ml_prediction": "Home",
+        "ml_ou_prediction": "Over"
+      },
+      "_synthesis_rationale": "Component consensus favours home (agreement -0.54 across 2 sources); Expected goals 2.4-0.5 (total 2.9)",
+      "_synthesis_ranked": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "decision_value": 0.27468438027280656,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "decision_value": 0.22645066159127902,
+          "components": {
+            "prob": 0.223,
+            "edge": -0.196,
+            "align": 0.538,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "decision_value": 0.1785396953110156,
+          "components": {
+            "prob": 0.239,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "decision_value": 0.15318912185131645,
+          "components": {
+            "prob": 0.048,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "BTTS",
+          "pick": "No",
+          "confidence": "Medium",
+          "decision_value": 0.10770700663373353,
+          "components": {
+            "prob": 0.145,
+            "edge": null,
+            "align": -0.161,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "decision_value": 0.06512187062539578,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.079,
+            "align": 0.092,
+            "conv": 0.667
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 0.0,
+      "away_scoring_rate": 0.0,
+      "home_defense_vulnerability": 0.0,
+      "away_defense_vulnerability": 0.0,
+      "btts_rate": 0.0,
+      "over25_rate": 0.0,
+      "home_scoring_consistency": "Unknown",
+      "away_scoring_consistency": "Unknown",
+      "reasoning": [],
+      "home_team": "Fortuna Dusseldorf II",
+      "away_team": "Wuppertaler SV15/09/2026 19:30 GMT"
+    },
+    "forebet": "1",
+    "forebet_pct": [
+      78,
+      10,
+      13
+    ],
+    "forebet_over25_pct": 61,
+    "forebet_btts_yes_pct": 49,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 0,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "WLWWWD",
+    "away_form": "LLLLLL",
+    "home_pos": 3,
+    "away_pos": 19,
+    "odds_home": null,
+    "odds_draw": null,
+    "odds_away": null,
+    "odds_over25": null,
+    "odds_under25": null,
+    "odds_btts_yes": null,
+    "odds_btts_no": null,
+    "h2h_matches": 3,
+    "h2h_home_wins": 0,
+    "h2h_draws": 2,
+    "h2h_away_wins": 1,
+    "h2h_goals_for": 5,
+    "h2h_goals_against": 7,
+    "h2h_avg_total_goals": 4.0,
+    "home_home_avg_goals_for": null,
+    "home_home_avg_goals_against": null,
+    "away_away_avg_goals_for": null,
+    "away_away_avg_goals_against": null,
+    "home_over15_pct": 100,
+    "home_under15_pct": 0,
+    "away_over15_pct": 50,
+    "away_under15_pct": 50,
+    "home_over25_pct": 67,
+    "home_under25_pct": 33,
+    "away_over25_pct": 33,
+    "away_under25_pct": 67,
+    "home_over35_pct": 33,
+    "home_under35_pct": 67,
+    "away_over35_pct": 17,
+    "away_under35_pct": 83,
+    "home_btts_yes_pct": 50,
+    "home_btts_no_pct": 50,
+    "away_btts_yes_pct": 33,
+    "away_btts_no_pct": 67,
+    "home_scored_pct": 100,
+    "home_conceded_pct": 0,
+    "away_scored_pct": 33,
+    "away_conceded_pct": 67,
+    "home_total_shots_pg": 0.0,
+    "home_shots_ontarget_pct": null,
+    "away_total_shots_pg": 0.0,
+    "away_shots_ontarget_pct": null,
+    "home_clean_sheets_pct": 50.0,
+    "away_clean_sheets_pct": 0.0,
+    "match_id": 24264,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "kelly_stake": 0.0,
+    "pick_odds": null,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 0,
+      "matches": 0,
+      "reason": "Insufficient data for this league"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No league data"
+    }
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/ilz-sv-pachern-2515110",
+    "home": "Ilz",
+    "away": "SV Pachern15/09/2026 19:30 GMT",
+    "league": "1st place Austria Landesliga Steiermark 11th place",
+    "date": "15/09/2026",
+    "time": "19:30",
+    "pick": "Over 3.5",
+    "market": "O/U",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 3.6 model 52%o/48%u",
+        "model_prob": 0.5172164663982283,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.22204204022834895,
+        "components": {
+          "prob": 0.182,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 3.6 model 67%o/33%u",
+        "model_prob": 0.6724141014272148,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.19408158519251073,
+        "components": {
+          "prob": 0.126,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "blended 29%y/71%n fb46%",
+        "model_prob": 0.7072247783337007,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.16432105782250694,
+        "components": {
+          "prob": 0.254,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 3.6 model 29%o",
+        "model_prob": 0.2862650106922039,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.15956892778802456,
+        "components": {
+          "prob": 0.105,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 69% vs 25% (1H exp 1.47-0.22)",
+        "model_prob": 0.6873485939202495,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.15476822198704826,
+        "components": {
+          "prob": 0.187,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Low",
+        "rank": 4,
+        "reason": "exp goals 3.6 model 15%o",
+        "model_prob": 0.15065583974581676,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.038020652758234685,
+        "components": {
+          "prob": 0.062,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.8020394479460856,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.35565548481171627,
+        "components": {
+          "prob": 0.373,
+          "edge": 0.002,
+          "align": 0.683,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.1187667325566618,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.021369283351282353,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.063,
+          "align": 0.063,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.07919381949725265,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.0,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.032,
+          "align": -0.683,
+          "conv": 0.443
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★O/U: Over 3.5 (Medium-High)",
+      " O/U: Over 2.5 (Medium-High)",
+      " BTTS: No (Medium)",
+      " O/U: Over 4.5 (Medium)",
+      " 1H: Home win (Medium-High)",
+      " O/U: Over 5.5 (Low)",
+      " 1X2: Home win (Medium-High)",
+      " 1X2: Draw (Low)",
+      " 1X2: Away win (Low)"
+    ],
+    "score_lean": "3-0",
+    "reasoning": [
+      "⚠ Common-opp strength: H GD +6.0/2 vs A GD -6.0/2 → H×1.30 A×0.70",
+      "[SCORING] vs 2 common opponents: Ilz scored in 2/2 (100%), SV Pachern15/09/2026 19:30 GMT scored in 0/2 (0%)",
+      "[DEFENSE] Vulnerable defenses: Ilz concedes 1.5/game, SV Pachern15/09/2026 19:30 GMT concedes 3.0/game vs common opponents",
+      "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+      "[H2H-LAST] Ilz won last H2H vs SV Pachern15/09/2026 19:30 GMT (2-0) — decisive H2H outcomes persist",
+      "[H2H-OU] Last H2H had 2 goals — Under 2.5 tendency",
+      "O/U: Over 3.5 (Medium-High) — exp goals 3.6 model 52%o/48%u  [synth 0.222]",
+      "O/U: Over 2.5 (Medium-High) — exp goals 3.6 model 67%o/33%u  [synth 0.194]",
+      "BTTS: No (Medium) — blended 29%y/71%n fb46%  [synth 0.164]",
+      "O/U: Over 4.5 (Medium) — exp goals 3.6 model 29%o  [synth 0.160]",
+      "1H: Home win (Medium-High) — first-half model 69% vs 25% (1H exp 1.47-0.22)  [synth 0.155]",
+      "O/U: Over 5.5 (Low) — exp goals 3.6 model 15%o  [synth 0.038]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours home (agreement -0.68 across 4 sources); High uncertainty (vol 0.25, 0 data warnings) -- conviction reduced; Model: H 80% / D 12% / A 8%",
+      "[TRANS-R] SV Pachern15/09/2026 19:30 GMT lost 0-1 away to Bad Waltersdorf, but Ilz beat them 4-1 (away)",
+      "[TRANS-R] SV Pachern15/09/2026 19:30 GMT lost 0-5 away to SC Bruck an der Mur, but Ilz beat them 5-2 (away)",
+      "[TRANS-C] Ilz (GD +3) outperforms SV Pachern15/09/2026 19:30 GMT (GD -1) vs Bad Waltersdorf",
+      "[TRANS-C] Ilz (GD +3) outperforms SV Pachern15/09/2026 19:30 GMT (GD -5) vs SC Bruck an der Mur",
+      "[TRANS-P] Ilz (#2) 10 positions above SV Pachern15/09/2026 19:30 GMT (#12) — standing advantage",
+      "†Trans: home bias (High, sig -1.13)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: -1.01 (favors H)",
+      "H last 6: 4W-1D-0L (2.8gf 0.6ga, 2.6 ppg)",
+      "A last 6: 2W-0D-2L (0.8gf 1.5ga, 1.5 ppg)",
+      "H at home: 2W-1D-0L (1.7gf 0.0ga)",
+      "A away: 1W-0D-2L (0.7gf 2.0ga)",
+      "Common opponents (2): H GD +6 vs A GD -6",
+      "  vs bad waltersdorf: H 4-1(W) A 0-1(L)",
+      "  vs sc bruck an der mur: H 5-2(W) A 0-5(L)",
+      "Standing: H #2 vs A #12 (10th place gap, fav H, sig -0.30)",
+      "Goal diff: H +1.6 vs A -1.0 (diff -2.6, fav H, sig -0.21)",
+      "H trending down (recent 3 worse than older)",
+      "A trending up (recent 3 better than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the home side (strongly on form, consensus -0.68); overall the model settles on O/U Over 3.5 (Medium-High), driven by expected total 3.6 goals (model 18%) (O/U covers 3 outcomes vs 1X2's 1) (decision value 0.22). 1X2 prediction: Home win (80%, Medium-High)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      3.0739648897148073,
+      0.48779373774605067
+    ],
+    "_volatility": 0.25,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+trans+h2h-last+h2h-ou+synthesis",
+    "_kelly_stake": 0.0,
+    "_model_prob": 0.5172164663982283,
+    "_implied_prob": null,
+    "_odds": null,
+    "_poisson_probs": [
+      0.8020394479460856,
+      0.1187667325566618,
+      0.07919381949725265
+    ],
+    "_ml": {
+      "ml_prob_away": 0.1797479658699951,
+      "ml_prob_draw": 0.175174582121138,
+      "ml_prob_home": 0.6450774520088669,
+      "ml_prob_under": 0.3748823953109808,
+      "ml_prob_over": 0.6251176046890193,
+      "ml_prediction": "Home",
+      "ml_ou_prediction": "Over"
+    },
+    "_synthesis_rationale": "Component consensus favours home (agreement -0.68 across 4 sources); High uncertainty (vol 0.25, 0 data warnings) -- conviction reduced; Model: H 80% / D 12% / A 8%",
+    "_synthesis_ranked": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.22204204022834895,
+        "components": {
+          "prob": 0.182,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.19408158519251073,
+        "components": {
+          "prob": 0.126,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "decision_value": 0.16432105782250694,
+        "components": {
+          "prob": 0.254,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium",
+        "decision_value": 0.15956892778802456,
+        "components": {
+          "prob": 0.105,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "decision_value": 0.15476822198704826,
+        "components": {
+          "prob": 0.187,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Low",
+        "decision_value": 0.038020652758234685,
+        "components": {
+          "prob": 0.062,
+          "edge": null,
+          "align": -0.205,
+          "conv": 0.443
+        }
+      }
+    ],
+    "_warnings": [
+      "H2H: only 2 meetings",
+      "High volatility (0.25)",
+      "No home-venue attack data",
+      "No away-venue attack data"
+    ],
+    "_red_flags": [],
+    "_backup": {
+      "pick": "Over 2.5",
+      "market": "O/U",
+      "confidence": "Medium-High",
+      "coverage": 3
+    },
+    "_ml_analysis": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "Medium-High",
+      "all_picks": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.8202520341300049,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.22,
+          "decision_value": 0.2782224194656569,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          },
+          "coverage": 2
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML model 65%",
+          "model_prob": 0.6450774520088669,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.55,
+          "decision_value": 0.21103350563363982,
+          "components": {
+            "prob": 0.216,
+            "edge": -0.155,
+            "align": 0.488,
+            "conv": 0.533
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 3.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 1.9g model 75%",
+          "model_prob": 0.754141135738391,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.33,
+          "decision_value": 0.05336098806473505,
+          "components": {
+            "prob": 0.089,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 1.9g model 63% (ML direct)",
+          "model_prob": 0.6251176046890192,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.6,
+          "decision_value": 0.047969713994340246,
+          "components": {
+            "prob": 0.079,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 1.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 1.9g model 28%",
+          "model_prob": 0.28402093606397827,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 3.52,
+          "decision_value": 0.037296083167009234,
+          "components": {
+            "prob": 0.057,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 18% (CS:50.0%)",
+          "model_prob": 0.17517458212113798,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.71,
+          "decision_value": 0.024553534798567214,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.007,
+            "align": 0.102,
+            "conv": 0.533
+          },
+          "coverage": 1
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 18%",
+          "model_prob": 0.1797479658699951,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.56,
+          "decision_value": 0.021086101372278086,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.069,
+            "align": -0.488,
+            "conv": 0.533
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "☆DC: 1X (Medium-High)",
+        "☆1X2: Home win (Medium-High)",
+        "O/U: Under 3.5 (Low)",
+        "O/U: Over 2.5 (Low)",
+        "O/U: Under 1.5 (Low)"
+      ],
+      "reasoning": [
+        "⚠ Common-opp strength: H GD +6.0/2 vs A GD -6.0/2 → H×1.30 A×0.70",
+        "[TRANS-R] SV Pachern15/09/2026 19:30 GMT lost 0-1 away to Bad Waltersdorf, but Ilz beat them 4-1 (away)",
+        "[TRANS-R] SV Pachern15/09/2026 19:30 GMT lost 0-5 away to SC Bruck an der Mur, but Ilz beat them 5-2 (away)",
+        "[TRANS-C] Ilz (GD +3) outperforms SV Pachern15/09/2026 19:30 GMT (GD -1) vs Bad Waltersdorf",
+        "[TRANS-C] Ilz (GD +3) outperforms SV Pachern15/09/2026 19:30 GMT (GD -5) vs SC Bruck an der Mur",
+        "[TRANS-P] Ilz (#2) 10 positions above SV Pachern15/09/2026 19:30 GMT (#12) — standing advantage",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours home (agreement -0.49 across 3 sources); Expected goals 1.2-0.7 (total 1.9)",
+        "",
+        "⟁SYNTHFORM⟁ home side (-0.50 form, -0.50 consensus); settles on DC: 1X (Medium-High, dv 0.28). 1X2: Home win (65%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 5W-1D-0L (2.7 ppg)",
+        "A last 6: 2W-1D-3L (1.2 ppg)",
+        "H trending down (recent 3 worse than older)",
+        "A trending up (recent 3 better than older)"
+      ],
+      "_exp_goals": [
+        1.19670549324,
+        0.70519758
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0007,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.6450774520088669,
+            "draw": 0.17517458212113798,
+            "away": 0.1797479658699951
+          },
+          "odds": {
+            "home": 1.55,
+            "draw": 5.71,
+            "away": 5.56
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.6251176046890193,
+            "under": 0.3748823953109807
+          },
+          "odds": {
+            "over": 1.6,
+            "under": 2.67
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.5128550000000001,
+            "no": 0.48714499999999994
+          },
+          "odds": {
+            "yes": 1.95,
+            "no": 2.05
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.8202520341300049,
+            "12": 0.824825417878862,
+            "X2": 0.3549225479911331
+          },
+          "odds": {
+            "1X": 1.22,
+            "12": 1.21,
+            "X2": 2.82
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.7820775621437096,
+            "away": 0.21792243785629045
+          },
+          "odds": {
+            "home": 1.28,
+            "away": 4.59
+          }
+        },
+        "ml_prediction": "Home",
+        "ml_ou_prediction": "Over"
+      },
+      "_synthesis_rationale": "Component consensus favours home (agreement -0.49 across 3 sources); Expected goals 1.2-0.7 (total 1.9)",
+      "_synthesis_ranked": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "decision_value": 0.2782224194656569,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "decision_value": 0.21103350563363982,
+          "components": {
+            "prob": 0.216,
+            "edge": -0.155,
+            "align": 0.488,
+            "conv": 0.533
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 3.5",
+          "confidence": "Low",
+          "decision_value": 0.05336098806473505,
+          "components": {
+            "prob": 0.089,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "decision_value": 0.047969713994340246,
+          "components": {
+            "prob": 0.079,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 1.5",
+          "confidence": "Low",
+          "decision_value": 0.037296083167009234,
+          "components": {
+            "prob": 0.057,
+            "edge": null,
+            "align": -0.146,
+            "conv": 0.533
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "decision_value": 0.024553534798567214,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.007,
+            "align": 0.102,
+            "conv": 0.533
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 1.0,
+      "away_scoring_rate": 0.0,
+      "home_defense_vulnerability": 1.5,
+      "away_defense_vulnerability": 3.0,
+      "btts_rate": 0.0,
+      "over25_rate": 1.0,
+      "home_scoring_consistency": "High",
+      "away_scoring_consistency": "Low",
+      "reasoning": [
+        "[SCORING] vs 2 common opponents: Ilz scored in 2/2 (100%), SV Pachern15/09/2026 19:30 GMT scored in 0/2 (0%)",
+        "[DEFENSE] Vulnerable defenses: Ilz concedes 1.5/game, SV Pachern15/09/2026 19:30 GMT concedes 3.0/game vs common opponents",
+        "[O/U] High O2.5 rate (100%) against common opponents — expect goals"
+      ],
+      "home_team": "Ilz",
+      "away_team": "SV Pachern15/09/2026 19:30 GMT"
+    },
+    "forebet": "1",
+    "forebet_pct": [
+      66,
+      18,
+      16
+    ],
+    "forebet_over25_pct": 30,
+    "forebet_btts_yes_pct": 46,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 0,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "WDWWWW",
+    "away_form": "WWLLLD",
+    "home_pos": 2,
+    "away_pos": 12,
+    "odds_home": 1.25,
+    "odds_draw": 5.5,
+    "odds_away": 9.0,
+    "odds_over25": null,
+    "odds_under25": null,
+    "odds_btts_yes": null,
+    "odds_btts_no": null,
+    "h2h_matches": 2,
+    "h2h_home_wins": 1,
+    "h2h_draws": 0,
+    "h2h_away_wins": 1,
+    "h2h_goals_for": 2,
+    "h2h_goals_against": 2,
+    "h2h_avg_total_goals": 2.0,
+    "home_home_avg_goals_for": null,
+    "home_home_avg_goals_against": null,
+    "away_away_avg_goals_for": null,
+    "away_away_avg_goals_against": null,
+    "home_over15_pct": 67,
+    "home_under15_pct": 33,
+    "away_over15_pct": 67,
+    "away_under15_pct": 33,
+    "home_over25_pct": 67,
+    "home_under25_pct": 33,
+    "away_over25_pct": 33,
+    "away_under25_pct": 67,
+    "home_over35_pct": 50,
+    "home_under35_pct": 50,
+    "away_over35_pct": 33,
+    "away_under35_pct": 67,
+    "home_btts_yes_pct": 50,
+    "home_btts_no_pct": 50,
+    "away_btts_yes_pct": 33,
+    "away_btts_no_pct": 67,
+    "home_scored_pct": 83,
+    "home_conceded_pct": 17,
+    "away_scored_pct": 67,
+    "away_conceded_pct": 33,
+    "home_total_shots_pg": 2.67,
+    "home_shots_ontarget_pct": 63,
+    "away_total_shots_pg": 7.83,
+    "away_shots_ontarget_pct": 38,
+    "home_clean_sheets_pct": 50.0,
+    "away_clean_sheets_pct": 33.3,
+    "match_id": 24265,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+trans+h2h-last+h2h-ou+synthesis",
+    "kelly_stake": 0.0,
+    "pick_odds": null,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 0,
+      "matches": 0,
+      "reason": "Insufficient data for this league"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No league data"
+    }
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/deportivo-alavés-valencia-2495225",
+    "home": "Deportivo Alavés",
+    "away": "Valencia15/09/2026 20:00 GMT",
+    "league": "6th place Spain La Liga 20th place",
+    "date": "15/09/2026",
+    "time": "20:00",
+    "pick": "Home win",
+    "market": "1X2",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "model 76%/15%/9% exp 2.4-0.6 pos 7th-21st H:LWWDWL A:LLLLDW",
+        "model_prob": 0.7597861458240107,
+        "implied_prob": 0.5882352941176471,
+        "value_ratio": 1.2916364479008182,
+        "coverage": 1,
+        "decision_value": 0.37526244460202185,
+        "components": {
+          "prob": 0.33,
+          "edge": 0.172,
+          "align": 0.323,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 3.0 model 45%o/55%u",
+        "model_prob": 0.4467614335697914,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.16702115112276936,
+        "components": {
+          "prob": 0.111,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "blended 36%y/64%n fb56%",
+        "model_prob": 0.6403882542523812,
+        "implied_prob": 0.5555555555555556,
+        "value_ratio": 1.152698857654286,
+        "coverage": 3,
+        "decision_value": 0.135109423090486,
+        "components": {
+          "prob": 0.188,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DNB",
+        "pick": "Home",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "derived from model",
+        "model_prob": 0.7118376447486083,
+        "implied_prob": 0.5882352941176471,
+        "value_ratio": 1.2101239960726342,
+        "coverage": 1,
+        "decision_value": 0.11491488086691114,
+        "components": {
+          "prob": 0.147,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 60% vs 32% (1H exp 1.16-0.26)",
+        "model_prob": 0.595775653118207,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.11318837889466585,
+        "components": {
+          "prob": 0.096,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Low",
+        "rank": 4,
+        "reason": "exp goals 3.0 model 21%o",
+        "model_prob": 0.2139914718653586,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.027638785683240727,
+        "components": {
+          "prob": 0.033,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Low",
+        "rank": 4,
+        "reason": "exp goals 3.0 model 10%o",
+        "model_prob": 0.10197104582227179,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.017884883105101,
+        "components": {
+          "prob": 0.013,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.15359659252708602,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.027373701557041552,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.132,
+          "align": 0.135,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.08661726164890321,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.0,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.095,
+          "align": -0.323,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★1X2: Home win (Medium-High)",
+      " O/U: Over 3.5 (Medium)",
+      " BTTS: No (Medium)",
+      " DNB: Home (Medium)",
+      " 1H: Home win (Medium-High)",
+      " O/U: Over 4.5 (Low)",
+      " O/U: Over 5.5 (Low)",
+      " 1X2: Draw (Low)",
+      " 1X2: Away win (Low)"
+    ],
+    "score_lean": "2-1",
+    "reasoning": [
+      "1X2: Home win (Medium-High) — model 76%/15%/9% exp 2.4-0.6 pos 7th-21st H:LWWDWL A:LLLLDW  [synth 0.375]",
+      "O/U: Over 3.5 (Medium) — exp goals 3.0 model 45%o/55%u  [synth 0.167]",
+      "BTTS: No (Medium) — blended 36%y/64%n fb56%  [synth 0.135]",
+      "DNB: Home (Medium) — derived from model  [synth 0.115]",
+      "1H: Home win (Medium-High) — first-half model 60% vs 32% (1H exp 1.16-0.26)  [synth 0.113]",
+      "O/U: Over 4.5 (Low) — exp goals 3.0 model 21%o  [synth 0.028]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours home (agreement -0.32 across 4 sources); Model edge vs market +17% (value present); Model: H 76% / D 15% / A 9%",
+      "[TRANS-P] Deportivo Alavés (#7) 14 positions above Valencia15/09/2026 20:00 GMT (#21) — standing advantage",
+      "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+      "†Trans: draw tendency (0.12)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: -0.54 (favors H)",
+      "H last 6: 3W-0D-1L (2.5gf 1.0ga, 2.2 ppg)",
+      "A last 6: 0W-0D-3L (0.3gf 3.0ga, 0.0 ppg)",
+      "H at home: 3W-0D-0L (3.0gf 0.7ga)",
+      "A away: 0W-0D-2L (0.5gf 2.0ga)",
+      "Standing: H #7 vs A #21 (14th place gap, fav H, sig -0.30)",
+      "Goal diff: H +1.2 vs A -1.8 (diff -3.0, fav H, sig -0.24)",
+      "H trending down (recent 3 worse than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the home side (strongly on form, consensus -0.32); overall the model settles on 1X2 Home win (Medium-High), driven by model edge vs market +17% (decision value 0.38). 1X2 prediction: Home win (76%, Medium-High)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      2.4145833232041882,
+      0.5747409887482271
+    ],
+    "_volatility": 0.2,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "_kelly_stake": 0.05,
+    "_model_prob": 0.7597861458240107,
+    "_implied_prob": 0.5882352941176471,
+    "_odds": 1.7,
+    "_poisson_probs": [
+      0.7597861458240107,
+      0.15359659252708602,
+      0.08661726164890321
+    ],
+    "_ml": {
+      "ml_prob_away": 0.17280313068235492,
+      "ml_prob_draw": 0.18742672273271963,
+      "ml_prob_home": 0.6397701465849255,
+      "ml_prob_under": 0.373396365870596,
+      "ml_prob_over": 0.626603634129404,
+      "ml_prediction": "Home",
+      "ml_ou_prediction": "Over"
+    },
+    "_synthesis_rationale": "Component consensus favours home (agreement -0.32 across 4 sources); Model edge vs market +17% (value present); Model: H 76% / D 15% / A 9%",
+    "_synthesis_ranked": [
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "decision_value": 0.37526244460202185,
+        "components": {
+          "prob": 0.33,
+          "edge": 0.172,
+          "align": 0.323,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium",
+        "decision_value": 0.16702115112276936,
+        "components": {
+          "prob": 0.111,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "decision_value": 0.135109423090486,
+        "components": {
+          "prob": 0.188,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DNB",
+        "pick": "Home",
+        "confidence": "Medium",
+        "decision_value": 0.11491488086691114,
+        "components": {
+          "prob": 0.147,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "decision_value": 0.11318837889466585,
+        "components": {
+          "prob": 0.096,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Low",
+        "decision_value": 0.027638785683240727,
+        "components": {
+          "prob": 0.033,
+          "edge": null,
+          "align": -0.097,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_warnings": [
+      "No home-venue attack data",
+      "No away-venue attack data"
+    ],
+    "_red_flags": [],
+    "_backup": {
+      "pick": "Over 3.5",
+      "market": "O/U",
+      "confidence": "Medium",
+      "coverage": 3
+    },
+    "_ml_analysis": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "Medium-High",
+      "all_picks": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.8271968693176451,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.21,
+          "decision_value": 0.278743676811394,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          },
+          "coverage": 2
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML model 64%",
+          "model_prob": 0.6397701465849255,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.56,
+          "decision_value": 0.2324097546695179,
+          "components": {
+            "prob": 0.21,
+            "edge": 0.052,
+            "align": 0.369,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.7873384031733119,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.27,
+          "decision_value": 0.17451626728728853,
+          "components": {
+            "prob": 0.223,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML exp 2.6g model 79%",
+          "model_prob": 0.7880282053159686,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.27,
+          "decision_value": 0.070510349264403,
+          "components": {
+            "prob": 0.015,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.6g model 63% (ML direct)",
+          "model_prob": 0.6266036341294039,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.6,
+          "decision_value": 0.0492339860602697,
+          "components": {
+            "prob": 0.08,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 19% (CS:33.3%)",
+          "model_prob": 0.18742672273271965,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.34,
+          "decision_value": 0.028101039695725295,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.098,
+            "align": 0.126,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 3.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 2.6g model 67%",
+          "model_prob": 0.6659318967637551,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.5,
+          "decision_value": 0.009777625923154194,
+          "components": {
+            "prob": 0.001,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 17%",
+          "model_prob": 0.17280313068235492,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.79,
+          "decision_value": 0.0,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.009,
+            "align": -0.369,
+            "conv": 0.667
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "☆DC: 1X (Medium-High)",
+        "☆1X2: Home win (Medium-High)",
+        "☆DNB: Home (Medium-High)",
+        "☆O/U: Over 1.5 (Medium-High)",
+        "O/U: Over 2.5 (Low)"
+      ],
+      "reasoning": [
+        "[TRANS-P] Deportivo Alavés (#7) 14 positions above Valencia15/09/2026 20:00 GMT (#21) — standing advantage",
+        "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours home (agreement -0.37 across 3 sources); Expected goals 2.0-0.6 (total 2.6)",
+        "",
+        "⟁SYNTHFORM⟁ home side (-0.33 form, -0.33 consensus); settles on DC: 1X (Medium-High, dv 0.28). 1X2: Home win (64%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 3W-1D-2L (1.7 ppg)",
+        "A last 6: 1W-1D-4L (0.7 ppg)",
+        "H trending up (recent 3 better than older)",
+        "A trending down (recent 3 worse than older)"
+      ],
+      "_exp_goals": [
+        2.010830328,
+        0.5573903224400001
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0009,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.6397701465849255,
+            "draw": 0.18742672273271965,
+            "away": 0.17280313068235492
+          },
+          "odds": {
+            "home": 1.56,
+            "draw": 5.34,
+            "away": 5.79
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.626603634129404,
+            "under": 0.37339636587059605
+          },
+          "odds": {
+            "over": 1.6,
+            "under": 2.68
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.4335000000000001,
+            "no": 0.5664999999999999
+          },
+          "odds": {
+            "yes": 2.31,
+            "no": 1.77
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.8271968693176451,
+            "12": 0.8125732772672805,
+            "X2": 0.3602298534150746
+          },
+          "odds": {
+            "1X": 1.21,
+            "12": 1.23,
+            "X2": 2.78
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.7873384031733119,
+            "away": 0.21266159682668795
+          },
+          "odds": {
+            "home": 1.27,
+            "away": 4.7
+          }
+        },
+        "ml_prediction": "Home",
+        "ml_ou_prediction": "Over"
+      },
+      "_synthesis_rationale": "Component consensus favours home (agreement -0.37 across 3 sources); Expected goals 2.0-0.6 (total 2.6)",
+      "_synthesis_ranked": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium-High",
+          "decision_value": 0.278743676811394,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "decision_value": 0.2324097546695179,
+          "components": {
+            "prob": 0.21,
+            "edge": 0.052,
+            "align": 0.369,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "decision_value": 0.17451626728728853,
+          "components": {
+            "prob": 0.223,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "decision_value": 0.070510349264403,
+          "components": {
+            "prob": 0.015,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Low",
+          "decision_value": 0.0492339860602697,
+          "components": {
+            "prob": 0.08,
+            "edge": null,
+            "align": -0.111,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "decision_value": 0.028101039695725295,
+          "components": {
+            "prob": 0.0,
+            "edge": -0.098,
+            "align": 0.126,
+            "conv": 0.667
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 0.0,
+      "away_scoring_rate": 0.0,
+      "home_defense_vulnerability": 0.0,
+      "away_defense_vulnerability": 0.0,
+      "btts_rate": 0.0,
+      "over25_rate": 0.0,
+      "home_scoring_consistency": "Unknown",
+      "away_scoring_consistency": "Unknown",
+      "reasoning": [],
+      "home_team": "Deportivo Alavés",
+      "away_team": "Valencia15/09/2026 20:00 GMT"
+    },
+    "forebet": "1",
+    "forebet_pct": [
+      68,
+      18,
+      14
+    ],
+    "forebet_over25_pct": 58,
+    "forebet_btts_yes_pct": 56,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 4,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "LWWDWL",
+    "away_form": "LLLLDW",
+    "home_pos": 7,
+    "away_pos": 21,
+    "odds_home": 1.7,
+    "odds_draw": 3.5,
+    "odds_away": 5.5,
+    "odds_over25": 2.04,
+    "odds_under25": 1.75,
+    "odds_btts_yes": 1.95,
+    "odds_btts_no": 1.8,
+    "h2h_matches": 3,
+    "h2h_home_wins": 2,
+    "h2h_draws": 1,
+    "h2h_away_wins": 0,
+    "h2h_goals_for": 4,
+    "h2h_goals_against": 2,
+    "h2h_avg_total_goals": 2.0,
+    "home_home_avg_goals_for": null,
+    "home_home_avg_goals_against": null,
+    "away_away_avg_goals_for": null,
+    "away_away_avg_goals_against": null,
+    "home_over15_pct": 83,
+    "home_under15_pct": 17,
+    "away_over15_pct": 50,
+    "away_under15_pct": 50,
+    "home_over25_pct": 67,
+    "home_under25_pct": 33,
+    "away_over25_pct": 50,
+    "away_under25_pct": 50,
+    "home_over35_pct": 17,
+    "home_under35_pct": 83,
+    "away_over35_pct": 50,
+    "away_under35_pct": 50,
+    "home_btts_yes_pct": 67,
+    "home_btts_no_pct": 33,
+    "away_btts_yes_pct": 33,
+    "away_btts_no_pct": 67,
+    "home_scored_pct": 100,
+    "home_conceded_pct": 0,
+    "away_scored_pct": 33,
+    "away_conceded_pct": 67,
+    "home_total_shots_pg": 14.83,
+    "home_shots_ontarget_pct": 44,
+    "away_total_shots_pg": 10.17,
+    "away_shots_ontarget_pct": 28,
+    "home_clean_sheets_pct": 33.3,
+    "away_clean_sheets_pct": 16.7,
+    "match_id": 24266,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "kelly_stake": 0.05,
+    "pick_odds": 1.7,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 0,
+      "matches": 1,
+      "reason": "Insufficient data for this league"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No league data"
+    }
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/ajax-willem-ii-tilburg-2492054",
+    "home": "Ajax",
+    "away": "Willem II Tilburg15/09/2026 20:00 GMT",
+    "league": "5th place Netherlands Eredivisie 17th place",
+    "date": "15/09/2026",
+    "time": "20:00",
+    "pick": "Over 3.5",
+    "market": "O/U",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.1 model 62%o/38%u",
+        "model_prob": 0.6236609307739561,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.27838760737349993,
+        "components": {
+          "prob": 0.288,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "1X",
+        "confidence": "High",
+        "rank": 1,
+        "reason": "derived from model",
+        "model_prob": 0.8630599847691371,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 2,
+        "decision_value": 0.2741578418736948,
+        "components": {
+          "prob": 0.272,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.1 model 77%o/23%u",
+        "model_prob": 0.7662317592759735,
+        "implied_prob": 0.625,
+        "value_ratio": 1.2259708148415576,
+        "coverage": 3,
+        "decision_value": 0.24411374907417716,
+        "components": {
+          "prob": 0.22,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 4.1 model 38%o",
+        "model_prob": 0.3841026769839354,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.23561109589117737,
+        "components": {
+          "prob": 0.203,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 4.1 model 23%o",
+        "model_prob": 0.22530701263466246,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.17846957415994458,
+        "components": {
+          "prob": 0.137,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 1.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 4.1 model 89%o/11%u",
+        "model_prob": 0.8896657754101508,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.16839483475211672,
+        "components": {
+          "prob": 0.116,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 66% vs 24% (1H exp 1.55-0.38)",
+        "model_prob": 0.6553036075561275,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.14186906376227432,
+        "components": {
+          "prob": 0.155,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Medium-High",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.7916531411161614,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.3390314908994212,
+        "components": {
+          "prob": 0.362,
+          "edge": -0.101,
+          "align": 0.375,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.1258155546340566,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.030735754561403983,
+        "components": {
+          "prob": 0.0,
+          "edge": 0.008,
+          "align": 0.125,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.08253130424978203,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.003911420699710594,
+        "components": {
+          "prob": 0.0,
+          "edge": 0.024,
+          "align": -0.375,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★O/U: Over 3.5 (Medium-High)",
+      " DC: 1X (High)",
+      " O/U: Over 2.5 (Medium-High)",
+      " O/U: Over 4.5 (Medium-High)",
+      " O/U: Over 5.5 (Medium)",
+      " O/U: Over 1.5 (Medium)",
+      " 1H: Home win (Medium-High)",
+      " 1X2: Home win (Medium-High)",
+      " 1X2: Draw (Low)",
+      " 1X2: Away win (Low)"
+    ],
+    "score_lean": "3-1",
+    "reasoning": [
+      "⚠ Common-opp strength: H GD +0.0/1 vs A GD +0.0/1 → H×1.00 A×1.00",
+      "[SCORING] vs 1 common opponents: Ajax scored in 1/1 (100%), Willem II Tilburg15/09/2026 20:00 GMT scored in 1/1 (100%)",
+      "[DEFENSE] Vulnerable defenses: Ajax concedes 2.0/game, Willem II Tilburg15/09/2026 20:00 GMT concedes 2.0/game vs common opponents",
+      "[BTTS] High BTTS rate (100%) against common opponents — both teams score consistently",
+      "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+      "[HIDDEN] Willem II Tilburg15/09/2026 20:00 GMT scores consistently (100%) despite poor record — dangerous underdog",
+      "O/U: Over 3.5 (Medium-High) — exp goals 4.1 model 62%o/38%u  [synth 0.278]",
+      "DC: 1X (High) — derived from model  [synth 0.274]",
+      "O/U: Over 2.5 (Medium-High) — exp goals 4.1 model 77%o/23%u  [synth 0.244]",
+      "O/U: Over 4.5 (Medium-High) — exp goals 4.1 model 38%o  [synth 0.236]",
+      "O/U: Over 5.5 (Medium) — exp goals 4.1 model 23%o  [synth 0.178]",
+      "O/U: Over 1.5 (Medium) — exp goals 4.1 model 89%o/11%u  [synth 0.168]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours home (agreement -0.37 across 4 sources); Market favours this more than model (-10%) -- limited value; Model: H 79% / D 13% / A 8%",
+      "[TRANS-P] Ajax (#6) 12 positions above Willem II Tilburg15/09/2026 20:00 GMT (#18) — standing advantage",
+      "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+      "†Trans: draw tendency (0.12)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: -0.55 (favors H)",
+      "H last 6: 3W-2D-1L (3.2gf 1.8ga, 1.8 ppg)",
+      "A last 6: 1W-2D-2L (1.2gf 2.2ga, 1.0 ppg)",
+      "H at home: 1W-1D-1L (2.7gf 2.7ga)",
+      "A away: 1W-1D-1L (1.3gf 2.0ga)",
+      "Common opponents (1): H GD +0 vs A GD +0",
+      "  vs heerenveen: H 2-2(D) A 2-2(D)",
+      "Standing: H #6 vs A #18 (12th place gap, fav H, sig -0.30)",
+      "Goal diff: H +1.6 vs A -1.8 (diff -3.4, fav H, sig -0.25)",
+      "A trending down (recent 3 worse than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the home side (strongly on form, consensus -0.37); overall the model settles on O/U Over 3.5 (Medium-High), driven by expected total 4.1 goals (model 29%) (O/U covers 3 outcomes vs 1X2's 1) (decision value 0.28). 1X2 prediction: Home win (79%, Medium-High)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      3.2327285198201627,
+      0.8335158870726184
+    ],
+    "_volatility": 0.2,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "_kelly_stake": 0.0,
+    "_model_prob": 0.6236609307739561,
+    "_implied_prob": null,
+    "_odds": null,
+    "_poisson_probs": [
+      0.7916531411161614,
+      0.1258155546340566,
+      0.08253130424978203
+    ],
+    "_ml": {
+      "ml_prob_away": 0.18047414467268214,
+      "ml_prob_draw": 0.1652261874128234,
+      "ml_prob_home": 0.6542996679144946,
+      "ml_prob_under": 0.32425680262748896,
+      "ml_prob_over": 0.675743197372511,
+      "ml_prediction": "Home",
+      "ml_ou_prediction": "Over"
+    },
+    "_synthesis_rationale": "Component consensus favours home (agreement -0.37 across 4 sources); Market favours this more than model (-10%) -- limited value; Model: H 79% / D 13% / A 8%",
+    "_synthesis_ranked": [
+      {
+        "market": "O/U",
+        "pick": "Over 3.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.27838760737349993,
+        "components": {
+          "prob": 0.288,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "DC",
+        "pick": "1X",
+        "confidence": "High",
+        "decision_value": 0.2741578418736948,
+        "components": {
+          "prob": 0.272,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 2.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.24411374907417716,
+        "components": {
+          "prob": 0.22,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 4.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.23561109589117737,
+        "components": {
+          "prob": 0.203,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 5.5",
+        "confidence": "Medium",
+        "decision_value": 0.17846957415994458,
+        "components": {
+          "prob": 0.137,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Over 1.5",
+        "confidence": "Medium",
+        "decision_value": 0.16839483475211672,
+        "components": {
+          "prob": 0.116,
+          "edge": null,
+          "align": -0.112,
+          "conv": 0.577
+        }
+      }
+    ],
+    "_warnings": [
+      "No home-venue attack data",
+      "No away-venue attack data",
+      "Very high O15 (100%)"
+    ],
+    "_red_flags": [],
+    "_backup": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "High",
+      "coverage": 2
+    },
+    "_ml_analysis": {
+      "pick": "1X",
+      "market": "DC",
+      "confidence": "Medium",
+      "all_picks": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.8195258553273179,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.22,
+          "decision_value": 0.2522854079060641,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 2
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML model 65%",
+          "model_prob": 0.6542996679144946,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.53,
+          "decision_value": 0.22210131878509637,
+          "components": {
+            "prob": 0.225,
+            "edge": -0.239,
+            "align": 0.471,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 3.5",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML exp 3.7g model 51%",
+          "model_prob": 0.510835983185586,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.96,
+          "decision_value": 0.19445116423336228,
+          "components": {
+            "prob": 0.176,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML exp 3.7g model 89%",
+          "model_prob": 0.8859720273097564,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.13,
+          "decision_value": 0.18702399135596698,
+          "components": {
+            "prob": 0.113,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 4.5",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML exp 3.7g model 32%o",
+          "model_prob": 0.3174106003491386,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 3.15,
+          "decision_value": 0.1747410882278264,
+          "components": {
+            "prob": 0.136,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML exp 3.7g model 68% (ML direct)",
+          "model_prob": 0.675743197372511,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.48,
+          "decision_value": 0.17134549877649333,
+          "components": {
+            "prob": 0.129,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "DNB",
+          "pick": "Home",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.7838047361436187,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.28,
+          "decision_value": 0.170291164867112,
+          "components": {
+            "prob": 0.219,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "BTTS",
+          "pick": "Yes",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "ML 68%",
+          "model_prob": 0.677,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.48,
+          "decision_value": 0.12557854700952498,
+          "components": {
+            "prob": 0.13,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 17% (no signal)",
+          "model_prob": 0.1652261874128234,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 6.05,
+          "decision_value": 0.05025175805348567,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.048,
+            "align": 0.106,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 5.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 3.7g model 17%o",
+          "model_prob": 0.1733489757565313,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.77,
+          "decision_value": 0.04896658637492643,
+          "components": {
+            "prob": 0.085,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          },
+          "coverage": 1
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 18%",
+          "model_prob": 0.18047414467268214,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 5.54,
+          "decision_value": 0.04113627642465208,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.122,
+            "align": -0.471,
+            "conv": 0.667
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "DC: 1X (Medium)",
+        "☆1X2: Home win (Medium-High)",
+        "O/U: Over 3.5 (Medium)",
+        "☆O/U: Over 1.5 (Medium-High)",
+        "O/U: Over 4.5 (Medium)"
+      ],
+      "reasoning": [
+        "⚠ Common-opp strength: H GD +0.0/1 vs A GD +0.0/1 → H×1.00 A×1.00",
+        "[TRANS-P] Ajax (#6) 12 positions above Willem II Tilburg15/09/2026 20:00 GMT (#18) — standing advantage",
+        "[TRANS-D] Common opponents show no clear edge (0.15) — evenly matched",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours home (agreement -0.47 across 3 sources); Expected goals 2.8-0.9 (total 3.7)",
+        "",
+        "⟁SYNTHFORM⟁ home side (-0.44 form, -0.44 consensus); settles on DC: 1X (Medium, dv 0.25). 1X2: Home win (65%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 4W-1D-1L (2.2 ppg)",
+        "A last 6: 1W-2D-3L (0.8 ppg)"
+      ],
+      "_exp_goals": [
+        2.829584,
+        0.89437462632
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.6542996679144946,
+            "draw": 0.1652261874128234,
+            "away": 0.18047414467268214
+          },
+          "odds": {
+            "home": 1.53,
+            "draw": 6.05,
+            "away": 5.54
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.675743197372511,
+            "under": 0.32425680262748896
+          },
+          "odds": {
+            "over": 1.48,
+            "under": 3.08
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.677,
+            "no": 0.32299999999999995
+          },
+          "odds": {
+            "yes": 1.48,
+            "no": 3.1
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.8195258553273179,
+            "12": 0.8347738125871766,
+            "X2": 0.34570033208550555
+          },
+          "odds": {
+            "1X": 1.22,
+            "12": 1.2,
+            "X2": 2.89
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.7838047361436187,
+            "away": 0.2161952638563814
+          },
+          "odds": {
+            "home": 1.28,
+            "away": 4.63
+          }
+        },
+        "ml_prediction": "Home",
+        "ml_ou_prediction": "Over"
+      },
+      "_synthesis_rationale": "Component consensus favours home (agreement -0.47 across 3 sources); Expected goals 2.8-0.9 (total 3.7)",
+      "_synthesis_ranked": [
+        {
+          "market": "DC",
+          "pick": "1X",
+          "confidence": "Medium",
+          "decision_value": 0.2522854079060641,
+          "components": {
+            "prob": 0.331,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Medium-High",
+          "decision_value": 0.22210131878509637,
+          "components": {
+            "prob": 0.225,
+            "edge": -0.239,
+            "align": 0.471,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 3.5",
+          "confidence": "Medium",
+          "decision_value": 0.19445116423336228,
+          "components": {
+            "prob": 0.176,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 1.5",
+          "confidence": "Medium-High",
+          "decision_value": 0.18702399135596698,
+          "components": {
+            "prob": 0.113,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 4.5",
+          "confidence": "Medium",
+          "decision_value": 0.1747410882278264,
+          "components": {
+            "prob": 0.136,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Over 2.5",
+          "confidence": "Medium",
+          "decision_value": 0.17134549877649333,
+          "components": {
+            "prob": 0.129,
+            "edge": null,
+            "align": -0.141,
+            "conv": 0.667
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 1.0,
+      "away_scoring_rate": 1.0,
+      "home_defense_vulnerability": 2.0,
+      "away_defense_vulnerability": 2.0,
+      "btts_rate": 1.0,
+      "over25_rate": 1.0,
+      "home_scoring_consistency": "High",
+      "away_scoring_consistency": "High",
+      "reasoning": [
+        "[SCORING] vs 1 common opponents: Ajax scored in 1/1 (100%), Willem II Tilburg15/09/2026 20:00 GMT scored in 1/1 (100%)",
+        "[DEFENSE] Vulnerable defenses: Ajax concedes 2.0/game, Willem II Tilburg15/09/2026 20:00 GMT concedes 2.0/game vs common opponents",
+        "[BTTS] High BTTS rate (100%) against common opponents — both teams score consistently",
+        "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+        "[HIDDEN] Willem II Tilburg15/09/2026 20:00 GMT scores consistently (100%) despite poor record — dangerous underdog"
+      ],
+      "home_team": "Ajax",
+      "away_team": "Willem II Tilburg15/09/2026 20:00 GMT"
+    },
+    "forebet": "1",
+    "forebet_pct": [
+      63,
+      28,
+      10
+    ],
+    "forebet_over25_pct": 63,
+    "forebet_btts_yes_pct": 49,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 0,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "WLWWWD",
+    "away_form": "DLDLLW",
+    "home_pos": 6,
+    "away_pos": 18,
+    "odds_home": 1.12,
+    "odds_draw": 8.5,
+    "odds_away": 17.0,
+    "odds_over25": 1.6,
+    "odds_under25": 2.2,
+    "odds_btts_yes": 1.9,
+    "odds_btts_no": 1.9,
+    "h2h_matches": 3,
+    "h2h_home_wins": 1,
+    "h2h_draws": 0,
+    "h2h_away_wins": 2,
+    "h2h_goals_for": 2,
+    "h2h_goals_against": 3,
+    "h2h_avg_total_goals": 1.67,
+    "home_home_avg_goals_for": null,
+    "home_home_avg_goals_against": null,
+    "away_away_avg_goals_for": null,
+    "away_away_avg_goals_against": null,
+    "home_over15_pct": 100,
+    "home_under15_pct": 0,
+    "away_over15_pct": 100,
+    "away_under15_pct": 0,
+    "home_over25_pct": 91,
+    "home_under25_pct": 9,
+    "away_over25_pct": 83,
+    "away_under25_pct": 17,
+    "home_over35_pct": 91,
+    "home_under35_pct": 9,
+    "away_over35_pct": 50,
+    "away_under35_pct": 50,
+    "home_btts_yes_pct": 82,
+    "home_btts_no_pct": 18,
+    "away_btts_yes_pct": 83,
+    "away_btts_no_pct": 17,
+    "home_scored_pct": 100,
+    "home_conceded_pct": 0,
+    "away_scored_pct": 83,
+    "away_conceded_pct": 17,
+    "home_total_shots_pg": 22.91,
+    "home_shots_ontarget_pct": 39,
+    "away_total_shots_pg": 11.17,
+    "away_shots_ontarget_pct": 21,
+    "home_clean_sheets_pct": 18.2,
+    "away_clean_sheets_pct": 0.0,
+    "match_id": 24295,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+synthesis",
+    "kelly_stake": 0.0,
+    "pick_odds": null,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 0,
+      "matches": 0,
+      "reason": "Insufficient data for this league"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No league data"
+    }
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/claypole-sacachispas-2535312",
+    "home": "Claypole",
+    "away": "Sacachispas15/09/2026 20:00 GMT",
+    "league": "13th place Argentina Primera C Metropolitana 1st place",
+    "date": "15/09/2026",
+    "time": "20:00",
+    "pick": "Under 1.5",
+    "market": "O/U",
+    "confidence": "Medium-High",
+    "all_picks": [
+      {
+        "market": "O/U",
+        "pick": "Under 1.5",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "exp goals 1.3 model 59%o/41%u vG:0.0-0.0",
+        "model_prob": 0.4104919341261257,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.24800191977359737,
+        "components": {
+          "prob": 0.184,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "blended 16%y/84%n fb37%",
+        "model_prob": 0.8361358970279371,
+        "implied_prob": 0.6666666666666666,
+        "value_ratio": 1.2542038455419058,
+        "coverage": 3,
+        "decision_value": 0.24197371668875267,
+        "components": {
+          "prob": 0.383,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Under 3.5",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "exp goals 1.3 model 21%o/79%u vG:0.0-0.0",
+        "model_prob": 0.7866977933132784,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 3,
+        "decision_value": 0.1903650411603979,
+        "components": {
+          "prob": 0.122,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Medium",
+        "rank": 3,
+        "reason": "model 36% (close to top)",
+        "model_prob": 0.36299925445320924,
+        "implied_prob": 0.3484320557491289,
+        "value_ratio": 1.0418078602807106,
+        "coverage": 1,
+        "decision_value": 0.13238554052704105,
+        "components": {
+          "prob": 0.124,
+          "edge": 0.015,
+          "align": 0.182,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Draw",
+        "confidence": "Medium-High",
+        "rank": 2,
+        "reason": "first-half model 60% vs 21% (1H exp 0.29-0.32)",
+        "model_prob": 0.5965397823243764,
+        "implied_prob": null,
+        "value_ratio": null,
+        "coverage": 1,
+        "decision_value": 0.12256091570823929,
+        "components": {
+          "prob": 0.097,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.39209886355261203,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.04936277543589641,
+        "components": {
+          "prob": 0.061,
+          "edge": -0.108,
+          "align": 0.091,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Home win",
+        "confidence": "Low",
+        "rank": 99,
+        "reason": "",
+        "model_prob": 0.2449018819941789,
+        "implied_prob": null,
+        "value_ratio": null,
+        "_always_show": true,
+        "coverage": 1,
+        "decision_value": 0.00911966133158352,
+        "components": {
+          "prob": 0.0,
+          "edge": -0.022,
+          "align": -0.091,
+          "conv": 0.7
+        }
+      }
+    ],
+    "_disagree_vetoed": false,
+    "picks_summary": [
+      "★O/U: Under 1.5 (Medium-High)",
+      " BTTS: No (Medium)",
+      " O/U: Under 3.5 (Medium)",
+      " 1X2: Draw (Medium)",
+      " 1H: Draw (Medium-High)",
+      " 1X2: Away win (Low)",
+      " 1X2: Home win (Low)"
+    ],
+    "score_lean": "1-1",
+    "reasoning": [
+      "⚠ Common-opp strength: H GD +1.0/1 vs A GD -2.0/1 → H×1.30 A×0.70",
+      "[SCORING] vs 1 common opponents: Claypole scored in 1/1 (100%), Sacachispas15/09/2026 20:00 GMT scored in 0/1 (0%)",
+      "[DEFENSE] Vulnerable defenses: Claypole concedes 0.0/game, Sacachispas15/09/2026 20:00 GMT concedes 2.0/game vs common opponents",
+      "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+      "[HIDDEN] Claypole scores consistently (100%) despite poor record — dangerous underdog",
+      "[H2H-LAST] Claypole won last H2H vs Sacachispas15/09/2026 20:00 GMT (3-0) — decisive H2H outcomes persist",
+      "[H2H-OU] Last H2H had 3 goals — Over 2.5 tendency",
+      "⚠ Draw tendency: 36% vs Away win 39% (margin 3%)",
+      "🚩 RED FLAG: Away overall avg GF 1.19 diverges from venue-specific 0.0 — one source unreliable",
+      "O/U: Under 1.5 (Medium-High) — exp goals 1.3 model 59%o/41%u vG:0.0-0.0  [synth 0.248]",
+      "BTTS: No (Medium) — blended 16%y/84%n fb37%  [synth 0.242]",
+      "O/U: Under 3.5 (Medium) — exp goals 1.3 model 21%o/79%u vG:0.0-0.0  [synth 0.190]",
+      "1X2: Draw (Medium) — model 36% (close to top)  [synth 0.132]",
+      "1H: Draw (Medium-High) — first-half model 60% vs 21% (1H exp 0.29-0.32)  [synth 0.123]",
+      "1X2: Away win (Low)  [synth 0.049]",
+      "",
+      "── Synthesis ──",
+      "Component consensus favours away (agreement +0.09 across 4 sources); O/U pick scored higher than 1X2 Away win (coverage 3 vs 1 outcomes); Draw bias suppressed (form/trans favor clear side); Away win probability (39%) boosted by form/trans signals; Expected goals 0.6-0.7 (total 1.3)",
+      "[TRANS-R] Sacachispas15/09/2026 20:00 GMT lost 0-2 away to Mercedes, but Claypole beat them 1-0 (home)",
+      "[TRANS-C] Claypole (GD +1) outperforms Sacachispas15/09/2026 20:00 GMT (GD -2) vs Mercedes",
+      "[TRANS-P] Sacachispas15/09/2026 20:00 GMT (#2) 12 positions above Claypole (#14) — standing advantage",
+      "[TRANS-D] Common opponents show no clear edge (0.22) — evenly matched",
+      "†Trans: draw tendency (0.12)",
+      "",
+      "── Form Analysis ──",
+      "Form analysis signal: +0.38 (favors A)",
+      "H last 6: 1W-1D-4L (0.7gf 1.7ga, 0.7 ppg)",
+      "A last 6: 1W-3D-2L (0.5gf 0.8ga, 1.0 ppg)",
+      "H at home: 1W-1D-3L (0.4gf 1.2ga)",
+      "A away: 0W-3D-2L (0.2gf 0.8ga)",
+      "Common opponents (1): H GD +1 vs A GD -2",
+      "  vs mercedes: H 1-0(W) A 0-2(L)",
+      "Standing: H #14 vs A #2 (12th place gap, fav A, sig +0.30)",
+      "Goal diff: H -0.6 vs A +0.4 (diff +1.1, fav A, sig +0.08)",
+      "H trending down (recent 3 worse than older)",
+      "A trending up (recent 3 better than older)",
+      "",
+      "⟁SYNTHFORM⟁ Synthesis and recent form align on the away side (strongly on form, consensus +0.09); overall the model settles on O/U Under 1.5 (Medium-High), driven by expected total 1.3 goals (model 18%) (O/U covers 3 outcomes vs 1X2's 1) (decision value 0.25). 1X2 prediction: Draw (36%, Medium)."
+    ],
+    "supporting_markets": [],
+    "_exp_goals": [
+      0.6023116952854201,
+      0.694780293571649
+    ],
+    "_volatility": 0.15,
+    "_method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+h2h-last+h2h-ou+synthesis",
+    "_kelly_stake": 0.0,
+    "_model_prob": 0.4104919341261257,
+    "_implied_prob": null,
+    "_odds": null,
+    "_poisson_probs": [
+      0.2449018819941789,
+      0.36299925445320924,
+      0.39209886355261203
+    ],
+    "_ml": {
+      "ml_prob_away": 0.4269897724839246,
+      "ml_prob_draw": 0.2766781282546335,
+      "ml_prob_home": 0.296332099261442,
+      "ml_prob_under": 0.5428651072297423,
+      "ml_prob_over": 0.4571348927702577,
+      "ml_prediction": "Away",
+      "ml_ou_prediction": "Under"
+    },
+    "_synthesis_rationale": "Component consensus favours away (agreement +0.09 across 4 sources); O/U pick scored higher than 1X2 Away win (coverage 3 vs 1 outcomes); Draw bias suppressed (form/trans favor clear side); Away win probability (39%) boosted by form/trans signals; Expected goals 0.6-0.7 (total 1.3)",
+    "_synthesis_ranked": [
+      {
+        "market": "O/U",
+        "pick": "Under 1.5",
+        "confidence": "Medium-High",
+        "decision_value": 0.24800191977359737,
+        "components": {
+          "prob": 0.184,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "BTTS",
+        "pick": "No",
+        "confidence": "Medium",
+        "decision_value": 0.24197371668875267,
+        "components": {
+          "prob": 0.383,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "O/U",
+        "pick": "Under 3.5",
+        "confidence": "Medium",
+        "decision_value": 0.1903650411603979,
+        "components": {
+          "prob": 0.122,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Draw",
+        "confidence": "Medium",
+        "decision_value": 0.13238554052704105,
+        "components": {
+          "prob": 0.124,
+          "edge": 0.015,
+          "align": 0.182,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1H",
+        "pick": "Draw",
+        "confidence": "Medium-High",
+        "decision_value": 0.12256091570823929,
+        "components": {
+          "prob": 0.097,
+          "edge": null,
+          "align": 0.027,
+          "conv": 0.7
+        }
+      },
+      {
+        "market": "1X2",
+        "pick": "Away win",
+        "confidence": "Low",
+        "decision_value": 0.04936277543589641,
+        "components": {
+          "prob": 0.061,
+          "edge": -0.108,
+          "align": 0.091,
+          "conv": 0.7
+        }
+      }
+    ],
+    "_warnings": [
+      "H2H: only 1 meetings",
+      "Away overall avg GF 1.19 diverges from venue-specific 0.0 — one source unreliable"
+    ],
+    "_red_flags": [
+      {
+        "severity": "high",
+        "msg": "Away overall avg GF 1.19 diverges from venue-specific 0.0 — one source unreliable"
+      }
+    ],
+    "_backup": {
+      "pick": "No",
+      "market": "BTTS",
+      "confidence": "Medium",
+      "coverage": 3
+    },
+    "_ml_analysis": {
+      "pick": "Under 3.5",
+      "market": "O/U",
+      "confidence": "Medium",
+      "all_picks": [
+        {
+          "market": "O/U",
+          "pick": "Under 3.5",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML exp 1.2g model 84%",
+          "model_prob": 0.8438074897422365,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.19,
+          "decision_value": 0.21289531524928454,
+          "components": {
+            "prob": 0.179,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          },
+          "coverage": 3
+        },
+        {
+          "market": "DNB",
+          "pick": "Away",
+          "confidence": "Medium-High",
+          "rank": 0,
+          "reason": "derived from ML",
+          "model_prob": 0.5903177951104999,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.69,
+          "decision_value": 0.15479484377868288,
+          "components": {
+            "prob": 0.155,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          },
+          "coverage": 1
+        },
+        {
+          "market": "BTTS",
+          "pick": "No",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML 65%",
+          "model_prob": 0.65332,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.53,
+          "decision_value": 0.15360619600921063,
+          "components": {
+            "prob": 0.201,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Medium",
+          "rank": 0,
+          "reason": "ML model 28% (venue-low+BTTS:33%+CS:37.0%)",
+          "model_prob": 0.3366781282546335,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.97,
+          "decision_value": 0.10991442618609534,
+          "components": {
+            "prob": 0.097,
+            "edge": -0.072,
+            "align": 0.158,
+            "conv": 0.7
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 1.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 1.2g model 39%",
+          "model_prob": 0.3867346583058078,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.59,
+          "decision_value": 0.10335409447055073,
+          "components": {
+            "prob": 0.16,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 43%",
+          "model_prob": 0.4269897724839246,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 2.34,
+          "decision_value": 0.08367427690908143,
+          "components": {
+            "prob": 0.096,
+            "edge": -0.073,
+            "align": 0.212,
+            "conv": 0.7
+          },
+          "coverage": 1
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 2.5",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML exp 1.2g model 54% (ML direct)",
+          "model_prob": 0.5428651072297423,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 1.84,
+          "decision_value": 0.06798339654336893,
+          "components": {
+            "prob": 0.089,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          },
+          "coverage": 3
+        },
+        {
+          "market": "1X2",
+          "pick": "Home win",
+          "confidence": "Low",
+          "rank": 0,
+          "reason": "ML model 30%",
+          "model_prob": 0.296332099261442,
+          "implied_prob": null,
+          "value_ratio": null,
+          "_always_show": true,
+          "odds": 3.37,
+          "decision_value": 0.015061208362462452,
+          "components": {
+            "prob": 0.0,
+            "edge": 0.03,
+            "align": -0.212,
+            "conv": 0.7
+          },
+          "coverage": 1
+        }
+      ],
+      "picks_summary": [
+        "O/U: Under 3.5 (Medium)",
+        "☆DNB: Away (Medium-High)",
+        "BTTS: No (Medium)",
+        "1X2: Draw (Medium)",
+        "O/U: Under 1.5 (Low)"
+      ],
+      "reasoning": [
+        "⚠ Common-opp strength: H GD +1.0/1 vs A GD -2.0/1 → H×1.30 A×0.70",
+        "[TRANS-R] Sacachispas15/09/2026 20:00 GMT lost 0-2 away to Mercedes, but Claypole beat them 1-0 (home)",
+        "[TRANS-C] Claypole (GD +1) outperforms Sacachispas15/09/2026 20:00 GMT (GD -2) vs Mercedes",
+        "[TRANS-P] Sacachispas15/09/2026 20:00 GMT (#2) 12 positions above Claypole (#14) — standing advantage",
+        "[TRANS-D] Common opponents show no clear edge (0.22) — evenly matched",
+        "⚠ Draw signal (3f): venue-low, BTTS:33%, CS:37.0%",
+        "── ML-Only Synthesis ──",
+        "Component consensus favours away (agreement +0.21 across 3 sources); O/U pick scored higher than 1X2 Away win (coverage 3 vs 1 outcomes); Away win probability (43%) favoured by component consensus; Expected goals 0.4-0.8 (total 1.2)",
+        "",
+        "⟁SYNTHFORM⟁ away side (+0.39 form, +0.39 consensus); settles on O/U: Under 3.5 (Medium, dv 0.21). 1X2: Draw (34%).",
+        "",
+        "── Form Analysis ──",
+        "H last 6: 1W-1D-4L (0.7 ppg)",
+        "A last 6: 3W-2D-1L (1.8 ppg)",
+        "H at home: 0.0GF/2.0GA",
+        "A away: 0.0GF/0.0GA",
+        "H trending down (recent 3 worse than older)",
+        "A trending down (recent 3 worse than older)"
+      ],
+      "_exp_goals": [
+        0.39918773292,
+        0.7647255636250001
+      ],
+      "_method": "ml-only",
+      "_kelly_stake": 0.0046,
+      "_ml_odds": {
+        "ml_1x2": {
+          "probs": {
+            "home": 0.296332099261442,
+            "draw": 0.2766781282546335,
+            "away": 0.4269897724839246
+          },
+          "odds": {
+            "home": 3.37,
+            "draw": 3.61,
+            "away": 2.34
+          }
+        },
+        "ml_ou": {
+          "probs": {
+            "over": 0.4571348927702577,
+            "under": 0.5428651072297423
+          },
+          "odds": {
+            "over": 2.19,
+            "under": 1.84
+          }
+        },
+        "ml_btts": {
+          "probs": {
+            "yes": 0.34668,
+            "no": 0.65332
+          },
+          "odds": {
+            "yes": 2.88,
+            "no": 1.53
+          }
+        },
+        "ml_dc": {
+          "probs": {
+            "1X": 0.5730102275160756,
+            "12": 0.7233218717453667,
+            "X2": 0.7036679007385581
+          },
+          "odds": {
+            "1X": 1.75,
+            "12": 1.38,
+            "X2": 1.42
+          }
+        },
+        "ml_dnb": {
+          "probs": {
+            "home": 0.4096822048895001,
+            "away": 0.5903177951104999
+          },
+          "odds": {
+            "home": 2.44,
+            "away": 1.69
+          }
+        },
+        "ml_prediction": "Away",
+        "ml_ou_prediction": "Under"
+      },
+      "_synthesis_rationale": "Component consensus favours away (agreement +0.21 across 3 sources); O/U pick scored higher than 1X2 Away win (coverage 3 vs 1 outcomes); Away win probability (43%) favoured by component consensus; Expected goals 0.4-0.8 (total 1.2)",
+      "_synthesis_ranked": [
+        {
+          "market": "O/U",
+          "pick": "Under 3.5",
+          "confidence": "Medium",
+          "decision_value": 0.21289531524928454,
+          "components": {
+            "prob": 0.179,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          }
+        },
+        {
+          "market": "DNB",
+          "pick": "Away",
+          "confidence": "Medium-High",
+          "decision_value": 0.15479484377868288,
+          "components": {
+            "prob": 0.155,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          }
+        },
+        {
+          "market": "BTTS",
+          "pick": "No",
+          "confidence": "Medium",
+          "decision_value": 0.15360619600921063,
+          "components": {
+            "prob": 0.201,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Draw",
+          "confidence": "Medium",
+          "decision_value": 0.10991442618609534,
+          "components": {
+            "prob": 0.097,
+            "edge": -0.072,
+            "align": 0.158,
+            "conv": 0.7
+          }
+        },
+        {
+          "market": "O/U",
+          "pick": "Under 1.5",
+          "confidence": "Low",
+          "decision_value": 0.10335409447055073,
+          "components": {
+            "prob": 0.16,
+            "edge": null,
+            "align": 0.063,
+            "conv": 0.7
+          }
+        },
+        {
+          "market": "1X2",
+          "pick": "Away win",
+          "confidence": "Low",
+          "decision_value": 0.08367427690908143,
+          "components": {
+            "prob": 0.096,
+            "edge": -0.073,
+            "align": 0.212,
+            "conv": 0.7
+          }
+        }
+      ]
+    },
+    "_derby": {
+      "is_derby": false,
+      "region": "",
+      "warning": "",
+      "home_region": "",
+      "away_region": ""
+    },
+    "_scoring_analysis": {
+      "home_scoring_rate": 1.0,
+      "away_scoring_rate": 0.0,
+      "home_defense_vulnerability": 0.0,
+      "away_defense_vulnerability": 2.0,
+      "btts_rate": 0.0,
+      "over25_rate": 1.0,
+      "home_scoring_consistency": "High",
+      "away_scoring_consistency": "Low",
+      "reasoning": [
+        "[SCORING] vs 1 common opponents: Claypole scored in 1/1 (100%), Sacachispas15/09/2026 20:00 GMT scored in 0/1 (0%)",
+        "[DEFENSE] Vulnerable defenses: Claypole concedes 0.0/game, Sacachispas15/09/2026 20:00 GMT concedes 2.0/game vs common opponents",
+        "[O/U] High O2.5 rate (100%) against common opponents — expect goals",
+        "[HIDDEN] Claypole scores consistently (100%) despite poor record — dangerous underdog"
+      ],
+      "home_team": "Claypole",
+      "away_team": "Sacachispas15/09/2026 20:00 GMT"
+    },
+    "forebet": "2",
+    "forebet_pct": [
+      23,
+      25,
+      52
+    ],
+    "forebet_over25_pct": 40,
+    "forebet_btts_yes_pct": 37,
+    "actual_home_goals": null,
+    "actual_away_goals": null,
+    "actual_outcome": null,
+    "correct_pick": null,
+    "ht_home_goals": null,
+    "ht_away_goals": null,
+    "home_injured": 0,
+    "away_injured": 0,
+    "home_key_out": 0,
+    "away_key_out": 0,
+    "home_form": "LLDWLL",
+    "away_form": "DWLDWW",
+    "home_pos": 14,
+    "away_pos": 2,
+    "odds_home": 3.75,
+    "odds_draw": 2.87,
+    "odds_away": 2.0,
+    "odds_over25": 2.43,
+    "odds_under25": 1.44,
+    "odds_btts_yes": 2.5,
+    "odds_btts_no": 1.5,
+    "h2h_matches": 1,
+    "h2h_home_wins": 1,
+    "h2h_draws": 0,
+    "h2h_away_wins": 0,
+    "h2h_goals_for": 3,
+    "h2h_goals_against": 0,
+    "h2h_avg_total_goals": 3.0,
+    "home_home_avg_goals_for": 0.0,
+    "home_home_avg_goals_against": 2.0,
+    "away_away_avg_goals_for": 0.0,
+    "away_away_avg_goals_against": 0.0,
+    "home_over15_pct": 56,
+    "home_under15_pct": 44,
+    "away_over15_pct": 59,
+    "away_under15_pct": 41,
+    "home_over25_pct": 37,
+    "home_under25_pct": 63,
+    "away_over25_pct": 26,
+    "away_under25_pct": 74,
+    "home_over35_pct": 19,
+    "home_under35_pct": 81,
+    "away_over35_pct": 7,
+    "away_under35_pct": 93,
+    "home_btts_yes_pct": 33,
+    "home_btts_no_pct": 67,
+    "away_btts_yes_pct": 26,
+    "away_btts_no_pct": 74,
+    "home_scored_pct": 52,
+    "home_conceded_pct": 48,
+    "away_scored_pct": 63,
+    "away_conceded_pct": 37,
+    "home_total_shots_pg": 6.37,
+    "home_shots_ontarget_pct": 42,
+    "away_total_shots_pg": 9.3,
+    "away_shots_ontarget_pct": 36,
+    "home_clean_sheets_pct": 37.0,
+    "away_clean_sheets_pct": 51.9,
+    "match_id": 24267,
+    "stat_fixes": [],
+    "method": "dc-poisson+ml(0.50)+dyn-weights+fb-weights+form+concordance+draw+h2h-last+h2h-ou+synthesis",
+    "kelly_stake": 0.0,
+    "pick_odds": null,
+    "league_difficulty": {
+      "level": "medium",
+      "accuracy": 71.1,
+      "matches": 90,
+      "reason": "Moderate difficulty (71% accuracy, 90 matches)"
+    },
+    "league_recent": {
+      "overall": {
+        "total": 0,
+        "correct": 0,
+        "pct": 0
+      },
+      "markets": {},
+      "rating": "unknown",
+      "summary": "No recent data (7d)"
+    }
+  }
+]

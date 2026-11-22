@@ -1,0 +1,6416 @@
+[
+  {
+    "url": "https://www.forebet.com/en/football/matches/deportivo-santan%C3%AD-fernando-de-la-mora-2471059",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.5626,
+          "X": 0.187,
+          "2": 0.2504
+        },
+        "computed_odds": {
+          "1": 1.78,
+          "X": 5.35,
+          "2": 3.99
+        },
+        "confidence": 0.5626,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5642,
+          "Under": 0.4358
+        },
+        "computed_odds": {
+          "Over": 1.77,
+          "Under": 2.29
+        },
+        "confidence": 0.5642,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.664058178575193,
+          "away": 0.33457498156379006,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8888888888888888,
+          "away": 0.2777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.3333333333333333,
+          "away": 0.6666666666666666,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.625,
+          "away": 0.375,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.38485523809523803,
+          "away": 0.42042761904761905,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.357142857142857,
+        "ml_own_odds": {
+          "odds_home": 1.7935534591194968,
+          "odds_draw": 10.0,
+          "odds_away": 2.920154622020838,
+          "expected_goals": 2.357142857142857
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 23.2
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 12.2
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 5.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.36,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.36,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-22T11:24:35.238566",
+    "teams": {
+      "home": "Deportivo Santan\u00ed",
+      "away": "Fernando de la Mora"
+    },
+    "match_date": "",
+    "league": "Division Intermedia"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/preston-lions-newcastle-jets-2470116",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4683,
+          "X": 0.2059,
+          "2": 0.3258
+        },
+        "computed_odds": {
+          "1": 2.14,
+          "X": 4.86,
+          "2": 3.07
+        },
+        "confidence": 0.4683,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6,
+          "Under": 0.4
+        },
+        "computed_odds": {
+          "Over": 1.67,
+          "Under": 2.5
+        },
+        "confidence": 0.6,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5182922026575224,
+          "away": 0.48037774922907855,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8888888888888888,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.675,
+          "away": 0.6428571428571428,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.43826666666666664,
+          "away": 0.5420495238095238,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.9,
+        "ml_own_odds": {
+          "odds_home": 2.2211050598147373,
+          "odds_draw": 10.0,
+          "odds_away": 2.223340509006868,
+          "expected_goals": 2.9
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 19.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.9,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.54,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-22T11:26:03.058568",
+    "teams": {
+      "home": "Preston Lions",
+      "away": "Newcastle Jets"
+    },
+    "match_date": "",
+    "league": "Australia Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/railway-george-telegraph-2477887",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4445,
+          "X": 0.3319,
+          "2": 0.2236
+        },
+        "computed_odds": {
+          "1": 2.25,
+          "X": 3.01,
+          "2": 4.47
+        },
+        "confidence": 0.4445,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5575,
+          "Under": 0.4425
+        },
+        "computed_odds": {
+          "Over": 1.79,
+          "Under": 2.26
+        },
+        "confidence": 0.5575,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6660132186967757,
+          "away": 0.3326762222800065,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.4166666666666667,
+          "away": 0.125,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.261,
+          "away": 0.306,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.916666666666667,
+        "ml_own_odds": {
+          "odds_home": 1.7154486036838976,
+          "odds_draw": 10.0,
+          "odds_away": 3.1539562372322187,
+          "expected_goals": 2.916666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 12.3
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 6.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 6.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.92,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.0,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-22T11:26:51.771551",
+    "teams": {
+      "home": "Railway",
+      "away": "George Telegraph"
+    },
+    "match_date": "",
+    "league": "Calcutta Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/buxoro-fk-fc-bunyodkor-2430304",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3444,
+          "X": 0.2304,
+          "2": 0.4252
+        },
+        "computed_odds": {
+          "1": 2.9,
+          "X": 4.34,
+          "2": 2.35
+        },
+        "confidence": 0.4252,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4475,
+          "Under": 0.5525
+        },
+        "computed_odds": {
+          "Over": 2.23,
+          "Under": 1.81
+        },
+        "confidence": 0.5525,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.736842105263158,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4339423501899921,
+          "away": 0.5646874933762378,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.6666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5166666666666666,
+          "away": 0.6166666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3080111111111111,
+          "away": 0.3611488888888889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.466666666666667,
+        "ml_own_odds": {
+          "odds_home": 2.2832138590203104,
+          "odds_draw": 10.0,
+          "odds_away": 2.164404351346913,
+          "expected_goals": 2.466666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 4.8
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 4.2
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 2.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.47,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.73,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-22T11:28:03.585044",
+    "teams": {
+      "home": "Buxoro FK",
+      "away": "FC Bunyodkor"
+    },
+    "match_date": "",
+    "league": "Professional Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/gimhae-city-cheongju-fc-2431186",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3123,
+          "X": 0.2779,
+          "2": 0.4098
+        },
+        "computed_odds": {
+          "1": 3.2,
+          "X": 3.6,
+          "2": 2.44
+        },
+        "confidence": 0.4098,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5643,
+          "Under": 0.4357
+        },
+        "computed_odds": {
+          "Over": 1.77,
+          "Under": 2.29
+        },
+        "confidence": 0.5643,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.1578947368421053,
+          "away": 0.3157894736842105,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.3876699979005521,
+          "away": 0.6110114803893968,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.5555555555555556,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.2647058823529412,
+          "away": 0.4583333333333333,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.29767176470588236,
+          "away": 0.35186518518518517,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.9460784313725488,
+        "ml_own_odds": {
+          "odds_home": 2.20679799150251,
+          "odds_draw": 10.0,
+          "odds_away": 2.2378635833078744,
+          "expected_goals": 2.9460784313725488
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 8.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 4.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.95,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.39,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:30:29.722046",
+    "teams": {
+      "home": "Gimhae City",
+      "away": "Cheongju FC"
+    },
+    "match_date": "",
+    "league": "K League 2"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/preston-lions-bentleigh-greens-2423924",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.5615,
+          "X": 0.2696,
+          "2": 0.1688
+        },
+        "computed_odds": {
+          "1": 1.78,
+          "X": 3.71,
+          "2": 5.92
+        },
+        "confidence": 0.5615,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6,
+          "Under": 0.4
+        },
+        "computed_odds": {
+          "Over": 1.67,
+          "Under": 2.5
+        },
+        "confidence": 0.6,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.7676844345756384,
+          "away": 0.23102481707475206,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8888888888888888,
+          "away": 0.16666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.6666666666666666,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.6785714285714286,
+          "away": 0.20238095238095238,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.44468984126984124,
+          "away": 0.2847,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.761904761904762,
+        "ml_own_odds": {
+          "odds_home": 1.5788339670468945,
+          "odds_draw": 10.0,
+          "odds_away": 3.750639809713065,
+          "expected_goals": 2.761904761904762
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 27.4
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 19.9
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 10.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.76,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.52,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:31:16.666051",
+    "teams": {
+      "home": "Preston Lions",
+      "away": "Bentleigh Greens"
+    },
+    "match_date": "",
+    "league": "NPL Victoria"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/yelimay-ii-fk-taraz-2447506",
+    "prediction": {
+      "result": {
+        "prediction": "X",
+        "probabilities": {
+          "1": 0.2813,
+          "X": 0.384,
+          "2": 0.3347
+        },
+        "computed_odds": {
+          "1": 3.56,
+          "X": 2.6,
+          "2": 2.99
+        },
+        "confidence": 0.384,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5038,
+          "Under": 0.4962
+        },
+        "computed_odds": {
+          "Over": 1.98,
+          "Under": 2.02
+        },
+        "confidence": 0.5038,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.368421052631579,
+          "away": 0.631578947368421,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.32741786154118896,
+          "away": 0.6712537617252418,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.05555555555555555,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.3333333333333333,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.2142857142857143,
+          "away": 0.5,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.2933295238095238,
+          "away": 0.38938222222222224,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.6904761904761907,
+        "ml_own_odds": {
+          "odds_home": 2.4700709219858155,
+          "odds_draw": 10.0,
+          "odds_away": 2.019576461856053,
+          "expected_goals": 2.6904761904761907
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 12.7
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 12.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 6.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.69,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.12,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:32:28.111718",
+    "teams": {
+      "home": "Yelimay II",
+      "away": "FK Taraz"
+    },
+    "match_date": "",
+    "league": "First Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/fc-shakhter-arys-2447512",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.6628,
+          "X": 0.1497,
+          "2": 0.1875
+        },
+        "computed_odds": {
+          "1": 1.51,
+          "X": 6.68,
+          "2": 5.33
+        },
+        "confidence": 0.6628,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7299,
+          "Under": 0.2701
+        },
+        "computed_odds": {
+          "Over": 1.37,
+          "Under": 3.7
+        },
+        "confidence": 0.7299,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.9473684210526316,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.889328097767486,
+          "away": 0.10947293916413824,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 1.0,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 1.0333333333333332,
+          "away": 0.15000000000000002,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4471355555555555,
+          "away": 0.3309577777777778,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.3,
+        "ml_own_odds": {
+          "odds_home": 1.4660919540229882,
+          "odds_draw": 10.0,
+          "odds_away": 4.588954847994247,
+          "expected_goals": 3.3
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 28.9
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 23.2
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 18.5
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.3,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.67,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:33:17.446094",
+    "teams": {
+      "home": "FC Shakhter",
+      "away": "Arys"
+    },
+    "match_date": "",
+    "league": "First Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/fc-turan-tobol-ii-2447509",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.676,
+          "X": 0.1599,
+          "2": 0.1641
+        },
+        "computed_odds": {
+          "1": 1.48,
+          "X": 6.25,
+          "2": 6.09
+        },
+        "confidence": 0.676,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7952,
+          "Under": 0.2048
+        },
+        "computed_odds": {
+          "Over": 1.26,
+          "Under": 4.88
+        },
+        "confidence": 0.7952,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8947368421052632,
+          "away": 0.3157894736842105,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.7608707033745278,
+          "away": 0.23788516183922992,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.7222222222222222,
+          "away": 0.1111111111111111,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.75,
+          "away": 0.1785714285714286,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4749266666666667,
+          "away": 0.4307171428571429,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.7857142857142856,
+        "ml_own_odds": {
+          "odds_home": 1.801476451979441,
+          "odds_draw": 10.0,
+          "odds_away": 2.899393094794923,
+          "expected_goals": 3.7857142857142856
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 23.2
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 19.4
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 12.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.79,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.64,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:33:57.457298",
+    "teams": {
+      "home": "FC Turan",
+      "away": "Tobol II"
+    },
+    "match_date": "",
+    "league": "First Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/kravare-bospor-bohum%C3%ADn-2477804",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3395,
+          "X": 0.2205,
+          "2": 0.4399
+        },
+        "computed_odds": {
+          "1": 2.95,
+          "X": 4.53,
+          "2": 2.27
+        },
+        "confidence": 0.4399,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.652,
+          "Under": 0.348
+        },
+        "computed_odds": {
+          "Over": 1.53,
+          "Under": 2.87
+        },
+        "confidence": 0.652,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4263473391568854,
+          "away": 0.5723564204348944,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5,
+          "away": 0.6666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.575,
+          "away": 0.7121212121212122,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.5,
+          "away": 0.2889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.3621212121212123,
+        "ml_own_odds": {
+          "odds_home": 2.945871761089152,
+          "odds_draw": 10.0,
+          "odds_away": 1.783987925451632,
+          "expected_goals": 3.3621212121212123
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 6.3
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 5.4
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 2.9
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.36,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 4.14,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:34:23.605040",
+    "teams": {
+      "home": "Kravare",
+      "away": "Bospor Bohum\u00edn"
+    },
+    "match_date": "",
+    "league": "Czech Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/hjs-akatemia-ebk-espoo-2453956",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4722,
+          "X": 0.255,
+          "2": 0.2729
+        },
+        "computed_odds": {
+          "1": 2.12,
+          "X": 3.92,
+          "2": 3.66
+        },
+        "confidence": 0.4722,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6472,
+          "Under": 0.3528
+        },
+        "computed_odds": {
+          "Over": 1.55,
+          "Under": 2.83
+        },
+        "confidence": 0.6472,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.631578947368421,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6164927141963666,
+          "away": 0.38221466842209467,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.3333333333333333,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5333333333333333,
+          "away": 0.3125,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.35406444444444446,
+          "away": 0.37886000000000003,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.3375,
+        "ml_own_odds": {
+          "odds_home": 2.0388888888888888,
+          "odds_draw": 10.0,
+          "odds_away": 2.4417831004657358,
+          "expected_goals": 3.3375
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 8.7
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 8.4
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 4.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.34,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.03,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:35:14.727497",
+    "teams": {
+      "home": "HJS Akatemia",
+      "away": "EBK Espoo"
+    },
+    "match_date": "",
+    "league": "Kakkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/uta-arad-otelul-galati-2468225",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2571,
+          "X": 0.1892,
+          "2": 0.5537
+        },
+        "computed_odds": {
+          "1": 3.89,
+          "X": 5.29,
+          "2": 1.81
+        },
+        "confidence": 0.5537,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5921,
+          "Under": 0.4079
+        },
+        "computed_odds": {
+          "Over": 1.69,
+          "Under": 2.45
+        },
+        "confidence": 0.5921,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.21052631578947367,
+          "away": 0.8421052631578947,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.24584994485059936,
+          "away": 0.7528289575819201,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.7777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.375,
+          "away": 0.7916666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.5154644444444445,
+          "away": 0.5598888888888889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.5,
+        "ml_own_odds": {
+          "odds_home": 4.331800766283525,
+          "odds_draw": 10.0,
+          "odds_away": 1.494435191794221,
+          "expected_goals": 2.5
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 18.8
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 12.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 8.8
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.5,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.83,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:35:58.433131",
+    "teams": {
+      "home": "UTA Arad",
+      "away": "Otelul Galati"
+    },
+    "match_date": "",
+    "league": "Divizia A"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/jihlava-viktoria-zizkov-2469644",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.5409,
+          "X": 0.2852,
+          "2": 0.1739
+        },
+        "computed_odds": {
+          "1": 1.85,
+          "X": 3.51,
+          "2": 5.75
+        },
+        "confidence": 0.5409,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6298,
+          "Under": 0.3702
+        },
+        "computed_odds": {
+          "Over": 1.59,
+          "Under": 2.7
+        },
+        "confidence": 0.6298,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 1.0,
+          "away": 0.8421052631578947,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.7721333509311613,
+          "away": 0.226608155472045,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.16666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5833333333333333,
+          "away": 0.04166666666666663,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.34444444444444444,
+          "away": 0.3954644444444445,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.2500000000000004,
+        "ml_own_odds": {
+          "odds_home": 1.6793993993993994,
+          "odds_draw": 10.0,
+          "odds_away": 3.28354353084854,
+          "expected_goals": 3.2500000000000004
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 20.2
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 14.8
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 11.4
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.25,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.5,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:36:33.555242",
+    "teams": {
+      "home": "Jihlava",
+      "away": "Viktoria Zizkov"
+    },
+    "match_date": "",
+    "league": "National Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/dukla-praha-arsenal-ceska-lipa-2469642",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2103,
+          "X": 0.1343,
+          "2": 0.6554
+        },
+        "computed_odds": {
+          "1": 4.76,
+          "X": 7.44,
+          "2": 1.53
+        },
+        "confidence": 0.6554,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7469,
+          "Under": 0.2531
+        },
+        "computed_odds": {
+          "Over": 1.34,
+          "Under": 3.95
+        },
+        "confidence": 0.7469,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.9473684210526316,
+          "away": 0.3157894736842105,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.17042184565009347,
+          "away": 0.8283494157723583,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3333333333333333,
+          "away": 0.8333333333333334,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.29166666666666663,
+          "away": 1.0,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3633533333333333,
+          "away": 0.4304444444444445,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.4166666666666665,
+        "ml_own_odds": {
+          "odds_home": 4.605079365079364,
+          "odds_draw": 10.0,
+          "odds_away": 1.4644537323076303,
+          "expected_goals": 3.4166666666666665
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 24.3
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 19.0
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 14.9
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.42,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 4.0,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:37:14.014950",
+    "teams": {
+      "home": "Dukla Praha",
+      "away": "Arsenal Ceska Lipa"
+    },
+    "match_date": "",
+    "league": "National Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/usti-nad-labem-sk-kladno-2469643",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3606,
+          "X": 0.3048,
+          "2": 0.3345
+        },
+        "computed_odds": {
+          "1": 2.77,
+          "X": 3.28,
+          "2": 2.99
+        },
+        "confidence": 0.3606,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.498,
+          "Under": 0.502
+        },
+        "computed_odds": {
+          "Over": 2.01,
+          "Under": 1.99
+        },
+        "confidence": 0.502,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.7894736842105263,
+          "away": 0.736842105263158,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4993243372916159,
+          "away": 0.4993243372916159,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6666666666666666,
+          "away": 0.5555555555555556,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 1.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5416666666666667,
+          "away": 0.5416666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.34444444444444444,
+          "away": 0.44053555555555557,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.666666666666667,
+        "ml_own_odds": {
+          "odds_home": 1.8037329819938512,
+          "odds_draw": 10.0,
+          "odds_away": 2.8935669548186196,
+          "expected_goals": 2.666666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 4.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.67,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.83,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:37:51.238995",
+    "teams": {
+      "home": "Usti nad Labem",
+      "away": "SK Kladno"
+    },
+    "match_date": "",
+    "league": "National Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/sk-prost%C4%9Bjov-fotbal-trinec-2469645",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2465,
+          "X": 0.28,
+          "2": 0.4734
+        },
+        "computed_odds": {
+          "1": 4.06,
+          "X": 3.57,
+          "2": 2.11
+        },
+        "confidence": 0.4734,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5575,
+          "Under": 0.4425
+        },
+        "computed_odds": {
+          "Over": 1.79,
+          "Under": 2.26
+        },
+        "confidence": 0.5575,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.42105263157894735,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.28888539686876347,
+          "away": 0.7098154113323881,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.6111111111111112,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.375,
+          "away": 0.75,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.24599999999999997,
+          "away": 0.30913111111111113,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.916666666666667,
+        "ml_own_odds": {
+          "odds_home": 3.13290802764487,
+          "odds_draw": 10.0,
+          "odds_away": 1.7217401466678353,
+          "expected_goals": 2.916666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 15.6
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 8.4
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 7.9
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.92,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.17,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:38:48.189528",
+    "teams": {
+      "home": "SK Prost\u011bjov",
+      "away": "Fotbal Trinec"
+    },
+    "match_date": "",
+    "league": "National Football League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/tatran-v%C5%A1echovice-hlubina-2477806",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4043,
+          "X": 0.2485,
+          "2": 0.3472
+        },
+        "computed_odds": {
+          "1": 2.47,
+          "X": 4.02,
+          "2": 2.88
+        },
+        "confidence": 0.4043,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7475,
+          "Under": 0.2525
+        },
+        "computed_odds": {
+          "Over": 1.34,
+          "Under": 3.96
+        },
+        "confidence": 0.7475,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.368421052631579,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6101052977704933,
+          "away": 0.38860550731698706,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6111111111111112,
+          "away": 0.7222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.7327586206896551,
+          "away": 0.5208333333333333,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.33426,
+          "away": 0.3059785185185185,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.4209770114942524,
+        "ml_own_odds": {
+          "odds_home": 1.908894339965476,
+          "odds_draw": 10.0,
+          "odds_away": 2.6586090486240814,
+          "expected_goals": 3.4209770114942524
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 8.2
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 4.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 4.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.42,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.93,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:40:11.166525",
+    "teams": {
+      "home": "Tatran V\u0161echovice",
+      "away": "Hlubina"
+    },
+    "match_date": "",
+    "league": "Czech Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/vejle-bk-ab-gladsaxe-2471251",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2294,
+          "X": 0.2363,
+          "2": 0.5343
+        },
+        "computed_odds": {
+          "1": 4.36,
+          "X": 4.23,
+          "2": 1.87
+        },
+        "confidence": 0.5343,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5947,
+          "Under": 0.4053
+        },
+        "computed_odds": {
+          "Over": 1.68,
+          "Under": 2.47
+        },
+        "confidence": 0.5947,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8947368421052632,
+          "away": 0.631578947368421,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.2557645583499493,
+          "away": 0.7429577533306208,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3333333333333333,
+          "away": 0.6666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.29166666666666663,
+          "away": 0.75,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.382,
+          "away": 0.668888888888889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.083333333333333,
+        "ml_own_odds": {
+          "odds_home": 3.759428307976026,
+          "odds_draw": 10.0,
+          "odds_away": 1.5772818185686819,
+          "expected_goals": 3.083333333333333
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 18.0
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 12.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 9.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.08,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.17,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:41:41.331179",
+    "teams": {
+      "home": "Vejle BK",
+      "away": "AB Gladsaxe"
+    },
+    "match_date": "",
+    "league": "1. Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/ff-jaro-seinajoen-jk-2448646",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2821,
+          "X": 0.2856,
+          "2": 0.4323
+        },
+        "computed_odds": {
+          "1": 3.54,
+          "X": 3.5,
+          "2": 2.31
+        },
+        "confidence": 0.4323,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5947,
+          "Under": 0.4053
+        },
+        "computed_odds": {
+          "Over": 1.68,
+          "Under": 2.47
+        },
+        "confidence": 0.5947,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.4736842105263158,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.3556974385777663,
+          "away": 0.6429991031311589,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.2777777777777778,
+          "away": 0.2777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.26388888888888895,
+          "away": 0.5227272727272727,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4650303703703703,
+          "away": 0.5894654545454545,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.083333333333333,
+        "ml_own_odds": {
+          "odds_home": 2.4357797448987553,
+          "odds_draw": 10.0,
+          "odds_away": 2.043093547884412,
+          "expected_goals": 3.083333333333333
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 10.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 5.4
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.08,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.66,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:42:38.666396",
+    "teams": {
+      "home": "FF Jaro",
+      "away": "Seinajoen JK"
+    },
+    "match_date": "",
+    "league": "Veikkausliiga"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/fc-jazz-tpv-tampere-2447367",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3084,
+          "X": 0.2946,
+          "2": 0.3971
+        },
+        "computed_odds": {
+          "1": 3.24,
+          "X": 3.39,
+          "2": 2.52
+        },
+        "confidence": 0.3971,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5382,
+          "Under": 0.4618
+        },
+        "computed_odds": {
+          "Over": 1.86,
+          "Under": 2.17
+        },
+        "confidence": 0.5382,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.631578947368421,
+          "away": 0.5789473684210527,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5093155600613453,
+          "away": 0.4893486430521439,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.2777777777777778,
+          "away": 0.6111111111111112,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.2,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.41666666666666663,
+          "away": 0.39999999999999997,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3041111111111111,
+          "away": 0.3744688888888889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.833333333333333,
+        "ml_own_odds": {
+          "odds_home": 2.3499999999999996,
+          "odds_draw": 10.0,
+          "odds_away": 2.1076233183856505,
+          "expected_goals": 2.833333333333333
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 12.7
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.83,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.47,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:43:44.130174",
+    "teams": {
+      "home": "FC Jazz",
+      "away": "TPV Tampere"
+    },
+    "match_date": "",
+    "league": "Ykkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/tampere-utd-inter-turku-ii-2447368",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.6577,
+          "X": 0.1404,
+          "2": 0.2019
+        },
+        "computed_odds": {
+          "1": 1.52,
+          "X": 7.12,
+          "2": 4.95
+        },
+        "confidence": 0.6577,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7778,
+          "Under": 0.2222
+        },
+        "computed_odds": {
+          "Over": 1.29,
+          "Under": 4.5
+        },
+        "confidence": 0.7778,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 1.0,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.7900858149627336,
+          "away": 0.20867624842167412,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8333333333333334,
+          "away": 0.2777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.3333333333333333,
+          "away": 0.3333333333333333,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.8823529411764706,
+          "away": 0.25,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.42973098039215685,
+          "away": 0.31602,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.6450980392156866,
+        "ml_own_odds": {
+          "odds_home": 1.8357312536417012,
+          "odds_draw": 10.0,
+          "odds_away": 2.8148560510779848,
+          "expected_goals": 3.6450980392156866
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 21.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 21.1
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 13.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.65,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.91,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:44:46.169237",
+    "teams": {
+      "home": "Tampere Utd",
+      "away": "Inter Turku II"
+    },
+    "match_date": "",
+    "league": "Ykkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/ppj-union-plaani-2453959",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.6132,
+          "X": 0.2131,
+          "2": 0.1736
+        },
+        "computed_odds": {
+          "1": 1.63,
+          "X": 4.69,
+          "2": 5.76
+        },
+        "confidence": 0.6132,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7154,
+          "Under": 0.2846
+        },
+        "computed_odds": {
+          "Over": 1.4,
+          "Under": 3.51
+        },
+        "confidence": 0.7154,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.736842105263158,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.763781602362583,
+          "away": 0.23497348341660243,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.16666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5892857142857143,
+          "away": 0.017857142857142794,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.374627619047619,
+          "away": 0.4363771428571429,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.7142857142857144,
+        "ml_own_odds": {
+          "odds_home": 1.759666065872183,
+          "odds_draw": 10.0,
+          "odds_away": 3.014678252448245,
+          "expected_goals": 3.7142857142857144
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 19.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 12.0
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 10.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.71,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.93,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:45:30.399318",
+    "teams": {
+      "home": "PPJ",
+      "away": "Union Plaani"
+    },
+    "match_date": "",
+    "league": "Kakkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/pepo-puiu-helsinki-2453957",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4184,
+          "X": 0.2693,
+          "2": 0.3122
+        },
+        "computed_odds": {
+          "1": 2.39,
+          "X": 3.71,
+          "2": 3.2
+        },
+        "confidence": 0.4184,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5983,
+          "Under": 0.4017
+        },
+        "computed_odds": {
+          "Over": 1.67,
+          "Under": 2.49
+        },
+        "confidence": 0.5983,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.631578947368421,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6017952264171695,
+          "away": 0.3968959759711046,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5,
+          "away": 0.31666666666666665,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4741111111111111,
+          "away": 0.3784444444444444,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.1,
+        "ml_own_odds": {
+          "odds_home": 1.9367684394109983,
+          "odds_draw": 10.0,
+          "odds_away": 2.606365690606783,
+          "expected_goals": 3.1
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 7.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 3.9
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.1,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.73,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:46:45.782001",
+    "teams": {
+      "home": "PEPO",
+      "away": "PuiU Helsinki"
+    },
+    "match_date": "",
+    "league": "Kakkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/njs-nurmij%C3%A4rvi-%C3%85ifk-turku-2453958",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.068,
+          "X": 0.1729,
+          "2": 0.7591
+        },
+        "computed_odds": {
+          "1": 14.7,
+          "X": 5.78,
+          "2": 1.32
+        },
+        "confidence": 0.7591,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7449,
+          "Under": 0.2551
+        },
+        "computed_odds": {
+          "Over": 1.34,
+          "Under": 3.92
+        },
+        "confidence": 0.7449,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.9473684210526316,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.14135672952617276,
+          "away": 0.8574284354073136,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.05555555555555555,
+          "away": 0.7222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": -0.07692307692307687,
+          "away": 0.7166666666666668,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.26202000000000003,
+          "away": 0.3812,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.4025641025641025,
+        "ml_own_odds": {
+          "odds_home": 4.500749342464394,
+          "odds_draw": 10.0,
+          "odds_away": 1.4753293010687096,
+          "expected_goals": 3.4025641025641025
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 26.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 25.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 16.7
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.4,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.68,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:47:39.545875",
+    "teams": {
+      "home": "NJS Nurmij\u00e4rvi",
+      "away": "\u00c5IFK Turku"
+    },
+    "match_date": "",
+    "league": "Kakkonen"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/sv-leobendorf-scr-altach-2477778",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3624,
+          "X": 0.3312,
+          "2": 0.3064
+        },
+        "computed_odds": {
+          "1": 2.76,
+          "X": 3.02,
+          "2": 3.26
+        },
+        "confidence": 0.3624,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4485,
+          "Under": 0.5515
+        },
+        "computed_odds": {
+          "Over": 2.23,
+          "Under": 1.81
+        },
+        "confidence": 0.5515,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.8421052631578947,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5706883845382624,
+          "away": 0.4279424958183045,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3333333333333333,
+          "away": 0.3333333333333333,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.609375,
+          "away": 0.5,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3208233333333333,
+          "away": 0.39866648648648645,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.4704391891891895,
+        "ml_own_odds": {
+          "odds_home": 1.8758551517939555,
+          "odds_draw": 10.0,
+          "odds_away": 2.725465503637289,
+          "expected_goals": 2.4704391891891895
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 5.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 2.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.47,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.69,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:48:50.976017",
+    "teams": {
+      "home": "SV Leobendorf",
+      "away": "SCR Altach"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/dsc-sku-amstetten-2477776",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3768,
+          "X": 0.2855,
+          "2": 0.3377
+        },
+        "computed_odds": {
+          "1": 2.65,
+          "X": 3.5,
+          "2": 2.96
+        },
+        "confidence": 0.3768,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6249,
+          "Under": 0.3751
+        },
+        "computed_odds": {
+          "Over": 1.6,
+          "Under": 2.67
+        },
+        "confidence": 0.6249,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.7894736842105263,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4887472325418509,
+          "away": 0.5099456553956939,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5666666666666667,
+          "away": 0.5859375,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3405755555555556,
+          "away": 0.3390116666666666,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.2260416666666667,
+        "ml_own_odds": {
+          "odds_home": 1.8738845710995964,
+          "odds_draw": 10.0,
+          "odds_away": 2.7296360939457323,
+          "expected_goals": 3.2260416666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 6.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.23,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.53,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:49:25.555233",
+    "teams": {
+      "home": "DSC",
+      "away": "SKU Amstetten"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/velden-austria-klagenfurt-2477777",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4013,
+          "X": 0.2935,
+          "2": 0.3051
+        },
+        "computed_odds": {
+          "1": 2.49,
+          "X": 3.41,
+          "2": 3.28
+        },
+        "confidence": 0.4013,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5599,
+          "Under": 0.4401
+        },
+        "computed_odds": {
+          "Over": 1.79,
+          "Under": 2.27
+        },
+        "confidence": 0.5599,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5758613802611898,
+          "away": 0.422814308238579,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.7222222222222222,
+          "away": 0.5555555555555556,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.53125,
+          "away": 0.39999999999999997,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.26574,
+          "away": 0.27042,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.927083333333333,
+        "ml_own_odds": {
+          "odds_home": 1.7178414665633874,
+          "odds_draw": 10.0,
+          "odds_away": 3.1458995309426543,
+          "expected_goals": 2.927083333333333
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 6.3
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 5.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 2.8
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.93,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.79,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:49:59.844675",
+    "teams": {
+      "home": "Velden",
+      "away": "Austria Klagenfurt"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/sv-lafnitz-scheiblingkirchen-2477775",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2917,
+          "X": 0.2054,
+          "2": 0.5029
+        },
+        "computed_odds": {
+          "1": 3.43,
+          "X": 4.87,
+          "2": 1.99
+        },
+        "confidence": 0.5029,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6932,
+          "Under": 0.3068
+        },
+        "computed_odds": {
+          "Over": 1.44,
+          "Under": 3.26
+        },
+        "confidence": 0.6932,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.631578947368421,
+          "away": 1.0,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.322577780078904,
+          "away": 0.6761510595009408,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.5555555555555556,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.43548387096774194,
+          "away": 0.7916666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.31446,
+          "away": 0.2976,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.5844086021505377,
+        "ml_own_odds": {
+          "odds_home": 2.350980701477625,
+          "odds_draw": 10.0,
+          "odds_away": 2.106835105656071,
+          "expected_goals": 3.5844086021505377
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 13.1
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 7.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 6.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.58,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 4.04,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:52:00.116508",
+    "teams": {
+      "home": "SV Lafnitz",
+      "away": "Scheiblingkirchen"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/viborg-ff-odense-bk-2469498",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2636,
+          "X": 0.2573,
+          "2": 0.4791
+        },
+        "computed_odds": {
+          "1": 3.79,
+          "X": 3.89,
+          "2": 2.09
+        },
+        "confidence": 0.4791,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7223,
+          "Under": 0.2777
+        },
+        "computed_odds": {
+          "Over": 1.38,
+          "Under": 3.6
+        },
+        "confidence": 0.7223,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.4736842105263158,
+          "away": 0.9473684210526316,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.3436244955069103,
+          "away": 0.6550844967208184,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.2222222222222222,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.25000000000000006,
+          "away": 0.5416666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.48724222222222224,
+          "away": 0.49909111111111115,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.25,
+        "ml_own_odds": {
+          "odds_home": 2.5585996955859973,
+          "odds_draw": 10.0,
+          "odds_away": 1.9640144876737935,
+          "expected_goals": 3.25
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 11.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 6.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 6.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.25,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.83,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:52:37.723802",
+    "teams": {
+      "home": "Viborg FF",
+      "away": "Odense BK"
+    },
+    "match_date": "",
+    "league": "Superliga"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/aab-aalborg-hillerod-2471252",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2901,
+          "X": 0.2909,
+          "2": 0.419
+        },
+        "computed_odds": {
+          "1": 3.45,
+          "X": 3.44,
+          "2": 2.39
+        },
+        "confidence": 0.419,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6,
+          "Under": 0.4
+        },
+        "computed_odds": {
+          "Over": 1.67,
+          "Under": 2.5
+        },
+        "confidence": 0.6,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 1.0,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4233897442490666,
+          "away": 0.5752708315291697,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3333333333333333,
+          "away": 0.5555555555555556,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.25,
+          "away": 0.375,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.5037577777777777,
+          "away": 0.3465555555555555,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.75,
+        "ml_own_odds": {
+          "odds_home": 2.509621353196772,
+          "odds_draw": 10.0,
+          "odds_away": 1.9938846969472803,
+          "expected_goals": 2.75
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 8.4
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 5.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 2.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.75,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.0,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:53:40.894538",
+    "teams": {
+      "home": "AaB Aalborg",
+      "away": "Hillerod"
+    },
+    "match_date": "",
+    "league": "1. Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/cska-moscow-baltika-kaliningrad-2474039",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3917,
+          "X": 0.3728,
+          "2": 0.2355
+        },
+        "computed_odds": {
+          "1": 2.55,
+          "X": 2.68,
+          "2": 4.25
+        },
+        "confidence": 0.3917,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5262,
+          "Under": 0.4738
+        },
+        "computed_odds": {
+          "Over": 1.9,
+          "Under": 2.11
+        },
+        "confidence": 0.5262,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.368421052631579,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6170757864043126,
+          "away": 0.38151983490422764,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.1111111111111111,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5,
+          "away": 0.33333333333333337,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.44322222222222224,
+          "away": 0.42900000000000005,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.166666666666667,
+        "ml_own_odds": {
+          "odds_home": 1.6236891464404692,
+          "odds_draw": 10.0,
+          "odds_away": 3.5196573541066654,
+          "expected_goals": 2.166666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 12.7
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 8.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 3.5
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.17,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 1.83,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:54:34.567583",
+    "teams": {
+      "home": "CSKA Moscow",
+      "away": "Baltika Kaliningrad"
+    },
+    "match_date": "",
+    "league": "Premier League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/vasteras-sk-fk-%C3%96rgryte-is-2448416",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.5087,
+          "X": 0.2301,
+          "2": 0.2612
+        },
+        "computed_odds": {
+          "1": 1.97,
+          "X": 4.35,
+          "2": 3.83
+        },
+        "confidence": 0.5087,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6445,
+          "Under": 0.3555
+        },
+        "computed_odds": {
+          "Over": 1.55,
+          "Under": 2.81
+        },
+        "confidence": 0.6445,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.631578947368421,
+          "away": 0.26315789473684215,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6318062157563108,
+          "away": 0.3669027047935812,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6111111111111112,
+          "away": 0.2777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.47058823529411764,
+          "away": 0.2205882352941177,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3679890196078431,
+          "away": 0.3354858823529412,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.3235294117647056,
+        "ml_own_odds": {
+          "odds_home": 1.8598777559484827,
+          "odds_draw": 10.0,
+          "odds_away": 2.7599130572804813,
+          "expected_goals": 3.3235294117647056
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 12.7
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 9.8
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 5.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.32,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.71,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:55:13.333445",
+    "teams": {
+      "home": "Vasteras SK FK",
+      "away": "\u00d6rgryte IS"
+    },
+    "match_date": "",
+    "league": "Allsvenskan"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/union-gurten-blau-weiss-linz-2477781",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4553,
+          "X": 0.2701,
+          "2": 0.2746
+        },
+        "computed_odds": {
+          "1": 2.2,
+          "X": 3.7,
+          "2": 3.64
+        },
+        "confidence": 0.4553,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5479,
+          "Under": 0.4521
+        },
+        "computed_odds": {
+          "Over": 1.83,
+          "Under": 2.21
+        },
+        "confidence": 0.5479,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.9473684210526316,
+          "away": 0.736842105263158,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6797124255717399,
+          "away": 0.31897705984705177,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8333333333333334,
+          "away": 0.4444444444444444,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.765625,
+          "away": 0.45138888888888884,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.28416,
+          "away": 0.45172370370370374,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.875,
+        "ml_own_odds": {
+          "odds_home": 1.6969807738330136,
+          "odds_draw": 10.0,
+          "odds_away": 3.2183509628878126,
+          "expected_goals": 2.875
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 14.8
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 13.3
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 6.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.88,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.31,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:56:09.244581",
+    "teams": {
+      "home": "Union Gurten",
+      "away": "Blau Weiss Linz"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/horn-floridsdorfer-ac-2477779",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3384,
+          "X": 0.3266,
+          "2": 0.3349
+        },
+        "computed_odds": {
+          "1": 2.95,
+          "X": 3.06,
+          "2": 2.99
+        },
+        "confidence": 0.3384,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4676,
+          "Under": 0.5324
+        },
+        "computed_odds": {
+          "Over": 2.14,
+          "Under": 1.88
+        },
+        "confidence": 0.5324,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.736842105263158,
+          "away": 0.6842105263157895,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4640627684656207,
+          "away": 0.5345739574389701,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.661764705882353,
+          "away": 0.7166666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3686564705882352,
+          "away": 0.34237111111111107,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.545098039215686,
+        "ml_own_odds": {
+          "odds_home": 2.0425592911128483,
+          "odds_draw": 10.0,
+          "odds_away": 2.436539543675406,
+          "expected_goals": 2.545098039215686
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 4.2
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 2.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.55,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.3,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:57:20.692452",
+    "teams": {
+      "home": "Horn",
+      "away": "Floridsdorfer AC"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/tillmitsch-st-polten-2477780",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4614,
+          "X": 0.1974,
+          "2": 0.3412
+        },
+        "computed_odds": {
+          "1": 2.17,
+          "X": 5.07,
+          "2": 2.93
+        },
+        "confidence": 0.4614,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6093,
+          "Under": 0.3907
+        },
+        "computed_odds": {
+          "Over": 1.64,
+          "Under": 2.56
+        },
+        "confidence": 0.6093,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 1.0,
+          "away": 0.631578947368421,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5476641084851989,
+          "away": 0.4510254015919072,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8333333333333334,
+          "away": 0.5,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.7741935483870968,
+          "away": 0.6875,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.29646,
+          "away": 0.4155283333333333,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.151209677419355,
+        "ml_own_odds": {
+          "odds_home": 1.7676278980647633,
+          "odds_draw": 10.0,
+          "odds_away": 2.9915929598132127,
+          "expected_goals": 3.151209677419355
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 12.7
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 3.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.15,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 4.07,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:58:06.739359",
+    "teams": {
+      "home": "Tillmitsch",
+      "away": "St Polten"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/fcm-traiskirchen-bleiburg-2477782",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3475,
+          "X": 0.2903,
+          "2": 0.3622
+        },
+        "computed_odds": {
+          "1": 2.88,
+          "X": 3.45,
+          "2": 2.76
+        },
+        "confidence": 0.3622,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6316,
+          "Under": 0.3684
+        },
+        "computed_odds": {
+          "Over": 1.58,
+          "Under": 2.71
+        },
+        "confidence": 0.6316,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.534488791602693,
+          "away": 0.46420675827253427,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5,
+          "away": 0.6666666666666666,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.606060606060606,
+          "away": 0.5416666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.41841757575757577,
+          "away": 0.2928,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.259090909090909,
+        "ml_own_odds": {
+          "odds_home": 1.9011505048133364,
+          "odds_draw": 10.0,
+          "odds_away": 2.673777366839481,
+          "expected_goals": 3.259090909090909
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 6.3
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 2.6
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.26,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.55,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:59:00.742305",
+    "teams": {
+      "home": "FCM Traiskirchen",
+      "away": "Bleiburg"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/leoben-ask-voitsberg-2477783",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.0566,
+          "X": 0.1464,
+          "2": 0.797
+        },
+        "computed_odds": {
+          "1": 17.66,
+          "X": 6.83,
+          "2": 1.25
+        },
+        "confidence": 0.797,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.8398,
+          "Under": 0.1602
+        },
+        "computed_odds": {
+          "Over": 1.19,
+          "Under": 6.24
+        },
+        "confidence": 0.8398,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.21052631578947367,
+          "away": 1.0,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.09523619726176433,
+          "away": 0.9035717439815578,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.0,
+          "away": 0.8888888888888888,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.09166666666666667,
+          "away": 1.203125,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.24078000000000002,
+          "away": 0.4046633333333333,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 4.2,
+        "ml_own_odds": {
+          "odds_home": 4.360400516795867,
+          "odds_draw": 10.0,
+          "odds_away": 1.4910612316127334,
+          "expected_goals": 4.2
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 33.8
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 29.9
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 23.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 4.2,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 4.79,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T13:59:30.318092",
+    "teams": {
+      "home": "Leoben",
+      "away": "ASK Voitsberg"
+    },
+    "match_date": "",
+    "league": "\u00d6FB Cup"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/rapperswil-fc-wil-2483235",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3838,
+          "X": 0.2946,
+          "2": 0.3216
+        },
+        "computed_odds": {
+          "1": 2.61,
+          "X": 3.39,
+          "2": 3.11
+        },
+        "confidence": 0.3838,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6781,
+          "Under": 0.3219
+        },
+        "computed_odds": {
+          "Over": 1.47,
+          "Under": 3.11
+        },
+        "confidence": 0.6781,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5789473684210527,
+          "away": 0.8421052631578947,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5427021427402311,
+          "away": 0.45600658291316143,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5,
+          "away": 0.41666666666666663,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4582422222222222,
+          "away": 0.6158888888888889,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.5,
+        "ml_own_odds": {
+          "odds_home": 1.8004184975936384,
+          "odds_draw": 10.0,
+          "odds_away": 2.902137764016218,
+          "expected_goals": 3.5
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 4.2
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 3.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.5,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.33,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:00:35.293703",
+    "teams": {
+      "home": "Rapperswil",
+      "away": "FC Wil"
+    },
+    "match_date": "",
+    "league": "Challenge League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/stade-lausanne-ouchy-fc-stade-nyonnais-2483234",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.6697,
+          "X": 0.228,
+          "2": 0.1023
+        },
+        "computed_odds": {
+          "1": 1.49,
+          "X": 4.39,
+          "2": 9.78
+        },
+        "confidence": 0.6697,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7074,
+          "Under": 0.2926
+        },
+        "computed_odds": {
+          "Over": 1.41,
+          "Under": 3.42
+        },
+        "confidence": 0.7074,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5263157894736843,
+          "away": 0.6842105263157895,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.8017231819285746,
+          "away": 0.19704360641954877,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.0,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5833333333333333,
+          "away": -0.08333333333333337,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.5409088888888889,
+          "away": 0.5950200000000001,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.666666666666667,
+        "ml_own_odds": {
+          "odds_home": 1.486042641705668,
+          "odds_draw": 10.0,
+          "odds_away": 4.403893393990392,
+          "expected_goals": 3.666666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 22.4
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 21.1
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 14.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.67,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.67,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:01:25.372656",
+    "teams": {
+      "home": "Stade Lausanne Ouchy",
+      "away": "FC Stade Nyonnais"
+    },
+    "match_date": "",
+    "league": "Challenge League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/neuch%C3%A2tel-xamax-sc-kriens-2483236",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.3464,
+          "X": 0.3,
+          "2": 0.3536
+        },
+        "computed_odds": {
+          "1": 2.89,
+          "X": 3.33,
+          "2": 2.83
+        },
+        "confidence": 0.3536,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6125,
+          "Under": 0.3875
+        },
+        "computed_odds": {
+          "Over": 1.63,
+          "Under": 2.58
+        },
+        "confidence": 0.6125,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 1.0,
+          "away": 0.7894736842105263,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4530393879957631,
+          "away": 0.5456510046781725,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.5555555555555556,
+          "away": 0.4444444444444444,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5833333333333333,
+          "away": 0.6666666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.4549088888888889,
+          "away": 0.3,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.166666666666667,
+        "ml_own_odds": {
+          "odds_home": 1.9381766381766379,
+          "odds_draw": 10.0,
+          "odds_away": 2.6038198032686495,
+          "expected_goals": 3.166666666666667
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 4.2
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 3.4
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.17,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.67,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:02:08.942626",
+    "teams": {
+      "home": "Neuch\u00e2tel Xamax",
+      "away": "SC Kriens"
+    },
+    "match_date": "",
+    "league": "Challenge League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/kimberley-mar-del-plata-circulo-deportivo-2443592",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4179,
+          "X": 0.3398,
+          "2": 0.2423
+        },
+        "computed_odds": {
+          "1": 2.39,
+          "X": 2.94,
+          "2": 4.13
+        },
+        "confidence": 0.4179,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.1828,
+          "Under": 0.8172
+        },
+        "computed_odds": {
+          "Over": 5.47,
+          "Under": 1.22
+        },
+        "confidence": 0.8172,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8947368421052632,
+          "away": 0.5789473684210527,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.7106681857927392,
+          "away": 0.28778026613769814,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6111111111111112,
+          "away": 0.3333333333333333,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.3333333333333333,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.6,
+          "away": 0.3666666666666667,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.36615777777777775,
+          "away": 0.30197999999999997,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 1.4666666666666668,
+        "ml_own_odds": {
+          "odds_home": 1.619765985397,
+          "odds_draw": 10.0,
+          "odds_away": 3.538234026167815,
+          "expected_goals": 1.4666666666666668
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 15.6
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 10.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 4.9
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 1.47,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 1.4,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:03:34.707702",
+    "teams": {
+      "home": "Kimberley Mar del Plata",
+      "away": "Circulo Deportivo"
+    },
+    "match_date": "",
+    "league": "Torneo Federal A"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/ponte-preta-u20-uni%C3%A3o-suzano-u20-2464872",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4123,
+          "X": 0.3652,
+          "2": 0.2225
+        },
+        "computed_odds": {
+          "1": 2.43,
+          "X": 2.74,
+          "2": 4.5
+        },
+        "confidence": 0.4123,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6141,
+          "Under": 0.3859
+        },
+        "computed_odds": {
+          "Over": 1.63,
+          "Under": 2.59
+        },
+        "confidence": 0.6141,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.5789473684210527,
+          "away": 0.42105263157894735,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6842993520445536,
+          "away": 0.3144115805834974,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.38636363636363635,
+          "away": 0.04166666666666663,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.36414848484848483,
+          "away": 0.29897999999999997,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.174242424242424,
+        "ml_own_odds": {
+          "odds_home": 1.6092252561525544,
+          "odds_draw": 10.0,
+          "odds_away": 3.589595035979077,
+          "expected_goals": 3.174242424242424
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 13.7
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 7.2
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 6.3
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.17,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.03,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:05:23.393295",
+    "teams": {
+      "home": "Ponte Preta U20",
+      "away": "Uni\u00e3o Suzano U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/aguai-u20-bandeirante-u20-2464867",
+    "prediction": {
+      "result": {
+        "prediction": "X",
+        "probabilities": {
+          "1": 0.2901,
+          "X": 0.4062,
+          "2": 0.3037
+        },
+        "computed_odds": {
+          "1": 3.45,
+          "X": 2.46,
+          "2": 3.29
+        },
+        "confidence": 0.4062,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4302,
+          "Under": 0.5698
+        },
+        "computed_odds": {
+          "Over": 2.32,
+          "Under": 1.76
+        },
+        "confidence": 0.5698,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.6842105263157895,
+          "away": 0.3157894736842105,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4659233815706601,
+          "away": 0.532695969651722,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.25,
+          "away": 0.3,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.31780952380952376,
+          "away": 0.27666666666666667,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.4,
+        "ml_own_odds": {
+          "odds_home": 1.6056962421059207,
+          "odds_draw": 10.0,
+          "odds_away": 3.607279766143977,
+          "expected_goals": 2.4
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 8.4
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 2.5
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.4,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 1.5,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:06:07.618417",
+    "teams": {
+      "home": "Aguai U20",
+      "away": "Bandeirante U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/paulinense-u20-s%C3%A3o-caetano-u20-2464868",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.406,
+          "X": 0.3053,
+          "2": 0.2887
+        },
+        "computed_odds": {
+          "1": 2.46,
+          "X": 3.28,
+          "2": 3.46
+        },
+        "confidence": 0.406,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4742,
+          "Under": 0.5258
+        },
+        "computed_odds": {
+          "Over": 2.11,
+          "Under": 1.9
+        },
+        "confidence": 0.5258,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.736842105263158,
+          "away": 0.5789473684210527,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5448414373709636,
+          "away": 0.4537987608970387,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.4444444444444444,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.6666666666666666,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.4642857142857143,
+          "away": 0.3928571428571429,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3475323809523809,
+          "away": 0.3610647619047619,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.5714285714285716,
+        "ml_own_odds": {
+          "odds_home": 2.105437130171576,
+          "odds_draw": 10.0,
+          "odds_away": 2.3527238996420863,
+          "expected_goals": 2.5714285714285716
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 8.4
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 3.4
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.57,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.29,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:06:42.095562",
+    "teams": {
+      "home": "Paulinense U20",
+      "away": "S\u00e3o Caetano U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/guarani-u20-tanabi-sp-u20-2464863",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.618,
+          "X": 0.2047,
+          "2": 0.1774
+        },
+        "computed_odds": {
+          "1": 1.62,
+          "X": 4.89,
+          "2": 5.64
+        },
+        "confidence": 0.618,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": true
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6,
+          "Under": 0.4
+        },
+        "computed_odds": {
+          "Over": 1.67,
+          "Under": 2.5
+        },
+        "confidence": 0.6,
+        "quality_gap_warning": true
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.9473684210526316,
+          "away": 0.368421052631579,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.8256208879035885,
+          "away": 0.17312270782159464,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.8333333333333334,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.7954545454545454,
+          "away": 0.175,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.48907454545454543,
+          "away": 0.28546666666666665,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.859090909090909,
+        "ml_own_odds": {
+          "odds_home": 1.4596303778526,
+          "odds_draw": 10.0,
+          "odds_away": 4.65343435991531,
+          "expected_goals": 2.859090909090909
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 24.1
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 23.2
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 13.0
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.86,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.8,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:08:09.553715",
+    "teams": {
+      "home": "Guarani U20",
+      "away": "Tanabi SP U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/%C3%81gua-santa-u20-ituano-u20-2464865",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.3849,
+          "X": 0.2758,
+          "2": 0.3393
+        },
+        "computed_odds": {
+          "1": 2.6,
+          "X": 3.63,
+          "2": 2.95
+        },
+        "confidence": 0.3849,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6061,
+          "Under": 0.3939
+        },
+        "computed_odds": {
+          "Over": 1.65,
+          "Under": 2.54
+        },
+        "confidence": 0.6061,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 0.5789473684210527,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.4802465161278671,
+          "away": 0.5184408116316338,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6111111111111112,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.5,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5909090909090908,
+          "away": 0.625,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.42504848484848484,
+          "away": 0.4298533333333333,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.1363636363636367,
+        "ml_own_odds": {
+          "odds_home": 2.008713522400329,
+          "odds_draw": 10.0,
+          "odds_away": 2.486517288397745,
+          "expected_goals": 3.1363636363636367
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 8.4
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.14,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.57,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:09:36.983063",
+    "teams": {
+      "home": "\u00c1gua Santa U20",
+      "away": "Ituano U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/mau%C3%A1-u20-flamengo-sp-u20-2464862",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2802,
+          "X": 0.3458,
+          "2": 0.374
+        },
+        "computed_odds": {
+          "1": 3.57,
+          "X": 2.89,
+          "2": 2.67
+        },
+        "confidence": 0.374,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.3811,
+          "Under": 0.6189
+        },
+        "computed_odds": {
+          "Over": 2.62,
+          "Under": 1.62
+        },
+        "confidence": 0.6189,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.42105263157894735,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.383201479923306,
+          "away": 0.6154012422438234,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.2777777777777778,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.25,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.25,
+          "away": 0.41666666666666663,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.264,
+          "away": 0.2993133333333333,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.2142857142857144,
+        "ml_own_odds": {
+          "odds_home": 2.1277028152590365,
+          "odds_draw": 10.0,
+          "odds_away": 2.3255297377802546,
+          "expected_goals": 2.2142857142857144
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 8.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 3.5
+          },
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 2.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.21,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 1.55,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:11:21.481546",
+    "teams": {
+      "home": "Mau\u00e1 U20",
+      "away": "Flamengo SP U20"
+    },
+    "match_date": "",
+    "league": "Campeonato Paulista U20"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/volsungur-umf-grindavik-2456941",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2528,
+          "X": 0.2684,
+          "2": 0.4788
+        },
+        "computed_odds": {
+          "1": 3.96,
+          "X": 3.73,
+          "2": 2.09
+        },
+        "confidence": 0.4788,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.6474,
+          "Under": 0.3526
+        },
+        "computed_odds": {
+          "Over": 1.54,
+          "Under": 2.84
+        },
+        "confidence": 0.6474,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.4736842105263158,
+          "away": 0.5789473684210527,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.315783830223567,
+          "away": 0.6829356539032699,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3333333333333333,
+          "away": 0.3888888888888889,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.3333333333333333,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.04411764705882354,
+          "away": 0.3977272727272727,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.2736,
+          "away": 0.26574,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 3.3382352941176467,
+        "ml_own_odds": {
+          "odds_home": 2.0749621044441757,
+          "odds_draw": 10.0,
+          "odds_away": 2.391981193493187,
+          "expected_goals": 3.3382352941176467
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 13.6
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 7.4
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 2.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 3.34,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 2.22,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:12:16.934170",
+    "teams": {
+      "home": "Volsungur",
+      "away": "UMF Grindavik"
+    },
+    "match_date": "",
+    "league": "1. Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/al-ahed-beirut-al-ansar-club-2485495",
+    "prediction": {
+      "result": {
+        "prediction": "2",
+        "probabilities": {
+          "1": 0.2728,
+          "X": 0.1876,
+          "2": 0.5397
+        },
+        "computed_odds": {
+          "1": 3.67,
+          "X": 5.33,
+          "2": 1.85
+        },
+        "confidence": 0.5397,
+        "draw_boost_warning": false,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.5629,
+          "Under": 0.4371
+        },
+        "computed_odds": {
+          "Over": 1.78,
+          "Under": 2.29
+        },
+        "confidence": 0.5629,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.8421052631578947,
+          "away": 1.0,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.2937189403066586,
+          "away": 0.7049821735410094,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.3888888888888889,
+          "away": 0.7777777777777778,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.0,
+          "away": 0.5,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.5769230769230769,
+          "away": 0.9444444444444445,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.35913589743589747,
+          "away": 0.4414325925925926,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.9401709401709404,
+        "ml_own_odds": {
+          "odds_home": 2.7953648111086404,
+          "odds_draw": 10.0,
+          "odds_away": 1.844117012322062,
+          "expected_goals": 2.9401709401709404
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "odds_analysis",
+            "direction": "away",
+            "impact": 15.2
+          },
+          {
+            "factor": "recent_form",
+            "direction": "away",
+            "impact": 14.8
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "away",
+            "impact": 7.7
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.94,
+            "direction": "Over"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.98,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:13:09.431929",
+    "teams": {
+      "home": "Al Ahed Beirut",
+      "away": "Al Ansar Club"
+    },
+    "match_date": "",
+    "league": "Premier League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/nejmeh-beirut-jwaya-2485496",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4621,
+          "X": 0.2623,
+          "2": 0.2756
+        },
+        "computed_odds": {
+          "1": 2.16,
+          "X": 3.81,
+          "2": 3.63
+        },
+        "confidence": 0.4621,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.3782,
+          "Under": 0.6218
+        },
+        "computed_odds": {
+          "Over": 2.64,
+          "Under": 1.61
+        },
+        "confidence": 0.6218,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.9473684210526316,
+          "away": 0.8947368421052632,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.6050546964296188,
+          "away": 0.3935446579627166,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.7777777777777778,
+          "away": 0.3333333333333333,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 1.0,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.8240740740740741,
+          "away": 0.6730769230769231,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.3363,
+          "away": 0.2751,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.2037037037037037,
+        "ml_own_odds": {
+          "odds_home": 1.7336930867761964,
+          "odds_draw": 10.0,
+          "odds_away": 3.0940915851534516,
+          "expected_goals": 2.2037037037037037
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 16.9
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 7.8
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 3.2
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.2,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 3.2,
+            "direction": "Over"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:13:46.192052",
+    "teams": {
+      "home": "Nejmeh Beirut",
+      "away": "Jwaya"
+    },
+    "match_date": "",
+    "league": "Premier League"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/kerry-finn-harps-2424084",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4368,
+          "X": 0.3251,
+          "2": 0.2381
+        },
+        "computed_odds": {
+          "1": 2.29,
+          "X": 3.08,
+          "2": 4.2
+        },
+        "confidence": 0.4368,
+        "draw_boost_warning": true,
+        "lower_league_penalty_warning": false
+      },
+      "over_under": {
+        "prediction": "Under",
+        "probabilities": {
+          "Over": 0.4345,
+          "Under": 0.5655
+        },
+        "computed_odds": {
+          "Over": 2.3,
+          "Under": 1.77
+        },
+        "confidence": 0.5655,
+        "quality_gap_warning": false
+      },
+      "factor_analysis": {
+        "league_position": {
+          "home": 0.631578947368421,
+          "away": 0.5263157894736843,
+          "weight": 0.01
+        },
+        "odds_analysis": {
+          "home": 0.5954977611985541,
+          "away": 0.4031295953391083,
+          "weight": 0.37
+        },
+        "recent_form": {
+          "home": 0.6111111111111112,
+          "away": 0.2222222222222222,
+          "weight": 0.38
+        },
+        "top5_performance": {
+          "home": 0.6666666666666666,
+          "away": 0.0,
+          "weight": 0.01
+        },
+        "goals_stats": {
+          "home": 0.44791666666666663,
+          "away": 0.30208333333333337,
+          "weight": 0.21
+        },
+        "h2h": {
+          "home": 0.33,
+          "away": 0.33,
+          "weight": 0.01
+        },
+        "shots_possession": {
+          "home": 0.2894088888888889,
+          "away": 0.2777244444444445,
+          "weight": 0.01
+        },
+        "h2h_draws": 0.33,
+        "expected_goals": 2.4166666666666665,
+        "ml_own_odds": {
+          "odds_home": 1.7187469296753957,
+          "odds_draw": 10.0,
+          "odds_away": 3.1428674090719384,
+          "expected_goals": 2.4166666666666665
+        }
+      },
+      "key_factors": {
+        "match_result": [
+          {
+            "factor": "recent_form",
+            "direction": "home",
+            "impact": 14.8
+          },
+          {
+            "factor": "odds_analysis",
+            "direction": "home",
+            "impact": 7.1
+          },
+          {
+            "factor": "goals_stats",
+            "direction": "home",
+            "impact": 3.1
+          }
+        ],
+        "over_under": [
+          {
+            "factor": "expected_goals",
+            "value": 2.42,
+            "direction": "Under"
+          },
+          {
+            "factor": "combined_scoring",
+            "value": 1.92,
+            "direction": "Under"
+          }
+        ]
+      },
+      "prediction_method": "weighted_factors",
+      "weights_used": {
+        "league_position": 0.01,
+        "odds_analysis": 0.37,
+        "recent_form": 0.38,
+        "top5_performance": 0.01,
+        "goals_stats": 0.21,
+        "h2h": 0.01,
+        "shots_possession": 0.01
+      }
+    },
+    "saved_at": "2026-07-24T14:14:23.619209",
+    "teams": {
+      "home": "Kerry",
+      "away": "Finn Harps"
+    },
+    "match_date": "",
+    "league": "First Division"
+  },
+  {
+    "url": "https://www.forebet.com/en/football/matches/kvik-halden-fk-sk-traeff-2449725",
+    "prediction": {
+      "result": {
+        "prediction": "1",
+        "probabilities": {
+          "1": 0.4652,
+          "X": 0.2148,
+          "2": 0.32
+        },
+        "computed_odds": {
+          "1": 2.15,
+          "X": 4.66,
+          "2": 3.12
+        },
+        "confidence": 0.4652,
+        "ml_weight": 0.2,
+        "weighted_weight": 0.8
+      },
+      "over_under": {
+        "prediction": "Over",
+        "probabilities": {
+          "Over": 0.7209,
+          "Under": 0.2791
+        },
+        "computed_odds": {
+          "Over": 1.39,
+          "Under": 3.58
+        },
+        "confidence": 0.7209
+      },
+      "prediction_method": "meta_blend",
+      "ensemble_agreement": 0.0
+    },
+    "saved_at": "2026-07-26T17:20:09.963777",
+    "teams": {
+      "home": "Kvik Halden FK",
+      "away": "SK Traeff"
+    },
+    "match_date": "",
+    "league": "2. Division"
+  }
+]

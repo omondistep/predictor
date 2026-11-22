@@ -1,0 +1,23 @@
+# Core runtime dependencies for the football match predictor.
+# Install into .venv via scripts/install.sh (or `pip install -r requirements.txt`).
+
+# ML ensemble (ml_model.py)
+numpy
+scikit-learn
+joblib
+xgboost
+lightgbm
+
+# NOTE: on Linux xgboost declares nvidia-nccl (~305 MB CUDA) as a hard
+# dependency even for CPU use. install.sh installs it with --no-deps to avoid
+# that download; if you install this file by hand use:
+#   pip install --no-deps xgboost
+
+# Scraping (forebet_scraper.py, webfetch.py, fbref_scraper.py)
+beautifulsoup4
+requests
+curl_cffi
+
+# Optional but recommended: real-browser fallback when Cloudflare blocks curl_cffi
+selenium
+undetected-chromedriver
