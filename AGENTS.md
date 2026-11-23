@@ -370,6 +370,7 @@ rows are excluded from the measurement but not yet from ML training.
 | `pr --all-reports <file>` | Also write the legacy secondary reports |
 | `pr --today` | Auto-fetch today's + tonight's (00:00–06:00) matches per league → `links/today.html` |
 | `pr links/today.html` | Same thing — refetches the slate first if it was built on an earlier date |
+| `pr --today --days 30 --high-leagues` | Fetch a 30-day slate containing only leagues with measured 1X2 accuracy ≥70% over ≥30 resolved picks → `links/high_30d.html`. Tune with `--min-league-accuracy` / `--min-league-matches`; `--out` overrides the path. Daily auto-refresh of that file reuses the parameters in its header |
 | `pr --no-refresh <file>` | Predict a generated slate exactly as it sits on disk |
 | `pr --weekday` | Auto-fetch all Mon–Fri matches (this week if mid-week, next week if weekend) via Forebet's AJAX per day → `links/weekday.html` |
 | `pr --high-only <file>` | Only show High / Near Certain picks |
@@ -399,6 +400,18 @@ Two mechanisms prevent that wasted run:
 Independently, a run whose fixtures are *all* already finished now ends with a
 plain warning rather than a silent success. That combination is what made the
 bettor card report "no bets" on a slate that had been overtaken by time.
+
+Custom slates carry their generation parameters in the same header:
+`[days=30 high=1 acc=70 n=30]`. A slate named `high_<N>d.html` or
+`today_<N>d.html` is treated as daily (like `today.html`) rather than rolling
+(like `weekday.html`), and `pr <file>` refreshes it with the parameters from
+that header. The high-league filter matches the feed's `Country — League`
+label against `calibration_log` via `_norm_league_key()` in `predict.py`, so
+"measured accuracy" means the same thing it does in `pr --calibrate`. Leagues
+with no resolved history are dropped, not assumed good. At the 70%/n=30 default
+very few leagues clear the bar (overall 1X2 accuracy is ~52%), so the filter
+prints the best rejected leagues to make lowering the threshold an informed
+choice rather than a guess.
 
 ## Long Slates: incremental output and `--workers`
 

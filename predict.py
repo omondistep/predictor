@@ -7144,7 +7144,7 @@ def _today_page_links_with_kickoff(today_page: str, session) -> list:
     return out
 
 
-def _write_links_file(out_file: str, urls) -> None:
+def _write_links_file(out_file: str, urls, meta: dict | None = None) -> None:
     """Write a links file with a provenance header.
 
     These files carry the extension ``.html`` for historical reasons but hold
@@ -7152,15 +7152,37 @@ def _write_links_file(out_file: str, urls) -> None:
     invited the question "why doesn't pr parse this?". The header comment (the
     link reader already skips ``#``) records when the slate was generated, which
     is what lets ``pr links/today.html`` tell yesterday's finished fixtures from
-    today's upcoming ones without guessing.
+    today's upcoming ones without guessing. ``meta`` carries the generation
+    parameters so a custom slate can be refreshed with the same filter later.
     """
     urls = list(urls)
     os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    suffix = ""
+    if meta:
+        suffix = " [" + " ".join(f"{k}={v}" for k, v in meta.items()) + "]"
     with open(out_file, "w") as f:
         f.write(f"# generated {datetime.now().isoformat(timespec='seconds')} "
-                f"— {len(urls)} match URL(s)\n")
+                f"— {len(urls)} match URL(s){suffix}\n")
         for u in urls:
             f.write(u + "\n")
+
+
+def _slate_meta(path: str) -> dict:
+    """Read key=value generation parameters from a links file header."""
+    try:
+        with open(path) as f:
+            first = f.readline()
+    except OSError:
+        return {}
+    m = re.search(r"\[([^\]]+)\]\s*$", first.strip())
+    if not m:
+        return {}
+    out = {}
+    for part in m.group(1).split():
+        if "=" in part:
+            k, v = part.split("=", 1)
+            out[k] = v
+    return out
 
 
 def _links_generated_at(path: str):
@@ -7209,27 +7231,133 @@ def _slate_needs_refresh(path: str, kind: str):
     return False, ""
 
 
+def _norm_league_key(text: str) -> str:
+    """Normalise a competition label for matching feed rows to measured history.
+
+    getrs.php labels a league ``"Romania — Superliga Women"`` while
+    calibration_log stores ``"Romania Superliga Women"`` (and older rows carry
+    standings noise such as ``"10th place ... 6th place"``). Stripping the
+    standings markers and folding punctuation/diacritics makes both land on the
+    same key.
+    """
+    import unicodedata
+    from league_names import clean_league_name
+    s = unicodedata.normalize("NFKD", clean_league_name(text or ""))
+    s = "".join(c for c in s if not unicodedata.combining(c)).lower()
+    s = re.sub(r"[^a-z0-9]+", " ", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _measured_league_accuracy(min_matches: int) -> dict:
+    """Normalised league key -> (accuracy %, n) from resolved calibration rows.
+
+    calibration_log is the same table ``pr --calibrate`` reports from. Only
+    groups with at least ``min_matches`` resolved picks are usable; two raw
+    labels that collapse to one normalised key are resolved in favour of the
+    larger sample.
+    """
+    try:
+        from database import get_db
+        conn = get_db()
+        rows = conn.execute(
+            "SELECT league, COUNT(*) n, SUM(correct) c FROM calibration_log "
+            "GROUP BY league HAVING n >= ?", (min_matches,)).fetchall()
+        conn.close()
+    except Exception as exc:
+        print(f"[league accuracy lookup failed: {exc}]")
+        return {}
+    idx = {}
+    for r in rows:
+        key = _norm_league_key(r["league"])
+        n = r["n"]
+        if not key or not n:
+            continue
+        if key not in idx or n > idx[key][1]:
+            idx[key] = (round(100.0 * (r["c"] or 0) / n, 1), n)
+    return idx
+
+
+def _filter_high_leagues(rows: list, min_accuracy: float, min_matches: int) -> list:
+    """Keep fixtures whose league clears a measured-accuracy bar.
+
+    A league the model has never resolved is unknown, not proven good, so it is
+    dropped along with leagues measured below the bar. The printed summary names
+    the qualifying leagues and the best rejected ones so the threshold can be
+    tuned without guessing.
+    """
+    idx = _measured_league_accuracy(min_matches)
+    if not idx:
+        print("[no measured league accuracy — keeping every fixture]")
+        return rows
+    kept, passing, near = [], {}, {}
+    for r in rows:
+        key = _norm_league_key(r.get("league", ""))
+        stat = idx.get(key)
+        if not stat or stat[0] < min_accuracy:
+            if stat:
+                near[r.get("league") or key] = stat
+            continue
+        kept.append(r)
+        name = r.get("league") or key
+        entry = passing.setdefault(name, [stat[0], stat[1], 0])
+        entry[2] += 1
+
+    print(f"[high-league filter: ≥{min_accuracy:g}% measured 1X2 accuracy "
+          f"over ≥{min_matches} resolved matches]")
+    if passing:
+        print("  kept:")
+        for name, (pct, n, cnt) in sorted(passing.items(), key=lambda x: -x[1][2]):
+            print(f"    {name:42s} {pct:5.1f}%  n={n:4d}  {cnt} fixture(s)")
+    dropped = len(rows) - len(kept)
+    print(f"  dropped {dropped} fixture(s) from {len(near)} below-bar or "
+          "unmeasured league(s)")
+    if near:
+        best = sorted(near.items(), key=lambda x: -x[1][0])[:5]
+        print("  best rejected: " + ", ".join(
+            f"{name} {pct:.1f}% (n={n})" for name, (pct, n) in best))
+    return kept
+
+
 def fetch_today_links(leagues_file: str = "data/leagues_db.json",
-                      out_file: str = "links/today.html",
+                      out_file: str | None = None,
                       today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
-                      now: datetime | None = None) -> str:
-    """Fetch today's upcoming matches and write match URLs to a links file.
+                      now: datetime | None = None,
+                      days: int = 1,
+                      high_leagues: bool = False,
+                      min_league_accuracy: float = 70.0,
+                      min_league_matches: int = 30) -> str:
+    """Fetch upcoming matches and write match URLs to a links file.
 
     Primary source: Forebet's getrs.php AJAX endpoint (the same one that powers
     the "Predictions for TODAY" counter on the page). It returns the complete
     fixture list, not just the ~40 rows rendered in the initial HTML. Falls back
     to scraping the today page + leagues_db.json league pages if the AJAX fails.
-    Keeps matches kicking off between now and tomorrow 06:00 (all of today's
-    remaining fixtures plus the overnight 00:00–06:00 games).
+
+    ``days=1`` keeps the original window: now through tomorrow 06:00. ``days>1``
+    loops the same feed once per day out to that horizon. With ``high_leagues``,
+    only fixtures in leagues whose measured accuracy clears the bar are kept.
     """
     import time
     from datetime import timedelta
     from webfetch import create_session
     from forebet_scraper import scrape_league_upcoming
 
+    days = max(1, int(days or 1))
+    if out_file is None:
+        if high_leagues:
+            out_file = f"links/high_{days}d.html"
+        elif days > 1:
+            out_file = f"links/today_{days}d.html"
+        else:
+            out_file = "links/today.html"
+
     now = now or datetime.now()
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    cutoff = day_start + timedelta(days=1, hours=6)
+    if days <= 1:
+        cutoff = day_start + timedelta(days=1, hours=6)
+    else:
+        cutoff = datetime.combine(
+            now.date() + timedelta(days=days - 1), datetime.max.time())
 
     session = create_session()
 
@@ -7241,23 +7369,44 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
         params = _getrs_params(today_page, session)
         if params:
             used_ajax = True
-            today_matches, _, today_by_league = _fetch_getrs_matches(
-                params, session, now, cutoff)
-            tomorrow_params = dict(params)
-            tomorrow_params["in"] = (day_start + timedelta(days=1)).strftime("%Y-%m-%d")
-            tomorrow_params["tzs"] = str(int(params["tzs"]) + 86400)
-            tomorrow_params["tze"] = str(int(params["tze"]) + 86400)
-            tomorrow_matches, _, tomorrow_by_league = _fetch_getrs_matches(
-                tomorrow_params, session, now, cutoff)
-
+            day_batches = []
+            if days <= 1:
+                today_matches, _, today_by_league = _fetch_getrs_matches(
+                    params, session, now, cutoff)
+                tomorrow_params = dict(params)
+                tomorrow_params["in"] = (day_start + timedelta(days=1)).strftime("%Y-%m-%d")
+                tomorrow_params["tzs"] = str(int(params["tzs"]) + 86400)
+                tomorrow_params["tze"] = str(int(params["tze"]) + 86400)
+                tomorrow_matches, _, tomorrow_by_league = _fetch_getrs_matches(
+                    tomorrow_params, session, now, cutoff)
+                day_batches = [today_matches, tomorrow_matches]
+                per_league = {**today_by_league}
+                for league, n in tomorrow_by_league.items():
+                    per_league[league] = per_league.get(league, 0) + n
+            else:
+                end_date = now.date() + timedelta(days=days - 1)
+                base_tzs = int(params["tzs"])
+                base_tze = int(params["tze"])
+                d = now.date()
+                while d <= end_date:
+                    day_params = dict(params)
+                    day_params["in"] = d.strftime("%Y-%m-%d")
+                    shift = (d - now.date()).days * 86400
+                    day_params["tzs"] = str(base_tzs + shift)
+                    day_params["tze"] = str(base_tze + shift)
+                    day_matches, _, day_by_league = _fetch_getrs_matches(
+                        day_params, session, now, cutoff)
+                    print(f"  {d.strftime('%a %Y-%m-%d')}: {len(day_matches)} matches")
+                    day_batches.append(day_matches)
+                    for league, n in day_by_league.items():
+                        per_league[league] = per_league.get(league, 0) + n
+                    d += timedelta(days=1)
             seen = set()
-            for r in today_matches + tomorrow_matches:
-                if r["url"] not in seen:
-                    seen.add(r["url"])
-                    uniq.append(r)
-            per_league = {**today_by_league}
-            for league, n in tomorrow_by_league.items():
-                per_league[league] = per_league.get(league, 0) + n
+            for batch in day_batches:
+                for r in batch:
+                    if r["url"] not in seen:
+                        seen.add(r["url"])
+                        uniq.append(r)
         else:
             print("[AJAX unavailable — falling back to HTML scraping]")
     except Exception as e:
@@ -7310,10 +7459,20 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
 
         uniq = list(all_by_url.values())
 
-    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
-    _write_links_file(out_file, [r["url"] for r in uniq])
+    if high_leagues and uniq:
+        uniq = _filter_high_leagues(uniq, min_league_accuracy, min_league_matches)
 
-    print(f"\nFetched {len(uniq)} matches today + tonight (00:00–06:00)")
+    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    meta = {"days": days}
+    if high_leagues:
+        meta.update(high=1, acc=f"{min_league_accuracy:g}", n=min_league_matches)
+    _write_links_file(out_file, [r["url"] for r in uniq], meta=meta)
+
+    if days <= 1:
+        span = "today + tonight (00:00–06:00)"
+    else:
+        span = f"the next {days} days ({now.date()} → {now.date() + timedelta(days=days-1)})"
+    print(f"\nFetched {len(uniq)} matches for {span}")
     by_country = {}
     for name, n in per_league.items():
         country, _, league = name.partition(" — ")
@@ -7322,7 +7481,10 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
         by_country[country][1] += 1
     for country, (n, leagues_n) in sorted(by_country.items(), key=lambda x: -x[1][0])[:25]:
         print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
-    if len(uniq) < 25:
+    if not uniq:
+        print("[warning] no fixtures survived — check --min-league-accuracy "
+              "and --min-league-matches")
+    elif days <= 1 and len(uniq) < 25:
         print(f"[warning] only {len(uniq)} fixtures — a busy evening should be "
               "40–90; re-run `pr --today` if this looks low")
     print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
@@ -8636,6 +8798,10 @@ def main():
         epilog="""
 Modes:
   predict.py links.txt              Scrape Forebet links → predict → save to DB
+  predict.py --today --days 30 --high-leagues
+                                    30-day slate of measured-high-accuracy leagues
+                                    → links/high_30d.html; tune the bar with
+                                    --min-league-accuracy / --min-league-matches
   predict.py results                Update existing reports with match results (no duplicates)
   predict.py --review               Review past predictions vs actual results
   predict.py --learn <url>           Automated learning from results page
@@ -8671,6 +8837,21 @@ Options:
     parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
     parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
     parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
+    parser.add_argument("--days", type=int, default=1, metavar="N",
+                        help="With --today, fetch N days ahead instead of just "
+                             "today + tonight (default: 1)")
+    parser.add_argument("--high-leagues", action="store_true",
+                        help="With --today, keep only leagues whose measured "
+                             "1X2 accuracy clears --min-league-accuracy over at "
+                             "least --min-league-matches resolved predictions")
+    parser.add_argument("--min-league-accuracy", type=float, default=70.0,
+                        metavar="PCT", help="Minimum measured league accuracy "
+                        "for --high-leagues (default: 70)")
+    parser.add_argument("--min-league-matches", type=int, default=30,
+                        metavar="N", help="Minimum resolved matches before a "
+                        "league can qualify for --high-leagues (default: 30)")
+    parser.add_argument("--out", help="Write the generated slate to this file "
+                        "instead of the default links/<mode>.html")
     parser.add_argument("--fbref", nargs="?", const="all", default=None, help="Scrape FBref xG stats for leagues (e.g. --fbref 9 or --fbref all)")
     parser.add_argument("--all-reports", action="store_true",
                         help="Also write the legacy secondary reports (best/"
@@ -8846,28 +9027,42 @@ Options:
         return
 
     if args.today:
-        fetch_today_links()
+        fetch_today_links(
+            out_file=args.out, days=args.days, high_leagues=args.high_leagues,
+            min_league_accuracy=args.min_league_accuracy,
+            min_league_matches=args.min_league_matches)
         return
 
     if args.weekday:
-        fetch_weekday_links()
+        fetch_weekday_links(out_file=args.out)
         return
 
     if args.file:
         # A generated slate goes stale silently: yesterday's links/today.html is
         # a list of matches that have already been played, so the run "succeeds"
         # while predicting nothing bettable. Refresh it in place so one command
-        # is all it takes.
+        # is all it takes. Custom slates (links/high_30d.html etc.) carry their
+        # generation parameters in the header so they refresh the same way.
         if not args.no_refresh:
             base = os.path.basename(args.file)
             kind = {"today.html": "today", "weekday.html": "weekday"}.get(base)
+            if kind is None and re.match(r"^(?:high|today)_\d+d\.html$", base):
+                kind = "today"
             if kind:
                 stale, why = _slate_needs_refresh(args.file, kind)
                 if stale:
                     log(f"[{args.file}] is out of date — {why}. Refreshing…")
                     try:
-                        (fetch_today_links if kind == "today"
-                         else fetch_weekday_links)(out_file=args.file)
+                        if kind == "today":
+                            meta = _slate_meta(args.file)
+                            fetch_today_links(
+                                out_file=args.file,
+                                days=int(meta.get("days", 1)),
+                                high_leagues=bool(int(meta.get("high", 0))),
+                                min_league_accuracy=float(meta.get("acc", 70.0)),
+                                min_league_matches=int(meta.get("n", 30)))
+                        else:
+                            fetch_weekday_links(out_file=args.file)
                     except Exception as exc:
                         log(f"  [refresh failed: {exc} — using the existing file]")
 

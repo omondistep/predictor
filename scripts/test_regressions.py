@@ -1463,5 +1463,46 @@ class TestTimestampedOutputs(unittest.TestCase):
             self.assertEqual(base.read_text(), "first run")
 
 
+class TestCustomSlates(unittest.TestCase):
+    """The --days / --high-leagues slate generator and its refresh metadata."""
+
+    def test_league_key_matches_feed_and_calibration_forms(self):
+        from predict import _norm_league_key
+        feed = _norm_league_key("Romania — Superliga Women")
+        stored = _norm_league_key("Romania Superliga Women")
+        noisy = _norm_league_key("10th place Romania Superliga Women 6th place")
+        self.assertEqual(feed, stored)
+        self.assertEqual(feed, noisy)
+        self.assertEqual(feed, "romania superliga women")
+
+    def test_slate_meta_round_trip(self):
+        from predict import _slate_meta, _write_links_file
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "high_30d.html"
+            _write_links_file(str(p), ["https://x/1"],
+                              meta={"days": 30, "high": 1, "acc": 70, "n": 30})
+            self.assertEqual(_slate_meta(str(p)),
+                             {"days": "30", "high": "1", "acc": "70", "n": "30"})
+            with open(p) as f:
+                header = f.readline()
+            self.assertIn("1 match URL(s) [days=30 high=1 acc=70 n=30]", header)
+            _write_links_file(str(p), ["https://x/1"])
+            self.assertEqual(_slate_meta(str(p)), {})
+
+    def test_high_league_filter_drops_unmeasured_and_below_bar(self):
+        from unittest.mock import patch
+        import predict
+        rows = [
+            {"url": "good", "league": "Romania — Superliga Women"},
+            {"url": "weak", "league": "Sweden — Division 2 Norra Svealand"},
+            {"url": "unknown", "league": "Netherlands — Eerste Divisie"},
+        ]
+        idx = {"romania superliga women": (73.5, 49),
+               "sweden division 2 norra svealand": (66.7, 51)}
+        with patch.object(predict, "_measured_league_accuracy", return_value=idx):
+            kept = predict._filter_high_leagues(rows, 70.0, 30)
+        self.assertEqual([r["url"] for r in kept], ["good"])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
