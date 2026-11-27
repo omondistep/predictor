@@ -187,11 +187,14 @@ def step_scrape_date_pages(days_back: int = 14, delay: float = 1.0,
 def step_calibrate() -> dict:
     """Run calibration analysis and auto-retrain if conditions are met."""
     try:
-        from calibration_learner import analyze_calibration, auto_retrain, check_retrain_needed
+        from calibration_learner import (
+            analyze_calibration, auto_retrain, check_retrain_needed,
+            MIN_BIAS_SAMPLES,
+        )
     except ImportError:
         return {"status": "no_calibration_module", "analyzed": False, "retrained": False}
 
-    analyze_calibration(min_samples=10)
+    analyze_calibration(min_samples=MIN_BIAS_SAMPLES)
     retrain_needed = check_retrain_needed()
     retrained = False
     if retrain_needed:

@@ -479,32 +479,21 @@ _FB_PCTS = {}
 
 
 def _league_market_accuracy():
-    """Reliability per league family, sampled across ALL seasons.
+    """Exact competition + market reliability, sampled across ALL seasons.
 
-    League labels drift between scraper variants and seasons ('Türkiye Süper
-    Lig' vs 'Turkey Super League', 'China Super League' vs '10th place China
-    Super League 5th place').  Grouping by the exact stored label splits every
-    real league into crumbs that never reach n>=20 and get misreported as
-    'unverified'.  Roll up each label to a stable family key first, then apply
-    the sample floor to the family total."""
+    A country prefix is not a league: ``LIKE 'England%'`` pools the Premier
+    League with the FA Cup, women's football and reserve sides.  The old code
+    then compared that raw hit rate with a universal threshold, which makes a
+    40% 1X2 bucket look as bad as a 40% DC bucket even though their base rates
+    are ~35% and ~76%.  Use ``league_stats`` for exact keys and score each
+    market against the base rate of the selection actually picked.
+    """
+    import league_stats
     acc = {}
-    fam = {}
-    rows = _try(
-        "SELECT m.league, c.market, COUNT(*) n, SUM(c.correct) correct "
-        "FROM calibration_log c JOIN matches m ON m.id=c.match_id "
-        "GROUP BY m.league, c.market"
-    )
-    if isinstance(rows, list):
-        for r in rows:
-            family = _league_family(r["league"])
-            if family is None:
-                continue
-            k = (r["market"], family)
-            n0, c0 = fam.get(k, (0, 0))
-            fam[k] = (n0 + r["n"], c0 + (r["correct"] or 0))
-    for (market, family), (n, correct) in fam.items():
-        if n >= 20:
-            acc.setdefault(market, {})[family] = correct / n
+    for key, markets in league_stats.all_market_stats().items():
+        for market, stat in markets.items():
+            if stat["n"] >= 20:
+                acc.setdefault(market, {})[key] = stat
     return acc
 
 
@@ -595,21 +584,30 @@ def _clean_team(name, date):
 
 
 def _rel_factor(acc, league, market):
-    pct = acc.get(market, {}).get(_league_family(league))
-    if pct is None:
-        # No measured accuracy for this league family.  A full stake is earned
-        # by evidence: an unmeasured league gets the same haircut as a measured
-        # but weak one, rather than the 1.0 reserved for STUD/ok.  Treating
-        # "unknown" as "proven" let half a card's stake ride on leagues nothing
-        # has ever been scored in.
+    """Stake factor from measured edge over this exact competition's base rate.
+
+    ``reliable`` (edge >= +2pts with a 95% bound above base) earns the full
+    stake; a league merely at its own base rate gets the cautious middle
+    haircut; a measured negative edge is COLD and is vetoed outright.  Unknown
+    keeps the house 0.5 haircut — an unmeasured league is not a proven one.
+    """
+    import league_stats
+    stat = None
+    for key in league_stats.league_aliases(league):
+        stat = acc.get(market, {}).get(key)
+        if stat is not None:
+            break
+    if stat is None or stat.get("n", 0) < 20:
         return 0.5, "unknown"
-    if pct >= 0.58:
+    grade = stat.get("grade")
+    edge = float(stat.get("edge_pts", 0) or 0)
+    if grade == "reliable" and edge >= 2.0:
         return 1.0, "STUD"
-    if pct >= 0.50:
-        return 1.0, "ok"
-    if pct >= 0.40:
-        return 0.5, "WEAK"
-    return 0.0, "COLD"
+    if grade == "at_base":
+        return 0.75, "ok"
+    if grade == "weak":
+        return 0.0, "COLD"
+    return 0.5, "unknown"
 
 
 def _stake(odds, prob, kelly_frac, cap):
@@ -1334,8 +1332,8 @@ def _analyze_leg(leg, fx, acc):
     both = f"{leg['home']} {leg['away']}"
     if is_reserve_fixture(leg.get("home", ""), leg.get("away", "")):
         e["flags"].append("reserve/second team")
-    if not e["league"] or _league_family(e["league"]) not in (acc.get(leg["market"]) or {}):
-        e["flags"].append("league unverified (n<20)")
+    if grade == "unknown":
+        e["flags"].append("league unverified (exact n<20)")
     if bp >= 4.0:
         e["flags"].append("LONGSHOT")
     for rf in (src.get("_red_flags") or []):

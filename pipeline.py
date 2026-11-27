@@ -157,18 +157,13 @@ def step2_league_context(data: dict) -> dict:
     profile = _p.get_profile(league_key)
 
     difficulty = _p._get_league_difficulty(league)
-    acc = difficulty.get("accuracy") or 0
+    try:
+        from league_stats import reliability_factor
+        reliability, _grade = reliability_factor(league)
+    except Exception:
+        reliability, _grade = 0.70, "unknown"
 
-    if acc >= 65:
-        reliability = 1.0
-    elif acc >= 45:
-        reliability = 0.70
-    elif acc > 0:
-        reliability = 0.45
-    else:
-        reliability = 0.70  # unknown
-
-    # Per-market accuracy (last 7 days)
+    # Per-market accuracy (last 7 days), judged against its own base rate
     market_acc: dict[str, dict] = {}
     for mk in ("1X2", "O/U", "BTTS"):
         a = _p._get_league_market_accuracy(league, mk)
@@ -181,13 +176,14 @@ def step2_league_context(data: dict) -> dict:
     draw_br = pick_base_rate(base_rates, "1X2", "Draw") if base_rates else 0.28
 
     reasoning: list[str] = []
-    if difficulty.get("level") == "hard":
-        reasoning.append(f"⚠ {difficulty.get('reason', 'Unreliable league')}")
+    if difficulty.get("grade") == "weak":
+        reasoning.append(f"⚠ {difficulty.get('reason', 'Below-base-rate competition')}")
     for mk, a in market_acc.items():
-        if a.get("pct", 100) < 40:
+        edge = a.get("edge_pts", 0)
+        if edge <= -2.0:
             reasoning.append(
-                f"⚠ {league_key} {mk} accuracy only {a['pct']:.0f}% "
-                f"({a['total']} recent picks) — confidence capped"
+                f"⚠ {league_key} {mk} is {edge:+.0f}pts vs its own base rate "
+                f"({a['pct']:.0f}% on {a['total']} recent picks) — confidence capped"
             )
 
     derby = _p._detect_derby(data)
@@ -764,17 +760,18 @@ def step6_pick_selection(data: dict, ctx: dict, audit: dict,
         candidates = synthesize(_synth_ctx, candidates)
         _synth_rationale = build_synthesis_rationale(_synth_ctx, candidates, candidates[0])
 
-        # Boost/penalise candidates by league-market accuracy
+        # Boost/penalise candidates by base-relative league-market edge
         mkt_acc_all = ctx["market_accuracy"]
         for c in candidates:
             _acc = mkt_acc_all.get(c.get("market", ""), {})
-            if _acc.get("total", 0) >= 5 and _acc.get("pct", 0) > 0:
+            if _acc.get("total", 0) >= 5:
                 dv = c.get("decision_value", 0)
-                if _acc["pct"] >= 70:
+                edge = _acc.get("edge_pts", 0)
+                if edge >= 10:
                     c["decision_value"] = dv + 0.05
-                elif _acc["pct"] >= 60:
+                elif edge >= 5:
                     c["decision_value"] = dv + 0.03
-                elif _acc["pct"] < 45:
+                elif edge <= -5:
                     c["decision_value"] = dv - 0.03
         candidates.sort(key=lambda c: c.get("decision_value", 0), reverse=True)
 
@@ -810,19 +807,20 @@ def step6_pick_selection(data: dict, ctx: dict, audit: dict,
             f"{_cur} → {_new}"
         )
 
-    # ── GATE 3: League-market historical accuracy < 40% ──
+    # ── GATE 3: League-market edge materially below its own base rate ──
     mkt = primary.get("market", "1X2")
     mkt_acc = ctx["market_accuracy"].get(mkt, {})
-    if mkt_acc.get("total", 0) >= 5 and mkt_acc.get("pct", 100) < 40:
+    market_edge = mkt_acc.get("edge_pts", 0)
+    if mkt_acc.get("total", 0) >= 5 and market_edge <= -5:
         _cur = primary.get("confidence", "Medium")
         _rank = _CONF_LADDER.index(_cur) if _cur in _CONF_LADDER else 3
         _new = _CONF_LADDER[min(_rank + 2, len(_CONF_LADDER) - 1)]
         primary = dict(primary)
         primary["confidence"] = _new
-        gates_fired.append(f"LEAGUE_MARKET_ACCURACY_{mkt}_{mkt_acc['pct']:.0f}pct")
+        gates_fired.append(f"LEAGUE_MARKET_EDGE_{mkt}_{market_edge:+.0f}pts")
         reasoning.append(
-            f"⚠ Gate 3 fired: {ctx['league_key']} {mkt} only "
-            f"{mkt_acc['pct']:.0f}% accurate ({mkt_acc['total']} picks) "
+            f"⚠ Gate 3 fired: {ctx['league_key']} {mkt} is {market_edge:+.0f}pts "
+            f"vs its own base rate ({mkt_acc['pct']:.0f}% on {mkt_acc['total']} picks) "
             f"→ confidence {_cur} → {_new}"
         )
 
@@ -889,16 +887,17 @@ def step7_kelly(ctx: dict, pick6: dict) -> dict:
             kelly_fraction = edge / (odds_val - 1)
             kelly_stake = min(kelly_fraction * 0.25, 0.05)  # Quarter-Kelly, 5% cap
 
-    # ── League-market accuracy haircut ──
+    # ── League-market base-relative haircut ──
     mkt = primary.get("market", "1X2")
     mkt_acc = ctx["market_accuracy"].get(mkt, {})
-    if mkt_acc.get("total", 0) >= 5 and mkt_acc.get("pct", 0) > 0:
-        acc_factor = mkt_acc["pct"] / 100.0
+    if mkt_acc.get("total", 0) >= 5:
+        market_edge = mkt_acc.get("edge_pts", 0)
+        acc_factor = 1.0 if market_edge >= 0 else 0.5 if market_edge <= -5 else 0.75
         old_stake = kelly_stake
         kelly_stake = round(kelly_stake * acc_factor, 4)
         reasoning.append(
-            f"League-market accuracy haircut {acc_factor:.0%} "
-            f"({mkt} {mkt_acc['pct']:.0f}%): "
+            f"League-market edge haircut {acc_factor:.0%} "
+            f"({mkt} {market_edge:+.0f}pts vs base): "
             f"{old_stake:.1%} → {kelly_stake:.1%}"
         )
 
@@ -950,8 +949,10 @@ def run_pipeline(data: dict, use_ml: bool = True, verbose: bool = True) -> dict:
          + (f"  ⚠ {ctx['difficulty']['reason']}" if ctx["is_hard"] else ""))
     if ctx["market_accuracy"]:
         for mk, a in ctx["market_accuracy"].items():
-            flag = " ⚠ LOW" if a.get("pct", 100) < 40 else ""
-            _log(f"    {mk} accuracy (7d): {a['pct']:.0f}% ({a['total']} picks){flag}")
+            edge = a.get("edge_pts", 0)
+            flag = " ⚠ BELOW BASE" if edge <= -5 else ""
+            _log(f"    {mk} accuracy (7d): {a['pct']:.0f}% "
+                 f"({edge:+.0f}pt vs base, {a['total']} picks){flag}")
 
     _log("▶ Step 3/7  Expected goals")
     xg = step3_expected_goals(data, ctx)

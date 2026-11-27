@@ -24,16 +24,13 @@ for m in get_market_accuracy():
 "
 ```
 
-## Automatic Retraining (Cron)
+## Automatic Retraining (systemd timer)
 
-**Schedule:** 8:30 AM EAT (GMT+3) daily
+A prediction run arms `football-predictor-retrain.timer` for 18 hours later.
+It is `Persistent=true`, so a run missed while the machine was off is executed
+once at the next boot. The units live in `~/.config/systemd/user/`.
 
-**Installed cron job:**
-```bash
-30 5 * * * cd /home/stdk/predictor && .venv/bin/python3 -c "from calibration_learner import auto_retrain; auto_retrain(force=True)" >> /tmp/retrain.log 2>&1
-```
-
-**Verify:** `crontab -l`
+**Verify:** `systemctl --user list-timers football-predictor-retrain.timer`
 
 **View logs:** `tail -f /tmp/retrain.log`
 

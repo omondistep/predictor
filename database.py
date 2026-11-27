@@ -15,6 +15,11 @@ from pathlib import Path
 DB_DIR = Path(__file__).parent
 DB_PATH = DB_DIR / "history.db"
 
+# A (league, market, probability-bucket) bias backed by fewer reviewed examples
+# than this is noise, not evidence. Storing and applying corrections share this
+# threshold so a thin bucket can never move a live probability.
+MIN_BIAS_SAMPLES = 25
+
 SCHEMA_TABLES = """
 CREATE TABLE IF NOT EXISTS matches (
     id INTEGER PRIMARY KEY,
@@ -192,6 +197,7 @@ CREATE TABLE IF NOT EXISTS model_retrain_log (
     accuracy_1x2_after REAL,
     accuracy_ou_before REAL,
     accuracy_ou_after REAL,
+    resolved_entries_after INTEGER,
     created_at TEXT DEFAULT (datetime('now'))
 );
 
@@ -437,6 +443,7 @@ _MIGRATIONS = [
     ("calibration_log", "stake", "REAL"),
     ("calibration_log", "odds", "REAL"),
     ("calibration_log", "model_prob", "REAL"),
+    ("model_retrain_log", "resolved_entries_after", "INTEGER"),
     # match_context table columns (added in model improvement)
     ("match_context", "competition_type", "TEXT DEFAULT 'league'"),
     ("match_context", "motivation_class", "TEXT DEFAULT 'medium'"),
@@ -2271,7 +2278,8 @@ def save_calibration_bias(league: str, market: str, threshold: str, bucket: str,
     return bias
 
 
-def get_calibration_biases(league: str = None, market: str = None, min_samples: int = 10) -> list:
+def get_calibration_biases(league: str = None, market: str = None,
+                           min_samples: int = MIN_BIAS_SAMPLES) -> list:
     """Get bias corrections, optionally filtered."""
     conn = get_db()
     query = """
@@ -2301,19 +2309,40 @@ def get_calibration_data_for_retraining(min_samples: int = 20) -> dict:
         SELECT COUNT(*) as cnt FROM calibration_log
         WHERE created_at >= datetime('now', '-30 days')
     """).fetchone()["cnt"]
+    # What the model can actually learn from: resolved matches, not the raw
+    # calibration_log count (which grows with every prediction, resolved or not).
+    resolved = conn.execute("""
+        SELECT COUNT(*) as cnt FROM matches
+        WHERE reviewed = 1 AND actual_home_goals IS NOT NULL
+    """).fetchone()["cnt"]
 
-    acc_by_market = conn.execute("""
-        SELECT market,
+    # Accuracy drift must be measured on settled picks only. Counting the
+    # unresolved backlog as wrong put 1X2 at 39.2% and fired the drift trigger
+    # on every single results run.
+    acc_sql = """
+        SELECT c.market as market,
                COUNT(*) as total,
-               SUM(correct) as correct,
-               ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct
-        FROM calibration_log
-        WHERE market IS NOT NULL
-        GROUP BY market
-    """).fetchall()
+               SUM(c.correct) as correct,
+               ROUND(100.0 * SUM(c.correct) / COUNT(*), 1) as pct
+        FROM calibration_log c
+        JOIN matches m ON m.id = c.match_id
+        WHERE c.market IS NOT NULL
+          AND m.reviewed = 1
+          AND m.actual_home_goals IS NOT NULL
+          {recent_clause}
+        GROUP BY c.market
+    """
+    acc_by_market = conn.execute(
+        acc_sql.format(recent_clause="")
+    ).fetchall()
+    recent_acc_by_market = conn.execute(
+        acc_sql.format(recent_clause="AND m.reviewed_at >= date('now', '-30 days')")
+    ).fetchall()
 
     last_retrain = conn.execute("""
-        SELECT MAX(created_at) as last_time, examples_after as last_examples
+        SELECT MAX(created_at) as last_time,
+               examples_after as last_examples,
+               resolved_entries_after as last_resolved_entries
         FROM model_retrain_log
     """).fetchone()
 
@@ -2321,26 +2350,32 @@ def get_calibration_data_for_retraining(min_samples: int = 20) -> dict:
     return {
         "total_calibration_entries": total,
         "recent_30d": recent,
+        "resolved_entries": resolved,
         "accuracy_by_market": [dict(r) for r in acc_by_market],
+        "recent_accuracy_by_market": [dict(r) for r in recent_acc_by_market],
         "last_retrain_time": last_retrain["last_time"] if last_retrain else None,
         "last_retrain_examples": last_retrain["last_examples"] if last_retrain else 0,
+        "last_retrain_resolved_entries": (
+            last_retrain["last_resolved_entries"] if last_retrain else None
+        ),
     }
 
 
 def log_retrain(triggered_by: str, examples_before: int, examples_after: int,
                 acc_1x2_before: float, acc_1x2_after: float,
-                acc_ou_before: float, acc_ou_after: float):
+                acc_ou_before: float, acc_ou_after: float,
+                resolved_entries: int = None):
     """Log a model retrain event."""
     conn = get_db()
     conn.execute("""
         INSERT INTO model_retrain_log
             (triggered_by, examples_before, examples_after,
              accuracy_1x2_before, accuracy_1x2_after,
-             accuracy_ou_before, accuracy_ou_after)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             accuracy_ou_before, accuracy_ou_after, resolved_entries_after)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (triggered_by, examples_before, examples_after,
           acc_1x2_before, acc_1x2_after,
-          acc_ou_before, acc_ou_after))
+          acc_ou_before, acc_ou_after, resolved_entries))
     conn.commit()
     conn.close()
 

@@ -77,11 +77,91 @@ def _venv_python() -> Path:
     return Path(sys.executable)
 
 
+def _schedule_systemd_timer(delay_hours: float, retrain_time) -> bool:
+    """Arm a persistent systemd *user* timer for the retrain.
+
+    An absolute ``OnCalendar`` time plus ``Persistent=true`` means a run
+    missed while the machine was off fires once when the user manager starts
+    again — with lingering enabled, that is boot rather than next login.
+    Returns False when systemd user units are unavailable so the caller can
+    fall back to cron or the nohup sleeper.
+    """
+    import shutil
+    import subprocess
+
+    if shutil.which("systemctl") is None:
+        return False
+
+    parent = Path(__file__).parent
+    unit_dir = Path.home() / ".config" / "systemd" / "user"
+    service = unit_dir / "football-predictor-retrain.service"
+    timer = unit_dir / "football-predictor-retrain.timer"
+    retrain_script = parent / "retrain_now.sh"
+    when = retrain_time.strftime("%Y-%m-%d %H:%M:%S")
+
+    def systemctl(*args):
+        return subprocess.run(["systemctl", "--user", *args],
+                              capture_output=True, text=True, timeout=20)
+
+    try:
+        unit_dir.mkdir(parents=True, exist_ok=True)
+        service.write_text(
+            "[Unit]\n"
+            "Description=Football predictor model retrain\n"
+            "\n"
+            "[Service]\n"
+            "Type=oneshot\n"
+            f"WorkingDirectory={parent}\n"
+            f"ExecStart={retrain_script}\n"
+            "StandardOutput=append:/tmp/retrain.log\n"
+            "StandardError=append:/tmp/retrain.log\n"
+        )
+        timer.write_text(
+            "[Unit]\n"
+            "Description=Football predictor retrain (18h after last run)\n"
+            "\n"
+            "[Timer]\n"
+            f"OnCalendar={when}\n"
+            "Persistent=true\n"
+            "AccuracySec=1min\n"
+            "Unit=football-predictor-retrain.service\n"
+            "\n"
+            "[Install]\n"
+            "WantedBy=timers.target\n"
+        )
+        # systemd records the last elapse in a per-unit stamp file. Drop it on
+        # reschedule so an earlier firing cannot suppress the new deadline.
+        for state_dir in (Path.home() / ".local/state/systemd/timers",
+                          Path.home() / ".local/share/systemd/timers"):
+            stamp = state_dir / "stamp-football-predictor-retrain.timer"
+            try:
+                stamp.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        reload = systemctl("daemon-reload")
+        if reload.returncode != 0:
+            log(f"[systemd timer daemon-reload failed: {reload.stderr.strip()}]")
+            return False
+        armed = systemctl("enable", "--now", "football-predictor-retrain.timer")
+        if armed.returncode != 0:
+            log(f"[systemd timer enable failed: {armed.stderr.strip()}]")
+            return False
+    except Exception as e:
+        log(f"[systemd timer unavailable ({e}) — trying cron instead]")
+        return False
+
+    log(f"Auto-retrain scheduled via systemd timer — fires at ~{when} "
+        f"(Persistent=true: catches up after boot if missed). "
+        f"Log: /tmp/retrain.log")
+    return True
+
+
 def schedule_retrain(delay_hours: float = 18.0):
     """Schedule ML model retrain 18h out.
 
-    POSIX: cron, falling back to a nohup one-shot sleeper when cron is
-    unavailable (no crontab binary / no daemon).
+    Linux: persistent systemd user timer (catches up after power-off), then
+    cron, then a nohup one-shot sleeper when neither is available.
     Windows: Task Scheduler (`schtasks`), which is the supported one-shot
     there — cron and nohup do not exist, and the POSIX fallback would
     otherwise fall through to an immediate blocking retrain."""
@@ -104,6 +184,9 @@ def schedule_retrain(delay_hours: float = 18.0):
         _schedule_schtasks(delay_hours, retrain_cmd, retrain_time)
         return
 
+    if _schedule_systemd_timer(delay_hours, retrain_time):
+        return
+
     retrain_cmd = (
         f"cd {parent} && "
         f"{py} -c "
@@ -115,7 +198,7 @@ def schedule_retrain(delay_hours: float = 18.0):
     # backgrounded one-shot fallback instead of a doomed `crontab -` call.
     if shutil.which("crontab") is None:
         log("crontab not installed — scheduling one-shot retrain via nohup instead")
-        _schedule_nohup(delay_hours, retrain_cmd)
+        _schedule_nohup(delay_hours, retrain_cmd, retrain_time)
         return
 
     cron_line = (
@@ -139,7 +222,7 @@ def schedule_retrain(delay_hours: float = 18.0):
         else:
             log(f"Failed to set cron: {proc.stderr or proc.returncode}")
             log("Falling back to the nohup one-shot scheduler...")
-            _schedule_nohup(delay_hours, retrain_cmd)
+            _schedule_nohup(delay_hours, retrain_cmd, retrain_time)
     except Exception as e:
         log(f"Failed to schedule retrain: {e}")
         log("Running retrain immediately instead...")
@@ -169,7 +252,7 @@ def _schedule_schtasks(delay_hours: float, retrain_cmd: str, retrain_time):
             f"manually once results are in")
 
 
-def _schedule_nohup(delay_hours: float, retrain_cmd: str):
+def _schedule_nohup(delay_hours: float, retrain_cmd: str, retrain_time):
     """One-shot retrain via a backgrounded sleeper — works when cron/at are
     unavailable.  Detaches from the calling process (nohup + new session) so it
     survives `pr` finishing.  Any previously scheduled nohup sleeper is
@@ -190,20 +273,21 @@ def _schedule_nohup(delay_hours: float, retrain_cmd: str):
     log_path = "/tmp/retrain.log"
     sleeper = f"sleep {int(float(delay_hours) * 3600)}; {retrain_cmd}"
     try:
-        proc = subprocess.Popen(
-            ["nohup", "bash", "-c", sleeper],
-            stdin=subprocess.DEVNULL,
-            stdout=open(log_path, "ab"),
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
+        with open(log_path, "ab") as log_file:
+            proc = subprocess.Popen(
+                ["nohup", "bash", "-c", sleeper],
+                stdin=subprocess.DEVNULL,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
         try:
             pid_file.write_text(str(proc.pid))
         except OSError:
             pass
-        eta = datetime.now().strftime("%Y-%m-%d %H:%M")
+        eta = retrain_time.strftime("%Y-%m-%d %H:%M")
         log(f"Auto-retrain scheduled via nohup (pid {proc.pid}) — fires at ~"
-            f"{eta} +{delay_hours:.0f}h. Log: {log_path}  pid file: {pid_file}")
+            f"{eta}. Log: {log_path}  pid file: {pid_file}")
     except Exception as e:
         log(f"nohup scheduler failed ({e}) — running retrain immediately instead...")
         auto_retrain(force=True)
@@ -713,55 +797,22 @@ _MARKET_THRESHOLDS["1H"] = {
 BANKER_MIN_PCT = 0.72
 
 def _get_league_difficulty(league: str) -> dict:
-    """Return difficulty info for a league based on historical accuracy.
-    
-    Returns dict with:
-      - level: "hard" | "medium" | "easy"
-      - accuracy: float (0-100)
-      - matches: int
-      - reason: str
+    """Difficulty of one exact competition, judged against its own base rates.
+
+    The old implementation used ``LIKE '<country>%'`` and one absolute hit-rate
+    threshold for every market.  That pooled the Premier League with the FA
+    Cup, women's and reserve competitions, and treated a 40% 1X2 hit rate (high
+    for a Draw-heavy sample) the same as a 40% DC hit rate (well below base).
+    ``league_stats`` keeps the competition exact and scores the edge in points
+    over the base rate of the selections actually picked.
     """
     try:
-        from database import get_db
-        conn = get_db()
-        
-        prefix = _resolve_league_prefix(league)
-        
-        if prefix:
-            # Search calibration_log for all entries starting with this prefix
-            row = conn.execute("""
-                SELECT ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct, COUNT(*) as cnt
-                FROM calibration_log WHERE league LIKE ?
-            """, (f"{prefix}%",)).fetchone()
-        else:
-            # Fallback: search by full league name
-            row = conn.execute("""
-                SELECT ROUND(100.0 * SUM(correct) / COUNT(*), 1) as pct, COUNT(*) as cnt
-                FROM calibration_log WHERE league LIKE ?
-            """, (f"%{league}%",)).fetchone()
-        
-        conn.close()
-        
-        if not row or not row["pct"] or row["cnt"] < 5:
-            return {"level": "medium", "accuracy": 0, "matches": row["cnt"] if row else 0,
-                    "reason": "Insufficient data for this league"}
-        
-        pct = row["pct"]
-        cnt = row["cnt"]
-        
-        if pct >= 80:
-            level = "easy"
-            reason = f"Historically reliable ({pct:.0f}% accuracy, {cnt} matches)"
-        elif pct >= 65:
-            level = "medium"
-            reason = f"Moderate difficulty ({pct:.0f}% accuracy, {cnt} matches)"
-        else:
-            level = "hard"
-            reason = f"Unreliable league ({pct:.0f}% accuracy, {cnt} matches) — bet with caution"
-        
-        return {"level": level, "accuracy": pct, "matches": cnt, "reason": reason}
+        import league_stats
+        return league_stats.difficulty(league)
     except Exception:
-        return {"level": "medium", "accuracy": 0, "matches": 0, "reason": "Could not determine league difficulty"}
+        return {"level": "medium", "accuracy": 0, "matches": 0,
+                "base_pct": 0, "edge_pts": 0, "reason": "Could not determine league difficulty",
+                "grade": "unknown", "league_key": "unknown"}
 
 
 # Full league name → Forebet prefix mapping (used in calibration_log)
@@ -826,91 +877,64 @@ def _resolve_league_prefix(league: str) -> str:
 
 
 def _get_league_recent_performance(league: str) -> dict:
-    """Return recent (last 3 days) prediction accuracy for a league, broken down by market.
+    """Recent (7d) form of one exact competition, broken down by market.
 
-    Returns dict with:
-      - overall: {total, correct, pct}
-      - markets: { "1X2": {total, correct, pct}, "O/U": {...}, "BTTS": {...} }
-      - rating: "hot" | "warm" | "cold" | "unknown"
-      - summary: human-readable string
+    Raw hit rates are still printed for familiarity, but hot/warm/cold is now
+    decided by the edge over the base rates of the selections actually picked.
+    A 40% 1X2 week in a draw-heavy league is no longer "cold" by definition.
     """
+    empty = {"overall": {"total": 0, "correct": 0, "pct": 0},
+             "markets": {}, "rating": "unknown", "summary": "No recent data (7d)"}
     try:
-        import datetime
-        from database import get_db
-        conn = get_db()
-
-        prefix = _resolve_league_prefix(league)
-        if not prefix:
-            return {"overall": {"total": 0, "correct": 0, "pct": 0},
-                    "markets": {}, "rating": "unknown", "summary": "No league data"}
-
-        cutoff = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
-        rows = conn.execute("""
-            SELECT market, correct
-            FROM calibration_log
-            WHERE league LIKE ? AND created_at >= ?
-        """, (f"{prefix}%", cutoff)).fetchall()
-        conn.close()
-
-        if not rows:
-            return {"overall": {"total": 0, "correct": 0, "pct": 0},
-                    "markets": {}, "rating": "unknown", "summary": "No recent data (7d)"}
-
-        total = len(rows)
-        correct = sum(r["correct"] for r in rows)
-        pct = round(100.0 * correct / total, 1) if total else 0
-
+        import league_stats
+        overall = league_stats.league_stat(league, days=7)
+        if not overall["n"]:
+            return empty
         markets = {}
+        parts = []
         for mk in ("1X2", "O/U", "BTTS"):
-            mk_rows = [r for r in rows if r["market"] == mk]
-            if mk_rows:
-                mk_total = len(mk_rows)
-                mk_correct = sum(r["correct"] for r in mk_rows)
-                mk_pct = round(100.0 * mk_correct / mk_total, 1)
-                markets[mk] = {"total": mk_total, "correct": mk_correct, "pct": mk_pct}
-
-        if pct >= 65:
+            st = league_stats.market_stat(league, mk, days=7)
+            if not st["n"]:
+                continue
+            markets[mk] = {"total": st["n"], "correct": st["correct"],
+                           "pct": st["pct"], "edge_pts": st["edge_pts"],
+                           "grade": st["grade"]}
+            parts.append(f"{mk} {st['pct']:.0f}%({st['correct']}/{st['n']}, "
+                         f"{st['edge_pts']:+.0f}pt)")
+        edge = overall["edge_pts"]
+        if overall["n"] >= 5 and edge >= 5:
             rating = "hot"
-        elif pct >= 50:
+        elif overall["n"] >= 5 and edge >= -2:
             rating = "warm"
-        else:
+        elif overall["n"] >= 5:
             rating = "cold"
-
-        mk_parts = []
-        for mk, v in markets.items():
-            mk_parts.append(f"{mk} {v['pct']:.0f}%({v['correct']}/{v['total']})")
-        summary = f"Last 7d: {pct:.0f}% ({correct}/{total})" + (f" | {' '.join(mk_parts)}" if mk_parts else "")
-
-        return {"overall": {"total": total, "correct": correct, "pct": pct},
+        else:
+            rating = "unknown"
+        summary = (f"Last 7d: {overall['pct']:.0f}% ({overall['correct']}/{overall['n']}, "
+                   f"{edge:+.0f}pt vs base)" + (f" | {' '.join(parts)}" if parts else ""))
+        return {"overall": {"total": overall["n"], "correct": overall["correct"],
+                            "pct": overall["pct"], "edge_pts": edge},
                 "markets": markets, "rating": rating, "summary": summary}
     except Exception:
-        return {"overall": {"total": 0, "correct": 0, "pct": 0},
-                "markets": {}, "rating": "unknown", "summary": "Error loading data"}
+        return dict(empty, summary="Error loading data")
 
 
 def _get_league_market_accuracy(league: str, market: str) -> dict:
-    """Get accuracy for a specific league+market combo from last 7 days.
+    """Get base-relative accuracy for one exact league+market combo.
 
-    Returns dict with: total, correct, pct (0-100), or empty if insufficient data.
+    Returns the legacy ``total``/``correct``/``pct`` contract plus the measured
+    ``base_pct`` and ``edge_pts``.  The 7-day window is kept for recent gating;
+    unmeasured combinations stay at zero instead of borrowing a country pool.
     """
     try:
-        import datetime
-        from database import get_db
-        conn = get_db()
-        prefix = _resolve_league_prefix(league)
-        if not prefix:
-            return {"total": 0, "correct": 0, "pct": 0}
-        cutoff = (datetime.datetime.now() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
-        row = conn.execute("""
-            SELECT COUNT(*) as total, SUM(correct) as correct
-            FROM calibration_log
-            WHERE league LIKE ? AND market = ? AND created_at >= ?
-        """, (f"{prefix}%", market, cutoff)).fetchone()
-        conn.close()
-        if not row or row["total"] < 5:
-            return {"total": row["total"] if row else 0, "correct": row["correct"] if row else 0, "pct": 0}
-        return {"total": row["total"], "correct": row["correct"],
-                "pct": round(100.0 * row["correct"] / row["total"], 1)}
+        import league_stats
+        st = league_stats.market_stat(league, market, days=7)
+        if st["n"] < 5:
+            return {"total": st["n"], "correct": st["correct"], "pct": 0,
+                    "base_pct": st["base_pct"], "edge_pts": 0, "grade": "unknown"}
+        return {"total": st["n"], "correct": st["correct"], "pct": st["pct"],
+                "base_pct": st["base_pct"], "edge_pts": st["edge_pts"],
+                "grade": st["grade"]}
     except Exception:
         return {"total": 0, "correct": 0, "pct": 0}
 
@@ -1883,11 +1907,11 @@ def _apply_bias_corrections(league_key: str, p_home: float, p_draw: float, p_awa
                              p_over: float, p_under: float) -> tuple:
     """Apply learned bias corrections to probabilities for a league."""
     try:
-        from calibration_learner import apply_all_bias_corrections
+        from calibration_learner import apply_all_bias_corrections, MIN_BIAS_SAMPLES
         probs_1x2 = {"Home win": p_home, "Draw": p_draw, "Away win": p_away}
         probs_ou = {"Over": p_over, "Under": p_under}
         corrected_1x2, corrected_ou = apply_all_bias_corrections(
-            league_key, probs_1x2, probs_ou, min_samples=8
+            league_key, probs_1x2, probs_ou, min_samples=MIN_BIAS_SAMPLES
         )
         return (
             corrected_1x2["Home win"],
@@ -3201,8 +3225,8 @@ def analyze_ml_only(data: dict, main_btts_yes: float = None) -> dict:
     # ── Synthesis ──
     # League reliability factor ──
     _ld = _get_league_difficulty(data.get("league", ""))
-    if _ld.get("level") == "hard":
-        reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
+    if _ld.get("grade") == "weak":
+        reasoning.append(f"⚠ {_ld.get('reason', 'Below-base-rate competition')}")
 
     # ── Common-opponent strength ──
     _cos = _common_opponent_strength(data)
@@ -3671,18 +3695,16 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     candidates = []
 
     # ── League reliability factor ──
-    # Lower historical accuracy → dampen O/U/BTTS confidence (the model tends to
-    # over-predict goals in unreliable leagues). 1.0 = fully reliable.
+    # Measured edge over the base rate of the picked selection decides this,
+    # not a raw hit rate pooled across every market in a country.  A league at
+    # its own base rate needs no damping; a measured negative edge does.
     _ld = _get_league_difficulty(data.get("league", ""))
-    _league_acc = _ld.get("accuracy", 0) or 0
-    if _league_acc >= 65:
-        league_reliability = 1.0
-    elif _league_acc >= 45:
-        league_reliability = 0.7
-    elif _league_acc > 0:
-        league_reliability = 0.45
-    else:
-        league_reliability = 0.7  # unknown → moderately cautious
+    try:
+        import league_stats
+        league_reliability, _league_grade = league_stats.reliability_factor(
+            data.get("league", ""))
+    except Exception:
+        league_reliability, _league_grade = 0.7, "unknown"
 
     # ── Load league-market accuracy for recent performance gating ──
     _league_mkt_acc = {}
@@ -3690,8 +3712,8 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _acc = _get_league_market_accuracy(data.get("league", ""), _mk)
         if _acc.get("total", 0) >= 5:
             _league_mkt_acc[_mk] = _acc
-    if _ld.get("level") == "hard":
-        reasoning.append(f"⚠ {_ld.get('reason', 'Unreliable league')}")
+    if _ld.get("grade") == "weak":
+        reasoning.append(f"⚠ {_ld.get('reason', 'Below-base-rate competition')}")
 
     # ── Derby detection: flag local rivalries ──
     derby = _detect_derby(data)
@@ -4081,10 +4103,11 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
     _mkt_acc = _league_mkt_acc.get("1X2", {})
     _ensemble_adj = 0.0
     if _mkt_acc.get("total", 0) >= 5:
-        if _mkt_acc["pct"] >= 70:
-            _ensemble_adj = 0.04  # ML doing well, trust it more
-        elif _mkt_acc["pct"] < 45:
-            _ensemble_adj = -0.04  # ML struggling, lean toward Poisson
+        _mkt_edge = float(_mkt_acc.get("edge_pts", 0) or 0)
+        if _mkt_edge >= 10:
+            _ensemble_adj = 0.04  # measured edge, trust the ensemble more
+        elif _mkt_edge <= -5:
+            _ensemble_adj = -0.04  # below base, lean toward Poisson
     _w = min(0.65, signal_blend + _agree_boost + _ensemble_adj)
     p_home = p_home * (1 - _w) + _ph * _w
     p_draw = p_draw * (1 - _w) + _pd * _w
@@ -4247,20 +4270,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             return
 
         # ── Skip bad league-market combos ──
+        # Judged against the base rate of this exact competition's picks, not
+        # an absolute hit rate that means different things in each market.
         _acc = _league_mkt_acc.get(market, {})
-        if _acc.get("total", 0) >= 10 and _acc.get("pct", 0) < 40:
-            reasoning.append(f"⚠ Skipped {market}: league accuracy {_acc['pct']:.0f}% ({_acc['total']} samples)")
+        _acc_edge = float(_acc.get("edge_pts", 0) or 0)
+        if _acc.get("total", 0) >= 10 and _acc_edge <= -10:
+            reasoning.append(f"⚠ Skipped {market}: {_acc_edge:+.0f}pts vs base "
+                             f"({_acc['total']} recent picks)")
             return
 
-        # ── Confidence dampening for poor league-markets ──
-        if _acc.get("total", 0) >= 5 and _acc.get("pct", 0) < 55:
+        # ── Confidence dampening for below-base league-markets ──
+        if _acc.get("total", 0) >= 5 and _acc_edge <= -5:
             conf_rank = CONF_RANK.get(conf, 99)
             if conf_rank <= CONF_RANK["High"]:  # Near Certain or High
                 conf = "Medium-High"
-                reason += f" [damped: {market} {_acc['pct']:.0f}% in league]"
-            elif conf == "Medium-High" and _acc["pct"] < 45:
+                reason += f" [damped: {market} {_acc_edge:+.0f}pts vs base]"
+            elif conf == "Medium-High" and _acc_edge <= -10:
                 conf = "Medium"
-                reason += f" [damped: {market} {_acc['pct']:.0f}% in league]"
+                reason += f" [damped: {market} {_acc_edge:+.0f}pts vs base]"
 
         rank = CONF_RANK.get(conf, 99)
         po = _pick_odds(market, pick)
@@ -4346,31 +4373,22 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         if best_12_conf == "Near Certain":
             best_12_conf = "High"
 
-    # League reliability damping for 1X2: unreliable leagues
-    # produce false-confidence picks — cap them down.  Applies both to
-    # measured hard leagues and to leagues with insufficient calibration
-    # data (unknown ≈ default ~38% accuracy — worse than every real bucket).
-    _insufficient = _ld.get("matches", 0) < 5
-    if (_ld.get("level") == "hard" and _ld.get("accuracy", 0) > 0) or _insufficient:
-        _ld_acc = _ld.get("accuracy", 0) or 38.0
-        if _insufficient or _ld_acc < 40:
-            # Very unreliable: cap at Medium — Home win MH fails ~70% here
-            if best_12_conf in ("Near Certain", "High", "Medium-High"):
-                best_12_conf = "Medium"
-        elif _ld_acc < 45:
-            # Unreliable: Near Certain → High, High → Medium-High
-            if best_12_conf == "Near Certain":
-                best_12_conf = "High"
-            if best_12_conf == "High":
-                best_12_conf = "Medium-High"
-        elif _ld_acc < 65:
-            # Moderately unreliable: High → Medium-High
-            if best_12_conf == "High":
-                best_12_conf = "Medium-High"
+    # League reliability damping for 1X2: only a measured *negative edge*
+    # justifies a hard cap.  Raw hit rate cannot do this job — 40% is poor for
+    # DC and ordinary for 1X2 — and an unmeasured competition is unknown, not
+    # proven terrible.  Unknown gets the old cautious Medium-High ceiling.
+    _ld_grade = _ld.get("grade", "unknown")
+    _ld_edge = float(_ld.get("edge_pts", 0) or 0)
+    if _ld_grade == "weak":
+        if best_12_conf in ("Near Certain", "High", "Medium-High"):
+            best_12_conf = "Medium"
+    elif _ld_grade == "unknown":
+        if best_12_conf in ("Near Certain", "High"):
+            best_12_conf = "Medium-High"
 
-    # Draw-specific cap: Draw is overpredicted everywhere (~36% accuracy even
-    # at High confidence). In 40-50% accuracy leagues, cap Draw at Medium.
-    if top_pick == "Draw" and _ld_acc > 0 and 40 <= _ld_acc < 50:
+    # Draw-specific cap: Draw is overpredicted everywhere.  Cap it when this
+    # exact competition's picks actually land below the draw base rate.
+    if top_pick == "Draw" and _ld_edge < -2:
         if best_12_conf == "Medium-High":
             best_12_conf = "Medium"
 
@@ -4404,10 +4422,10 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             if draw_conf == "Low":
                 draw_conf = "Medium"
         # ── Draw overconfidence penalty ──
-        # Draw is overpredicted in low-accuracy leagues: measured ~30% success
-        # for Draw picks in sub-50% leagues. Cap at Low in COLD/WEAK leagues.
-        _ld_acc = _ld.get("accuracy", 0) or 0
-        if _ld_acc > 0 and _ld_acc < 50 and draw_conf in ("Medium", "Medium-High"):
+        # Draw is overpredicted when this exact competition's Draw picks land
+        # below the measured draw base rate.  Raw league accuracy is not a
+        # signal — 40% is ordinary for 1X2 and poor for DC.
+        if float(_ld.get("edge_pts", 0) or 0) < -2 and draw_conf in ("Medium", "Medium-High"):
             draw_conf = "Low"
         if draw_conf != "Low":
             add("1X2", "Draw", draw_conf, f"model {p_draw:.0%} (close to top)", model_prob=p_draw)
@@ -5146,19 +5164,19 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
         _synth_consensus, _synth_n_sources = component_agreement(_synth_ctx)
         method_parts.append("synthesis")
 
-        # ── Dynamic market selection: boost/penalize by league-market accuracy ──
+        # ── Dynamic market selection: boost/penalize by measured edge ──
         for c in candidates:
             _acc = _league_mkt_acc.get(c["market"], {})
-            if _acc.get("total", 0) >= 5 and _acc.get("pct", 0) > 0:
-                # Boost: +0.05 for >70%, +0.03 for >60%, penalty: -0.03 for <45%
+            if _acc.get("total", 0) >= 5:
                 dv = c.get("decision_value", 0)
-                if _acc["pct"] >= 70:
+                edge = float(_acc.get("edge_pts", 0) or 0)
+                if edge >= 10:
                     c["decision_value"] = dv + 0.05
-                elif _acc["pct"] >= 60:
+                elif edge >= 5:
                     c["decision_value"] = dv + 0.03
-                elif _acc["pct"] < 45:
+                elif edge <= -5:
                     c["decision_value"] = dv - 0.03
-                c["league_mkt_boost"] = _acc["pct"]
+                c["league_mkt_edge"] = edge
         # Re-rank after boost
         non_show_temp = [c for c in candidates if not c.get('_always_show')]
         non_show_temp.sort(key=lambda c: c.get("decision_value", 0), reverse=True)
@@ -5225,31 +5243,25 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
                 primary["confidence"] = _veto_conf
                 primary["_disagree_vetoed"] = True
 
-    # ── League-reliability pick rate gate ──
-    # For leagues with <50% accuracy, suppress Medium-High picks to reduce noise.
-    # Extended to also cap High picks (the 08/08/2026 slate failures were all
-    # High-confidence picks in low-tier leagues) and to treat leagues with
-    # insufficient calibration data (unknown ≈ default ~38%) as hard.
-    _ld_insufficient = _ld.get("matches", 0) < 5
-    _ld_acc = _ld.get("accuracy", 0) or 0
-    _ld_hard = _ld.get("level") == "hard" and _ld_acc > 0
-    if (_ld_hard or _ld_insufficient) and (_ld_hard and _ld_acc < 55 or _ld_insufficient):
-        # High → Medium-High in unreliable / insufficient-data leagues
+    # ── League-reliability pick-rate gate ──
+    # Only a measured negative edge suppresses a pick.  A competition with no
+    # exact history is unknown — cautious, but not treated as proven bad.
+    _ld_grade = _ld.get("grade", "unknown")
+    _ld_edge = float(_ld.get("edge_pts", 0) or 0)
+    if _ld_grade in ("weak", "unknown"):
         if primary.get("confidence") == "High":
             primary["confidence"] = "Medium-High"
-            _acc_label = f"{_ld_acc:.0f}%" if _ld_acc > 0 else "insufficient data"
-            reasoning.append(f"⚠ League reliability gate: capped High pick (league accuracy {_acc_label})")
-        # Only keep Medium-High picks that are truly strong (top prob >= 0.45)
-        if primary.get("confidence") == "Medium-High":
-            if primary.get("model_prob", 0) < 0.45:
-                primary["confidence"] = "Low"
-                _acc_label = f"{_ld_acc:.0f}%" if _ld_acc > 0 else "insufficient data"
-                reasoning.append(f"⚠ League reliability gate: suppressed Medium-High pick (league accuracy {_acc_label})")
-        # Also suppress Medium picks for very unreliable leagues (<40% accuracy)
-        if _ld_acc < 40 and primary.get("confidence") == "Medium":
-            if primary.get("model_prob", 0) < 0.50:
-                primary["confidence"] = "Low"
-                reasoning.append(f"⚠ League reliability gate: suppressed Medium pick (league accuracy {_ld_acc:.0f}%)")
+            reasoning.append("⚠ League reliability gate: capped High pick "
+                             f"({_ld_grade}, {_ld_edge:+.0f}pt vs base)")
+        if primary.get("confidence") == "Medium-High" and primary.get("model_prob", 0) < 0.45:
+            primary["confidence"] = "Low"
+            reasoning.append("⚠ League reliability gate: suppressed Medium-High pick "
+                             f"({_ld_grade}, {_ld_edge:+.0f}pt vs base)")
+        if _ld_grade == "weak" and primary.get("confidence") == "Medium" \
+                and primary.get("model_prob", 0) < 0.50:
+            primary["confidence"] = "Low"
+            reasoning.append("⚠ League reliability gate: suppressed Medium pick "
+                             f"(measured {_ld_edge:+.0f}pt edge)")
 
     # ── Red-flag gate (data glitches / odds anomalies / market divergence) ──
     # Critical flags (impossible or duplicated odds) cap confidence one rank;
@@ -5480,27 +5492,24 @@ def analyze_from_data(data: dict, use_ml: bool = False) -> dict:
             kelly_fraction = edge / (odds_val - 1) if odds_val > 1 else 0
             kelly_stake = round(min(kelly_fraction * 0.25, 0.05), 4)  # Quarter-Kelly, max 5%
 
-    # ── Kelly cap by league accuracy ──
-    # Max 5% stake only in proven leagues.  Sub-50% accuracy leagues cap at
-    # 2.5%; sub-40% at 1%.  Measured: 5% Kelly stakes lose ~63% of the time
-    # in sub-50% leagues (Paraguay Intermedia, Uzbekistan, Kazakhstan 1st Div,
-    # Czech Div B/E, Romania Liga 3, Russia Youth League, etc.).
-    _ld_acc = _ld.get("accuracy", 0) or 0
-    _ld_matches = _ld.get("matches", 0)
-    if _ld_matches >= 5:
-        if _ld_acc < 40:
-            kelly_stake = round(min(kelly_stake, 0.01), 4)   # max 1% in COLD leagues
-        elif _ld_acc < 50:
-            kelly_stake = round(min(kelly_stake, 0.025), 4)  # max 2.5% in WEAK leagues
-        elif _ld_acc < 60:
-            kelly_stake = round(min(kelly_stake, 0.035), 4)  # max 3.5% in medium leagues
-        # >= 60%: full 5% cap allowed
+    # ── Kelly cap by exact-league measured edge ──
+    # A raw hit rate cannot rank leagues: 40% is ordinary for 1X2 and terrible
+    # for DC.  Only a measured edge over the picked selections' base rates is
+    # used here; an unmeasured competition gets the cautious house haircut.
+    _ld_grade = _ld.get("grade", "unknown")
+    if _ld_grade == "weak":
+        kelly_stake = round(min(kelly_stake, 0.01), 4)
+    elif _ld_grade == "unknown":
+        kelly_stake = round(min(kelly_stake, 0.025), 4)
+    elif _ld_grade == "at_base":
+        kelly_stake = round(min(kelly_stake, 0.035), 4)
+    # "reliable" keeps the full 5% cap
 
-    # ── Kelly scaling by league-market accuracy ──
-    # Reduce stake in leagues where this market has poor track record
+    # ── Kelly scaling by base-relative league-market edge ──
     _pm_acc = _league_mkt_acc.get(primary.get("market", ""), {})
-    if _pm_acc.get("total", 0) >= 5 and _pm_acc.get("pct", 0) > 0:
-        _acc_factor = _pm_acc["pct"] / 100.0
+    if _pm_acc.get("total", 0) >= 5:
+        _pm_edge = float(_pm_acc.get("edge_pts", 0) or 0)
+        _acc_factor = 1.0 if _pm_edge >= 0 else 0.5 if _pm_edge <= -5 else 0.75
         kelly_stake = round(kelly_stake * _acc_factor, 4)
 
     # ── Red-flag stake haircut ──
@@ -6450,8 +6459,8 @@ def _write_html(results, all_urls, compare_forebet, high_only,
     <div style="color:#f1f5f9;font-weight:600;">{_verdict_verdict(r)}</div>
   </div>
 </div>
-{"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("level") == "hard" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
-{"".join(f'<div style="background:#14532d;color:#86efac;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">✓ High success rate league: {r["league_difficulty"].get("accuracy", 0):.0f}% ({r["league_difficulty"].get("matches", 0)} matches)</div>' if r.get("league_difficulty", {}).get("level") == "easy" and r.get("league_difficulty", {}).get("matches", 0) >= 5 else [])}
+{"".join(f'<div class="league-warning" style="background:#7f1d1d;color:#fca5a5;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">⚠ {r["league_difficulty"]["reason"]}</div>' if r.get("league_difficulty", {}).get("grade") == "weak" else [])}
+{"".join(f'<div style="background:#14532d;color:#86efac;padding:4px 10px;border-radius:4px;font-size:0.78rem;margin-bottom:8px;display:inline-block;">✓ Above base rate: {r["league_difficulty"].get("edge_pts", 0):+.1f}pts ({r["league_difficulty"].get("matches", 0)} scored picks)</div>' if r.get("league_difficulty", {}).get("grade") == "reliable" else [])}
 {"".join(f'<div style="background:#854d0e;color:#fde68a;padding:6px 10px;border-radius:6px;font-size:0.82rem;margin-bottom:8px;font-weight:600;">🏟 DERBY: {r["_derby"]["warning"]}</div>' if r.get("_derby", {}).get("is_derby") else "")}
 {"".join(f'<div style="background:#7f1d1d;color:#fecaca;padding:6px 10px;border-radius:6px;font-size:0.84rem;margin-bottom:8px;font-weight:700;border-left:4px solid #ef4444;">🚩 RED FLAG: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "critical")}
 {"".join(f'<div style="background:#78350f;color:#fcd34d;padding:5px 10px;border-radius:6px;font-size:0.80rem;margin-bottom:8px;font-weight:600;border-left:3px solid #f59e0b;">⚠ Flag: {f["msg"]}</div>' for f in r.get("_red_flags", []) if f.get("severity") == "high")}
@@ -7214,8 +7223,8 @@ def _slate_needs_refresh(path: str, kind: str):
     ``today`` is stale the moment the calendar rolls over — yesterday's slate is
     a list of matches that have already been played, which is precisely the
     failure mode that makes a run look broken and makes the bettor card report
-    no bets. ``weekday`` is a rolling multi-day list, so it only goes stale once
-    it is more than half a day old.
+    no bets. ``weekday`` and ``weekend`` are rolling multi-day lists, so they
+    only go stale once they are more than half a day old.
     """
     stamp = _links_generated_at(path)
     if stamp is None:
@@ -7225,6 +7234,7 @@ def _slate_needs_refresh(path: str, kind: str):
             return True, (f"it was built on {stamp.date()} and today is "
                           f"{datetime.now().date()}")
         return False, ""
+    # Rolling slates (weekday / weekend) still have fixtures ahead of them.
     hours = (datetime.now() - stamp).total_seconds() / 3600.0
     if hours > 12:
         return True, f"it is {hours:.0f}h old"
@@ -7249,31 +7259,22 @@ def _norm_league_key(text: str) -> str:
 
 
 def _measured_league_accuracy(min_matches: int) -> dict:
-    """Normalised league key -> (accuracy %, n) from resolved calibration rows.
+    """Normalised league key -> (base-relative score, n).
 
-    calibration_log is the same table ``pr --calibrate`` reports from. Only
-    groups with at least ``min_matches`` resolved picks are usable; two raw
-    labels that collapse to one normalised key are resolved in favour of the
-    larger sample.
+    50 means the competition's picks land exactly at their own base rate; 70
+    means a +20pt measured edge.  Markets and selections are no longer pooled
+    behind one absolute hit-rate threshold.
     """
     try:
-        from database import get_db
-        conn = get_db()
-        rows = conn.execute(
-            "SELECT league, COUNT(*) n, SUM(correct) c FROM calibration_log "
-            "GROUP BY league HAVING n >= ?", (min_matches,)).fetchall()
-        conn.close()
+        import league_stats
+        stats = league_stats.all_league_stats()
     except Exception as exc:
         print(f"[league accuracy lookup failed: {exc}]")
         return {}
     idx = {}
-    for r in rows:
-        key = _norm_league_key(r["league"])
-        n = r["n"]
-        if not key or not n:
-            continue
-        if key not in idx or n > idx[key][1]:
-            idx[key] = (round(100.0 * (r["c"] or 0) / n, 1), n)
+    for key, st in stats.items():
+        if st["n"] >= min_matches:
+            idx[key] = (round(50.0 + st["edge_pts"], 1), st["n"])
     return idx
 
 
@@ -7302,8 +7303,8 @@ def _filter_high_leagues(rows: list, min_accuracy: float, min_matches: int) -> l
         entry = passing.setdefault(name, [stat[0], stat[1], 0])
         entry[2] += 1
 
-    print(f"[high-league filter: ≥{min_accuracy:g}% measured 1X2 accuracy "
-          f"over ≥{min_matches} resolved matches]")
+    print(f"[high-league filter: ≥{min_accuracy:g}% base-relative score "
+          f"(50 = own base rate) over ≥{min_matches} resolved picks]")
     if passing:
         print("  kept:")
         for name, (pct, n, cnt) in sorted(passing.items(), key=lambda x: -x[1][2]):
@@ -7491,35 +7492,58 @@ def fetch_today_links(leagues_file: str = "data/leagues_db.json",
     return out_file
 
 
-def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
-                        out_file: str = "links/weekday.html",
-                        today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
-                        now: datetime | None = None) -> str:
-    """Fetch all upcoming matches kicking off Monday–Friday and write their
-    match URLs to a links file.
+def _rolling_slate_dates(now: datetime, weekend: bool = False):
+    """Dates covered by the next Mon–Fri or Sat–Sun slate.
+
+    Kept separate from the fetch so the window rules can be tested offline.
+    Weekday keeps its old behaviour: the current week's Mon–Fri while that
+    window is under way, otherwise next week's Mon–Fri. Weekend is the coming
+    Sat–Sun; on Sunday the current weekend is effectively over, so it rolls to
+    the next one — the same forward-looking rule --weekday uses on the weekend.
+    """
+    from datetime import timedelta
+
+    today = now.date()
+    dow = today.weekday()  # 0 = Monday
+    if weekend:
+        if dow == 5:
+            start = today                      # Saturday: today + Sunday
+        elif dow == 6:
+            start = today + timedelta(days=6)  # Sunday: next weekend
+        else:
+            start = today + timedelta(days=5 - dow)
+        return start, start + timedelta(days=1)
+    if dow < 5:
+        return (today - timedelta(days=dow),
+                today + timedelta(days=4 - dow))
+    start = today + timedelta(days=7 - dow)
+    return start, start + timedelta(days=4)
+
+
+def _fetch_rolling_links(weekend: bool = False,
+                         leagues_file: str = "data/leagues_db.json",
+                         out_file: str | None = None,
+                         today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
+                         now: datetime | None = None) -> str:
+    """Shared fetch for the rolling Mon–Fri / Sat–Sun slates.
 
     Primary source: Forebet's getrs.php AJAX endpoint (one call per target
-    day), the same endpoint that powers --today. When run during the week it
-    covers this week's Mon–Fri remaining fixtures; when run on the weekend it
-    targets next week's Mon–Fri. Falls back to scraping the league pages from
-    leagues_db.json if the AJAX fetch fails. Matches already in progress
-    (kickoff < now) are dropped.
+    day), the same endpoint that powers --today. Falls back to scraping the
+    league pages from leagues_db.json if the AJAX fetch fails. Matches already
+    in progress (kickoff < now) are dropped. ``out_file=None`` picks the mode's
+    default path; the CLI passes ``args.out`` through unchanged.
     """
     import time
     from datetime import timedelta
     from webfetch import create_session
     from forebet_scraper import scrape_league_upcoming
 
+    label = "Sat–Sun" if weekend else "Mon–Fri"
+    if not out_file:
+        out_file = "links/weekend.html" if weekend else "links/weekday.html"
+
     now = now or datetime.now()
-    today_dow = now.weekday()  # 0 = Monday
-    if today_dow < 5:
-        # During the week: this week's Monday (or today) through Friday
-        start_date = now.date() - timedelta(days=today_dow)
-        end_date = now.date() + timedelta(days=4 - today_dow)
-    else:
-        # Weekend: next week's Monday through Friday
-        start_date = now.date() + timedelta(days=7 - today_dow)
-        end_date = start_date + timedelta(days=4)
+    start_date, end_date = _rolling_slate_dates(now, weekend)
     cutoff = datetime.combine(end_date, datetime.max.time())
 
     session = create_session()
@@ -7591,10 +7615,11 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
 
         uniq = list(all_by_url.values())
 
-    os.makedirs(os.path.dirname(out_file) or ".", exist_ok=True)
+    # _write_links_file() makes the parent directory. Passing args.out=None
+    # straight through used to crash here on os.path.dirname(None).
     _write_links_file(out_file, [r["url"] for r in uniq])
 
-    print(f"\nFetched {len(uniq)} matches Mon–Fri ({start_date} → {end_date})")
+    print(f"\nFetched {len(uniq)} matches {label} ({start_date} → {end_date})")
     by_country = {}
     for name, n in per_league.items():
         country, _, league = name.partition(" — ")
@@ -7605,6 +7630,33 @@ def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
         print(f"  {country:16s} {n:3d} matches across {leagues_n} leagues")
     print(f"\nLinks written to {out_file} — run predictions with: pr {out_file}")
     return out_file
+
+
+def fetch_weekday_links(leagues_file: str = "data/leagues_db.json",
+                        out_file: str | None = None,
+                        today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
+                        now: datetime | None = None) -> str:
+    """Fetch all upcoming Mon–Fri matches → links/weekday.html.
+
+    Covers this week's remaining fixtures mid-week, next week's on the
+    weekend. AJAX per day, with the league-page fallback if it is unavailable.
+    """
+    return _fetch_rolling_links(False, leagues_file=leagues_file,
+                                out_file=out_file, today_page=today_page, now=now)
+
+
+def fetch_weekend_links(leagues_file: str = "data/leagues_db.json",
+                        out_file: str | None = None,
+                        today_page: str = "https://www.forebet.com/en/football-tips-and-predictions-for-today",
+                        now: datetime | None = None) -> str:
+    """Fetch all upcoming Sat–Sun matches → links/weekend.html.
+
+    Covers the coming Saturday and Sunday (today + Sunday on a Saturday; on
+    Sunday, the following weekend). Same AJAX-per-day path and league-page
+    fallback as the weekday slate.
+    """
+    return _fetch_rolling_links(True, leagues_file=leagues_file,
+                                out_file=out_file, today_page=today_page, now=now)
 
 
 def _resolve_links_path(path: str) -> str:
@@ -7668,7 +7720,7 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
                             compare_forebet: bool = True,
                             use_ml: bool = False, single_link: bool = False,
                             workers: int = 2, analysis: str = "default",
-                            high_success_min_accuracy: float = 80.0,
+                            high_success_min_accuracy: float = 60.0,
                             high_success_min_matches: int = 10,
                             high_success_top: int = 0,
                             high_success_reliable_only: bool = False,
@@ -8147,10 +8199,9 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
         report_path, yellow_path, consistent_path, high80_path, banker_path = _write_html(results, match_urls, compare_forebet, high_only, _primary=True)
 
     # ── High-success-rate leagues: their own highestsuccess.html ──
-    # "Highest success rates" = leagues with historically reliable accuracy
-    # per _get_league_difficulty / calibration_log. Thresholds are configurable
-    # via --high-success-min-accuracy / --high-success-min-matches.
-    min_acc = float(high_success_min_accuracy)
+    # Score is base-relative: 50 means "at this competition's own base rate",
+    # so an 80% 1X2 hit rate and a 50% DC hit rate can be compared honestly.
+    min_score = float(high_success_min_accuracy)
     min_n = int(high_success_min_matches)
     top_n = int(high_success_top)
     min_mkt_acc = float(high_success_min_market_accuracy)
@@ -8159,23 +8210,27 @@ def run_forebet_predictions(links_path: str, show_reasoning: bool = True,
     high_sr_leagues = {}
     for r in results:
         ld = r.get("league_difficulty") or {}
-        acc = float(ld.get("accuracy", 0) or 0)
+        raw_acc = float(ld.get("accuracy", 0) or 0)
+        edge = float(ld.get("edge_pts", 0) or 0)
+        score = 50.0 + edge if "edge_pts" in ld else raw_acc
         matches = int(ld.get("matches", 0) or 0)
-        if acc < min_acc or matches < min_n:
+        if score < min_score or matches < min_n:
             continue
         mkt_acc_info = None
         if min_mkt_acc > 0:
             mkt = r.get("market", "")
             mkt_acc_info = _get_league_market_accuracy(r.get("league", ""), mkt)
-            mkt_pct = float(mkt_acc_info.get("pct", 0) or 0)
+            mkt_edge = float(mkt_acc_info.get("edge_pts", 0) or 0)
+            mkt_score = 50.0 + mkt_edge
             mkt_total = int(mkt_acc_info.get("total", 0) or 0)
-            if mkt_total < min_mkt_n or mkt_pct < min_mkt_acc:
+            if mkt_total < min_mkt_n or mkt_score < min_mkt_acc:
                 continue
             r["_high_sr_market_acc"] = mkt_acc_info
         high_sr_results.append(r)
         league = r.get("league", "Unknown")
         if league not in high_sr_leagues:
-            high_sr_leagues[league] = {"accuracy": acc, "matches": matches}
+            high_sr_leagues[league] = {"accuracy": score, "raw_accuracy": raw_acc,
+                                       "edge_pts": edge, "matches": matches}
 
     if top_n > 0 and high_sr_leagues:
         ranked_leagues = sorted(
@@ -8717,8 +8772,8 @@ def run_calibration():
 
     # Show active bias corrections
     try:
-        from database import get_calibration_biases
-        biases = get_calibration_biases(min_samples=10)
+        from database import get_calibration_biases, MIN_BIAS_SAMPLES
+        biases = get_calibration_biases(min_samples=MIN_BIAS_SAMPLES)
         if biases:
             print(f"\n{'='*55}")
             print("ACTIVE BIAS CORRECTIONS (from calibration learning)")
@@ -8837,16 +8892,17 @@ Options:
     parser.add_argument("--train-weights", action="store_true", help="Train ensemble weights from historical predictions")
     parser.add_argument("--today", action="store_true", help="Fetch today's upcoming matches per league and write links/today.html")
     parser.add_argument("--weekday", action="store_true", help="Fetch all Mon–Fri matches and write links/weekday.html (AJAX per day, league-page fallback)")
+    parser.add_argument("--weekend", action="store_true", help="Fetch all Sat–Sun matches and write links/weekend.html (AJAX per day, league-page fallback)")
     parser.add_argument("--days", type=int, default=1, metavar="N",
                         help="With --today, fetch N days ahead instead of just "
                              "today + tonight (default: 1)")
     parser.add_argument("--high-leagues", action="store_true",
                         help="With --today, keep only leagues whose measured "
-                             "1X2 accuracy clears --min-league-accuracy over at "
-                             "least --min-league-matches resolved predictions")
+                             "base-relative score clears --min-league-accuracy "
+                             "over at least --min-league-matches resolved picks")
     parser.add_argument("--min-league-accuracy", type=float, default=70.0,
-                        metavar="PCT", help="Minimum measured league accuracy "
-                        "for --high-leagues (default: 70)")
+                        metavar="PCT", help="Minimum base-relative league score "
+                        "for --high-leagues (50 = base rate; default: 70)")
     parser.add_argument("--min-league-matches", type=int, default=30,
                         metavar="N", help="Minimum resolved matches before a "
                         "league can qualify for --high-leagues (default: 30)")
@@ -8858,12 +8914,13 @@ Options:
                              "consistent/high80/bankers + batch files). Off by "
                              "default; every run already writes the timestamped "
                              "picks/<ts>.html report, the card view and bettor card")
-    parser.add_argument("--high-success-min-accuracy", type=float, default=80.0,
-                        help="Minimum historical league accuracy (%%) for a match "
-                             "to be included in the high-success-rate report "
-                             "(default: 80)")
+    parser.add_argument("--high-success-min-accuracy", type=float, default=60.0,
+                        help="Minimum base-relative reliability score (%%) for a "
+                             "match to enter the high-success-rate report. 50 = "
+                             "the competition's own base rate, so 60 means a "
+                             "+10pt measured edge (default: 60)")
     parser.add_argument("--high-success-min-matches", type=int, default=10,
-                        help="Minimum historical league matches required before "
+                        help="Minimum scored league+market picks required before "
                              "a league qualifies for the high-success-rate report "
                              "(default: 10)")
     parser.add_argument("--high-success-top", type=int, default=0,
@@ -8874,9 +8931,9 @@ Options:
                         help="In the high-success-rate report, keep only picks "
                              "whose reliability ledger tier is RELIABLE or WATCH")
     parser.add_argument("--high-success-min-market-accuracy", type=float, default=0.0,
-                        help="Optional market-aware filter: minimum league+market "
-                             "accuracy (%%, last 7 days) for the pick's market. "
-                             "0 disables (default: 0)")
+                        help="Optional market-aware filter: minimum base-relative "
+                             "league+market score (%%, last 7 days; 50 = base "
+                             "rate) for the pick's market. 0 disables (default: 0)")
     parser.add_argument("--high-success-min-market-matches", type=int, default=5,
                         help="Minimum league+market sample size when "
                              "--high-success-min-market-accuracy is enabled "
@@ -9037,6 +9094,10 @@ Options:
         fetch_weekday_links(out_file=args.out)
         return
 
+    if args.weekend:
+        fetch_weekend_links(out_file=args.out)
+        return
+
     if args.file:
         # A generated slate goes stale silently: yesterday's links/today.html is
         # a list of matches that have already been played, so the run "succeeds"
@@ -9045,7 +9106,8 @@ Options:
         # generation parameters in the header so they refresh the same way.
         if not args.no_refresh:
             base = os.path.basename(args.file)
-            kind = {"today.html": "today", "weekday.html": "weekday"}.get(base)
+            kind = {"today.html": "today", "weekday.html": "weekday",
+                    "weekend.html": "weekend"}.get(base)
             if kind is None and re.match(r"^(?:high|today)_\d+d\.html$", base):
                 kind = "today"
             if kind:
@@ -9061,6 +9123,8 @@ Options:
                                 high_leagues=bool(int(meta.get("high", 0))),
                                 min_league_accuracy=float(meta.get("acc", 70.0)),
                                 min_league_matches=int(meta.get("n", 30)))
+                        elif kind == "weekend":
+                            fetch_weekend_links(out_file=args.file)
                         else:
                             fetch_weekday_links(out_file=args.file)
                     except Exception as exc:

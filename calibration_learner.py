@@ -28,7 +28,7 @@ import numpy as np
 
 from database import (
     get_db, save_calibration_bias, get_calibration_biases,
-    get_calibration_data_for_retraining, log_retrain,
+    get_calibration_data_for_retraining, log_retrain, MIN_BIAS_SAMPLES,
 )
 
 BASE = Path(__file__).parent
@@ -92,17 +92,17 @@ def _platt_params_from_logits(pos_logits: np.ndarray, neg_logits: np.ndarray,
 # Calibration analysis
 # ---------------------------------------------------------------------------
 
-def analyze_calibration(min_samples: int = 8, days_back: int = 365):
+def analyze_calibration(min_samples: int = MIN_BIAS_SAMPLES, days_back: int = 365):
     """Analyze all reviewed predictions and store bias corrections.
 
     For each league/market/probability-bucket, compares the mean predicted
     probability against the actual hit rate and stores the bias.
 
-    Buckets are stored from `min_samples` (default 8) observations — small
-    leagues legitimately produce thin buckets, and dropping them entirely is
-    what left e.g. Paraguay/Ecuador/Kazakhstan O-U buckets uncorrected. The
-    application side (apply_bias_correction) shrinks each stored bias by
-    n/(n+K) so thin buckets move probabilities only slightly.
+    Buckets are stored from `min_samples` (default 25) observations. Below
+    that, a bucket's observed hit rate is mostly noise — a 10-match bucket can
+    swing from actual=0.00 to actual=1.00 and would otherwise be applied to
+    live predictions. The application side uses the same MIN_BIAS_SAMPLES
+    threshold, so storage and application cannot drift apart.
     """
     conn = get_db()
     cutoff = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
@@ -264,18 +264,19 @@ def _norm_ou_threshold(threshold: str) -> str:
 
 
 def apply_bias_correction(league: str, market: str, threshold: str,
-                          prob: float, min_samples: int = 8,
+                          prob: float, min_samples: int = MIN_BIAS_SAMPLES,
                           max_bias: float = 0.40,
                           shrink_k: float = 15.0) -> float:
     """Apply a learned bias correction to a probability.
 
     Looks up the calibration bias for the given league/market/threshold/bucket
     and adjusts the probability accordingly. Corrections backed by fewer than
-    `min_samples` reviewed examples are ignored; everything else is shrunk
-    toward zero by the empirical-Bayes factor n/(n + shrink_k), so a 10-sample
-    bucket moves the probability about 40% as far as its raw bias suggests and
-    a 100-sample bucket about 87%. The applied magnitude is additionally capped
-    at `max_bias` so even thick-sample noise cannot destroy a probability.
+    `min_samples` reviewed examples are ignored (default 25, the house rule
+    for trustworthy samples); everything else is shrunk toward zero by the
+    empirical-Bayes factor n/(n + shrink_k), so a 25-sample bucket moves the
+    probability about 63% as far as its raw bias suggests and a 100-sample
+    bucket about 87%. The applied magnitude is additionally capped at
+    `max_bias` so even thick-sample noise cannot destroy a probability.
     """
     if prob <= 0 or prob >= 1:
         return prob
@@ -314,7 +315,7 @@ def apply_bias_correction(league: str, market: str, threshold: str,
 
 
 def apply_all_bias_corrections(league: str, probs_1x2: dict, probs_ou: dict,
-                                min_samples: int = 8,
+                                min_samples: int = MIN_BIAS_SAMPLES,
                                 max_bias: float = 0.40) -> tuple:
     """Apply bias corrections to all 1X2 and O/U probabilities."""
     corrected_1x2 = {}
@@ -383,23 +384,35 @@ def apply_platt_calibration(probabilities: np.ndarray, params: dict) -> np.ndarr
 def check_retrain_needed(min_new_examples: int = 50, max_days_since_retrain: int = 90) -> bool:
     """Check if the ML model should be retrained based on new calibration data."""
     stats = get_calibration_data_for_retraining()
-    total = stats["total_calibration_entries"]
-    recent_30d = stats["recent_30d"]
-    last_examples = stats["last_retrain_examples"] or 0
+    # Compare like with like: calibration_log counts every pick (resolved or
+    # not), while examples_after counts filtered ML training rows. Subtracting
+    # the two produced a permanent ~32k "new examples" and retrained on every
+    # results run. Count newly resolved matches instead.
+    resolved = stats["resolved_entries"]
+    last_resolved = stats["last_retrain_resolved_entries"] or 0
+    new_resolved = resolved - last_resolved
 
-    # Trigger if enough new data since last retrain
-    new_since_last = total - last_examples
-    if new_since_last >= min_new_examples:
-        print(f"[calibrate] Retrain triggered: {new_since_last} new examples "
-              f"since last retrain ({last_examples} total)")
+    if new_resolved >= min_new_examples:
+        print(f"[calibrate] Retrain triggered: {new_resolved} newly resolved "
+              f"matches since last retrain ({last_resolved} before)")
         return True
 
-    # Trigger if recent accuracy has dropped significantly
+    # Drift fallback: compare the last 30 settled days against that market's
+    # own all-time settled rate. An absolute floor (pct < 40) was below 1X2's
+    # normal rate on resolved rows and fired on every run.
+    recent_by_market = {
+        m["market"]: m for m in stats["recent_accuracy_by_market"]
+    }
     for market_acc in stats["accuracy_by_market"]:
-        if market_acc["total"] >= 30 and market_acc["pct"] < 40.0:
+        recent = recent_by_market.get(market_acc["market"])
+        if not recent or recent["total"] < 100:
+            continue
+        drop = market_acc["pct"] - recent["pct"]
+        if drop >= 10.0:
             print(f"[calibrate] Retrain triggered: {market_acc['market']} "
-                  f"accuracy dropped to {market_acc['pct']}% "
-                  f"({market_acc['total']} samples)")
+                  f"accuracy dropped {drop:.1f} pts "
+                  f"({recent['pct']}% over {recent['total']} recent settled picks "
+                  f"vs {market_acc['pct']}% all-time)")
             return True
 
     return False
@@ -414,7 +427,7 @@ def auto_retrain(force: bool = False):
         return False
 
     stats = get_calibration_data_for_retraining()
-    total_before = stats["total_calibration_entries"]
+    resolved_before = stats["resolved_entries"]
 
     if not force and not check_retrain_needed():
         print("[calibrate] No retrain needed")
@@ -438,6 +451,7 @@ def auto_retrain(force: bool = False):
             acc_1x2_after=new_model.accuracy_1x2,
             acc_ou_before=acc_ou_before,
             acc_ou_after=new_model.accuracy_ou,
+            resolved_entries=resolved_before,
         )
         print(f"[calibrate] Retrained: {examples_before} -> {new_model.training_examples} examples, "
               f"1X2: {acc_1x2_before:.3f} -> {new_model.accuracy_1x2:.3f}, "
@@ -1037,7 +1051,7 @@ def run_calibration_learning(analyze: bool = True, retrain: bool = False,
 
     if analyze:
         print("\n[1/3] Analyzing prediction bias...")
-        analyze_calibration(min_samples=10)
+        analyze_calibration(min_samples=MIN_BIAS_SAMPLES)
 
     if retrain or force_retrain:
         print("\n[2/3] Checking retrain conditions...")

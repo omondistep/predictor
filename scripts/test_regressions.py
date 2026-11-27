@@ -1084,11 +1084,20 @@ class TestBettorStaking(unittest.TestCase):
 
     def test_unknown_league_gets_the_weak_haircut_not_full_stake(self):
         B = self.B
-        acc = {"O/U": {B._league_family("Prime Liga"): 0.60,
-                       B._league_family("Seconda Liga"): 0.45}}
+        import league_stats
+        prime = league_stats.league_key("Prime Liga")
+        seconda = league_stats.league_key("Seconda Liga")
+        acc = {"O/U": {
+            prime: {"n": 60, "grade": "reliable", "edge_pts": 6.0},
+            seconda: {"n": 60, "grade": "weak", "edge_pts": -7.0},
+        }}
         self.assertEqual(B._rel_factor(acc, "Prime Liga", "O/U"), (1.0, "STUD"))
-        # measured-but-weak is halved …
-        self.assertEqual(B._rel_factor(acc, "Seconda Liga", "O/U"), (0.5, "WEAK"))
+        # measured at its own base rate gets the middle haircut, not the
+        # full stake reserved for a proven edge …
+        acc["O/U"][prime] = {"n": 60, "grade": "at_base", "edge_pts": 0.5}
+        self.assertEqual(B._rel_factor(acc, "Prime Liga", "O/U"), (0.75, "ok"))
+        # … a measured negative edge is vetoed outright …
+        self.assertEqual(B._rel_factor(acc, "Seconda Liga", "O/U"), (0.0, "COLD"))
         # … and a league nothing has ever scored sits in the same bucket as
         # the weak one, not at the STUD stake.
         self.assertEqual(B._rel_factor(acc, "Atlantis Test League", "O/U"),
@@ -1502,6 +1511,220 @@ class TestCustomSlates(unittest.TestCase):
         with patch.object(predict, "_measured_league_accuracy", return_value=idx):
             kept = predict._filter_high_leagues(rows, 70.0, 30)
         self.assertEqual([r["url"] for r in kept], ["good"])
+
+    def test_rolling_slate_windows(self):
+        from datetime import datetime
+        from predict import _rolling_slate_dates
+
+        # (now, Mon–Fri window, Sat–Sun window)
+        cases = [
+            (datetime(2026, 11, 23), ("2026-11-23", "2026-11-27"),
+             ("2026-11-28", "2026-11-29")),  # Monday
+            (datetime(2026, 11, 26), ("2026-11-23", "2026-11-27"),
+             ("2026-11-28", "2026-11-29")),  # Thursday
+            (datetime(2026, 11, 28), ("2026-11-30", "2026-12-04"),
+             ("2026-11-28", "2026-11-29")),  # Saturday
+            (datetime(2026, 11, 29), ("2026-11-30", "2026-12-04"),
+             ("2026-12-05", "2026-12-06")),  # Sunday
+        ]
+        for now, weekdays, weekend in cases:
+            with self.subTest(now=now.date()):
+                self.assertEqual(
+                    tuple(d.isoformat() for d in _rolling_slate_dates(now)),
+                    weekdays)
+                self.assertEqual(
+                    tuple(d.isoformat() for d in
+                          _rolling_slate_dates(now, weekend=True)),
+                    weekend)
+
+    def test_rolling_slates_default_out_without_none_dirname_crash(self):
+        """`pr --weekday` passes args.out=None; that used to crash on write."""
+        from datetime import datetime
+        from unittest.mock import patch
+        import predict
+
+        with tempfile.TemporaryDirectory() as td:
+            leagues = Path(td) / "leagues_db.json"
+            leagues.write_text("{}")
+            written = []
+            with patch("webfetch.create_session", return_value=object()), \
+                 patch.object(predict, "_getrs_params", return_value=None), \
+                 patch.object(predict, "_write_links_file",
+                              side_effect=lambda path, urls: written.append(path)):
+                predict.fetch_weekday_links(leagues_file=str(leagues),
+                                            out_file=None,
+                                            now=datetime(2026, 11, 26))
+                predict.fetch_weekend_links(leagues_file=str(leagues),
+                                            out_file=None,
+                                            now=datetime(2026, 11, 26))
+        self.assertEqual(written, ["links/weekday.html", "links/weekend.html"])
+
+    def test_weekend_slate_refresh_staleness(self):
+        from datetime import datetime, timedelta
+        from predict import _slate_needs_refresh, _write_links_file
+
+        with tempfile.TemporaryDirectory() as td:
+            p = Path(td) / "weekend.html"
+            _write_links_file(str(p), ["https://x/1"])
+            self.assertEqual(_slate_needs_refresh(str(p), "weekend"), (False, ""))
+
+            old = (datetime.now() - timedelta(hours=13)).isoformat(timespec="seconds")
+            p.write_text(f"# generated {old} — 1 match URL(s)\nhttps://x/1\n")
+            stale, why = _slate_needs_refresh(str(p), "weekend")
+            self.assertTrue(stale)
+            self.assertIn("h old", why)
+
+
+class TestCalibrationGuardrails(unittest.TestCase):
+    """Thin buckets must not move live probabilities, and retraining must not
+    be triggered by unrelated calibration_log growth."""
+
+    def test_thin_bucket_is_ignored_but_thick_bucket_applies(self):
+        from unittest import mock
+        import calibration_learner as cl
+
+        self.assertEqual(cl.MIN_BIAS_SAMPLES, 25)
+        buckets = [
+            {"threshold": "Home win", "bucket": "30-40%",
+             "bias": 0.60, "sample_count": 24},
+            {"threshold": "Home win", "bucket": "30-40%",
+             "bias": 0.10, "sample_count": 100},
+        ]
+        seen = {}
+
+        def fake_lookup(league=None, market=None, min_samples=25, **kwargs):
+            seen["min_samples"] = min_samples
+            return [b for b in buckets if b["sample_count"] >= min_samples]
+
+        with mock.patch.object(cl, "get_calibration_biases", side_effect=fake_lookup):
+            corrected = cl.apply_bias_correction("X", "1X2", "Home win", 0.35)
+        self.assertEqual(seen["min_samples"], 25)
+        # Only the 100-sample bucket survives; thin +0.60 is ignored entirely.
+        self.assertGreater(corrected, 0.35)
+        self.assertLess(corrected, 0.35 + 0.10)
+
+    def test_retrain_trigger_counts_newly_resolved_matches(self):
+        from unittest import mock
+        import calibration_learner as cl
+
+        stats = {
+            "resolved_entries": 30550,
+            "last_retrain_resolved_entries": 30510,
+            "total_calibration_entries": 100000,  # irrelevant to the decision
+            "last_retrain_examples": 27383,
+            # 39.8% all-time used to fire the old absolute <40% trigger even
+            # though the recent settled rate is better.
+            "accuracy_by_market": [{"market": "1X2", "total": 27901, "pct": 39.8}],
+            "recent_accuracy_by_market": [
+                {"market": "1X2", "total": 3007, "pct": 45.2}
+            ],
+        }
+        with mock.patch.object(cl, "get_calibration_data_for_retraining",
+                               return_value=stats):
+            self.assertFalse(cl.check_retrain_needed(min_new_examples=50))
+
+        stats["last_retrain_resolved_entries"] = 30450
+        with mock.patch.object(cl, "get_calibration_data_for_retraining",
+                               return_value=stats):
+            self.assertTrue(cl.check_retrain_needed(min_new_examples=50))
+
+        # A real drift (recent settled rate 10+ pts below all-time) still fires.
+        stats["last_retrain_resolved_entries"] = 30549
+        stats["recent_accuracy_by_market"][0]["pct"] = 25.0
+        with mock.patch.object(cl, "get_calibration_data_for_retraining",
+                               return_value=stats):
+            self.assertTrue(cl.check_retrain_needed(min_new_examples=50))
+
+
+class TestRetrainScheduler(unittest.TestCase):
+    """The nohup fallback must report when it fires, not when it was armed."""
+
+    def test_nohup_eta_is_fire_time_not_now(self):
+        from datetime import datetime, timedelta
+        from unittest.mock import MagicMock, patch
+        import predict
+
+        armed_at = datetime(2026, 11, 26, 21, 46)
+        fire_at = armed_at + timedelta(hours=18)
+        logs = []
+        with patch.object(predict.Path, "read_text", return_value=""), \
+             patch.object(predict.Path, "write_text"), \
+             patch("subprocess.Popen", return_value=MagicMock(pid=4242)), \
+             patch.object(predict, "log", side_effect=logs.append):
+            predict._schedule_nohup(18.0, "echo retrain", fire_at)
+        message = "".join(logs)
+        self.assertIn("2026-11-27 15:46", message)
+        self.assertNotIn("21:46 +18h", message)
+
+    def test_systemd_timer_uses_absolute_persistent_calendar(self):
+        from datetime import datetime
+        from unittest.mock import MagicMock, patch
+        import predict
+
+        fire_at = datetime(2026, 11, 27, 15, 46)
+        writes = {}
+        commands = []
+
+        def fake_write_text(path, text, *args, **kwargs):
+            writes[str(path)] = text
+            return len(text)
+
+        def fake_run(args, **kwargs):
+            commands.append(args)
+            return MagicMock(returncode=0, stdout="", stderr="")
+
+        with patch("shutil.which", return_value="/usr/bin/systemctl"), \
+             patch.object(predict.Path, "write_text", fake_write_text), \
+             patch.object(predict.Path, "mkdir"), \
+             patch.object(predict.Path, "unlink"), \
+             patch("subprocess.run", side_effect=fake_run), \
+             patch.object(predict, "log"):
+            ok = predict._schedule_systemd_timer(18.0, fire_at)
+
+        self.assertTrue(ok)
+        timer_text = next(text for path, text in writes.items()
+                          if path.endswith("football-predictor-retrain.timer"))
+        self.assertIn("OnCalendar=2026-11-27 15:46:00", timer_text)
+        self.assertIn("Persistent=true", timer_text)
+        self.assertIn("WantedBy=timers.target", timer_text)
+        self.assertIn(["systemctl", "--user", "enable", "--now",
+                       "football-predictor-retrain.timer"], commands)
+
+
+class TestExactLeagueReliability(unittest.TestCase):
+    """A country prefix is not a competition, and a raw hit rate is not an edge."""
+
+    def test_exact_competition_keys_are_kept_separate(self):
+        import league_stats
+        self.assertEqual(league_stats.league_key("England — Premier League"),
+                         "england premier league")
+        self.assertEqual(league_stats.league_key("England FA Cup"),
+                         "england fa cup")
+        self.assertNotEqual(league_stats.league_key("England Premier League"),
+                            league_stats.league_key("England FA Cup"))
+
+    def test_match_row_crumbs_are_rejected(self):
+        import league_stats
+        self.assertIsNone(league_stats.league_key("Us4 Peoria Sueno 17/07/2026"))
+        self.assertIsNone(league_stats.league_key("ArC Racing Club Defensa"))
+        self.assertEqual(league_stats.league_key("10th place Paraguay Primera Division 6th place"),
+                         "paraguay primera division")
+
+    def test_england_no_longer_pools_every_competition(self):
+        import league_stats
+        premier = league_stats.market_stat("England Premier League", "1X2")
+        fa_cup = league_stats.market_stat("England FA Cup", "1X2")
+        self.assertEqual(premier["league_key"], "england premier league")
+        self.assertEqual(fa_cup["league_key"], "england fa cup")
+        self.assertLess(premier["n"], 500)
+        self.assertGreater(fa_cup["n"], premier["n"])
+
+    def test_difficulty_reports_picks_and_edge_not_pooled_matches(self):
+        import predict
+        info = predict._get_league_difficulty("England Premier League")
+        self.assertIn("scored picks", info["reason"])
+        self.assertNotIn("1883", info["reason"])
+        self.assertIn("edge_pts", info)
 
 
 if __name__ == "__main__":

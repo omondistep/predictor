@@ -21,13 +21,26 @@ Supporting toolbox (stdlib, read-only on `history.db`):
 .venv/bin/python scripts/bettor.py research <slip.txt>            # web-check agenda + evidence skeletons
 .venv/bin/python scripts/bettor.py research <slip.txt> --apply    # merge evidence → re-priced verdict
 .venv/bin/python scripts/bettor.py learn            # bias analysis + ML retrain
+.venv/bin/python scripts/audit_league_reliability.py [predictions/report.html]  # per-league diagnosis
 ```
 House rules the agent follows: no bet without +EV (odds de-vigged), ignore
 samples < 25–30, Quarter-Kelly capped at 5%, scrap picks with red flags, never
 commit unless asked. An **unmeasured league is not a proven one**: `unknown`
-accuracy earns the same 0.5 stake haircut as a measured-but-weak league, and a
-ticket that would exceed 100% of the bankroll has its **lowest-EV legs cut**
-rather than having every stake scaled down to fill the cap.
+accuracy earns a 0.5 stake haircut, a competition measured at its own base rate
+earns 0.75, only a proven positive edge earns a full stake, and a measured
+negative edge is `COLD` and vetoed. A ticket that would exceed 100% of the
+bankroll has its **lowest-EV legs cut** rather than having every stake scaled
+down to fill the cap.
+
+**League reliability is exact and base-relative.** `league_stats.py` replaces
+`LIKE '<country>%'` with an exact normalized competition key. It measures each
+market against the base rate of the selection actually picked, deduplicates
+fixtures by Forebet match id, and grades `reliable` / `at_base` / `weak` /
+`unknown` with a 25-pick floor and credibility-shrunk Wilson bound. Old
+`Unreliable league (40% accuracy, 1883 matches)` warnings were country/market
+pools of **scored picks**, not 1,883 games; those labels are gone. Run
+`scripts/audit_league_reliability.py` to get one row per previously warned
+competition: its old pooled warning, exact stats, failure class and correction.
 
 **Two house gates keep the worst-priced legs off the ticket** (both stay
 visible in the card's candidate list, annotated, never staked):
@@ -373,6 +386,7 @@ rows are excluded from the measurement but not yet from ML training.
 | `pr --today --days 30 --high-leagues` | Fetch a 30-day slate containing only leagues with measured 1X2 accuracy ≥70% over ≥30 resolved picks → `links/high_30d.html`. Tune with `--min-league-accuracy` / `--min-league-matches`; `--out` overrides the path. Daily auto-refresh of that file reuses the parameters in its header |
 | `pr --no-refresh <file>` | Predict a generated slate exactly as it sits on disk |
 | `pr --weekday` | Auto-fetch all Mon–Fri matches (this week if mid-week, next week if weekend) via Forebet's AJAX per day → `links/weekday.html` |
+| `pr --weekend` | Auto-fetch all Sat–Sun matches (coming weekend; next weekend on Sunday) the same way → `links/weekend.html` |
 | `pr --high-only <file>` | Only show High / Near Certain picks |
 | `pr --no-ml <file>` | Classic Poisson only (no ML ensemble) |
 | `pr --json <file>` | JSON output |
@@ -382,9 +396,10 @@ rows are excluded from the measurement but not yet from ML training.
 
 ## Generated slates refresh themselves
 
-`links/today.html` and `links/weekday.html` carry the `.html` extension for
-historical reasons but hold one URL per line, and they go stale silently:
-yesterday's `today.html` is a list of matches that have already been played, so
+`links/today.html`, `links/weekday.html` and `links/weekend.html` carry the
+`.html` extension for historical reasons but hold one URL per line, and they go
+stale silently: yesterday's `today.html` is a list of matches that have already
+been played, so
 `pr links/today.html` "succeeds" while predicting nothing bettable.
 
 Two mechanisms prevent that wasted run:
@@ -394,8 +409,9 @@ Two mechanisms prevent that wasted run:
   `#` lines, so this costs nothing, and `_links_generated_at()` falls back to
   file mtime for older hand-made files.
 - `_slate_needs_refresh()` treats a `today` slate as stale the moment the
-  calendar rolls over, and a `weekday` slate as stale past 12 hours. When stale,
-  `pr <file>` re-fetches before predicting and says so. `--no-refresh` opts out.
+  calendar rolls over, and `weekday` / `weekend` slates as stale past 12 hours.
+  When stale, `pr <file>` re-fetches before predicting and says so.
+  `--no-refresh` opts out.
 
 Independently, a run whose fixtures are *all* already finished now ends with a
 plain warning rather than a silent success. That combination is what made the
@@ -539,8 +555,10 @@ Cron (scheduled by pr)     → Runs auto_retrain() after 18h
 | `reliable_report.py` | Builds `predictions/picks_<ts>.html`, the single gated report |
 | `data/reliability.json` | The reliability ledger: measured hit rate + base rate per (selection, confidence), calibration curve, odds-integrity counts |
 | `scripts/audit_reliability.py` | Rebuilds the ledger (stamp odds → measure → gate → write JSON) |
+| `league_stats.py` | Exact competition + market reliability; base-relative grades used by `predict.py`, `pipeline.py` and `scripts/bettor.py` |
+| `scripts/audit_league_reliability.py` | Per-warning diagnosis: pooled cause, exact stats and correction → `reports/unreliable_league_audit.md` |
 | `scripts/validate_gate.py` | Walk-forward validation of the gate (fit on the past, score on unseen matches) |
-| `scripts/test_regressions.py` | 16 offline regression tests — odds parser, prefetch ordering, Wilson math |
+| `scripts/test_regressions.py` | Offline regression tests — odds parser, prefetch ordering, Wilson math, exact-league reliability |
 | `pipeline.py` | Seven-step analyzer behind `pr --analysis pipeline` |
 
 ## Replicate to a New Machine (Linux / macOS / Windows)
@@ -570,12 +588,18 @@ cp data/pending_results.json data/leagues_db.json data/predictions.json seed/dat
 git add seed/data/ history.db ml_models/ && git commit
 ```
 
-## Auto-Retrain (Cron)
+## Auto-Retrain (systemd timer)
 
-A cron job is automatically scheduled when you run predictions. It retrains the model 18 hours later.
+A prediction run arms a **persistent systemd user timer** that retrains the
+model 18 hours later. Because it uses an absolute `OnCalendar` time with
+`Persistent=true`, a run missed while the machine was powered off executes
+once at the next boot (user lingering must be enabled: `loginctl show-user
+"$USER" -p Linger`). Cron and the nohup sleeper remain only as fallbacks on
+systems without a user systemd manager.
 
 ```bash
-crontab -l                    # View scheduled jobs
+systemctl --user list-timers football-predictor-retrain.timer
+systemctl --user status football-predictor-retrain.timer
 tail -f /tmp/retrain.log      # Watch retrain logs
 ```
 
